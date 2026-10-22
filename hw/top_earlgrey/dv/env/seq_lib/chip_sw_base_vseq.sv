@@ -50,6 +50,20 @@ class chip_sw_base_vseq extends chip_base_vseq;
     super.dut_init(reset_kind);
   endtask
 
+  // Sets or clears icache_enable (bit 0) of the OTP item CREATOR_SW_CFG_CPUCTRL, which the ROM and
+  // the test ROM write to the `cpuctrl` CSR before they jump to the test, so the test is fetched
+  // through the instruction cache from its first instruction, or never. Earl Grey 2 keeps OTP in
+  // the RRAM; the OTP backdoor (rram_ctrl_otp_bkdr_util) keeps its integrity page consistent.
+  // Called before the CPU leaves reset.
+  virtual function void set_otp_icache(bit enable, string from);
+    bit [31:0] cpuctrl = cfg.mem_bkdr_util_h[Otp].read32(
+        otp_ctrl_reg_pkg::CreatorSwCfgCpuctrlOffset);
+    cpuctrl[0] = enable;
+    cfg.mem_bkdr_util_h[Otp].write32(otp_ctrl_reg_pkg::CreatorSwCfgCpuctrlOffset, cpuctrl);
+    `uvm_info(`gfn, $sformatf("EG2 icache at boot = %0d (CREATOR_SW_CFG_CPUCTRL = 0x%0h, %s)",
+                              enable, cpuctrl, from), UVM_LOW)
+  endfunction
+
   // Initialize the chip to enable SW to boot up and execute code.
   //
   // Backdoor load the sw test image, initialize memories, sw logger and test status interfaces.
@@ -62,6 +76,14 @@ class chip_sw_base_vseq extends chip_base_vseq;
      int total_bytes;
 
     `uvm_info(`gfn, "Starting cpu_init", UVM_MEDIUM)
+
+    // The instruction cache at boot: +eg2_icache=0|1 sets icache_enable in the OTP item the ROM
+    // and the test ROM write to `cpuctrl` before jumping to the test. Without the plusarg the OTP
+    // image's value stays (the creator_sw_cfg overlay enables the cache).
+    begin
+      bit icache;
+      if ($value$plusargs("eg2_icache=%d", icache)) set_otp_icache(icache, "+eg2_icache");
+    end
 
     // Initialize the sw logger interface.
     foreach (cfg.sw_images[i]) begin

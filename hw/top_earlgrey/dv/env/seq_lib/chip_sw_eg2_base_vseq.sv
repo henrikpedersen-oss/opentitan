@@ -36,12 +36,45 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
     configure_uart_agent(.uart_idx(0), .enable(1));
     fork
       log_uart_lines(0);
+      log_boot_profile();
     join_none
     super.body();
   endtask
 
+  // Where the simulated time before the test goes: each boot step as it completes, so a choice
+  // about shortening the boot is made on numbers. The test ROM's start and the test's start are
+  // logged by the software status interface ("SW test transitioned to ...").
+  protected task log_boot_profile();
+    fork
+      begin
+        wait (cfg.chip_vif.lc_ready);
+        `uvm_info("EG2_BOOT", "life cycle ready (OTP and LC initialised)", UVM_LOW)
+      end
+      begin
+        wait (cfg.chip_vif.rom_ctrl_done);
+        `uvm_info("EG2_BOOT", $sformatf("ROM check done (good = %0d)", cfg.chip_vif.rom_ctrl_good),
+                  UVM_LOW)
+      end
+      begin
+        wait (cfg.chip_vif.pwrmgr_cpu_fetch_en);
+        `uvm_info("EG2_BOOT", "CPU fetch enabled", UVM_LOW)
+      end
+      begin
+        wait (cfg.chip_vif.cpu_rst_n === 1'b0);
+        wait (cfg.chip_vif.cpu_rst_n === 1'b1);
+        `uvm_info("EG2_BOOT", "CPU out of reset", UVM_LOW)
+      end
+    join
+  endtask
+
+  // The instruction cache at boot, drawn from the run's seed so regressions run each test with the
+  // cache on and off (EG2 spec, Boot modes). +eg2_icache=0|1 pins it (chip_sw_base_vseq).
+  rand bit icache_at_boot;
+
   virtual task cpu_init();
+    bit pinned;
     super.cpu_init();
+    if (!$value$plusargs("eg2_icache=%d", pinned)) set_otp_icache(icache_at_boot, "random");
     write_word("kEg2Seed", "eg2_seed", sw_seed);
     write_params();
   endtask

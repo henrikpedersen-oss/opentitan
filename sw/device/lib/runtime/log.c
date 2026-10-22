@@ -17,8 +17,12 @@
  * The assertion below helps prevent inadvertant changes to the struct.
  * Please see the description of log_fields_t in log.h for more details.
  */
+#ifndef __CHERIOT__
+// In a CHERIoT build the pointers are 8-byte capabilities and the DV bypass is
+// not used (log.h).
 static_assert(sizeof(log_fields_t) == 20,
               "log_fields_t must always be 20 bytes.");
+#endif
 
 /**
  * Converts a severity to a static string.

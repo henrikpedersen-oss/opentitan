@@ -128,7 +128,22 @@ extern char _dv_log_offset[];
  * @param format a format string, as described in print.h. This must be a
  *               string literal.
  * @param ... format parameters matching the format string.
+ *
+ * In a CHERIoT (purecap) build the log always goes to the console: the
+ * DV-only bypass describes each log line by a `log_fields_t` holding 32-bit
+ * pointers in a section that is not loaded, and in purecap those pointers are
+ * capabilities that need relocating. The chip bench captures the console
+ * (UART0) into the run log instead.
  */
+#ifdef __CHERIOT__
+#define LOG(severity, format, ...)                         \
+  do {                                                     \
+    OT_CHECK_VALID_LOG_ARGS(__VA_ARGS__);                  \
+    static const log_fields_t log_fields =                 \
+        LOG_MAKE_FIELDS_(severity, format, ##__VA_ARGS__); \
+    base_log_internal_core(&log_fields, ##__VA_ARGS__);    \
+  } while (false)
+#else
 #define LOG(severity, format, ...)                                             \
   do {                                                                         \
     OT_CHECK_VALID_LOG_ARGS(__VA_ARGS__);                                      \
@@ -148,6 +163,7 @@ extern char _dv_log_offset[];
       base_log_internal_core(&log_fields, ##__VA_ARGS__);                      \
     }                                                                          \
   } while (false)
+#endif  // __CHERIOT__
 
 /**
  * Implementation detail of `LOG`.
