@@ -86,6 +86,32 @@
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
+      // OpenTitan's DIFs and abs_mmio, unchanged, in both modes (EG2 framework step 3).
+      name: chip_sw_eg2_dif_smoketest
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      name: chip_sw_eg2_dif_smoketest_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      // Must FAIL, with `step FAILED: UART1 loopback` (REQ_STE_03). In no regression list.
+      name: chip_sw_eg2_dif_smoketest_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      name: chip_sw_eg2_dif_smoketest_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
       name: chip_sw_clkmgr_smoketest
       uvm_test_seq: chip_sw_base_vseq
       sw_images: ["//sw/device/tests:clkmgr_smoketest:1:new_rules"]

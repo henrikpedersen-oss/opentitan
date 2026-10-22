@@ -8134,3 +8134,33 @@ opentitan_test(
         "//sw/device/lib/testing/test_framework:ottf_main",
     ],
 )
+
+# OpenTitan's DIFs and abs_mmio, unchanged, in both modes (eg2_top_verification framework step 3:
+# in CHERIoT mode mmio_region_from_addr and abs_mmio derive bounded capabilities).
+# `_inject_fail` must fail with `step FAILED: UART1 loopback` (REQ_STE_03).
+[
+    opentitan_test(
+        name = "eg2_dif_smoketest" + mode + variant,
+        srcs = ["eg2_dif_smoketest.c"],
+        exec_env = {"//hw/top_earlgrey:sim_dv": None},
+        local_defines = defines,
+        platform = platform,
+        deps = [
+            "//hw/top:rv_timer_c_regs",
+            "//hw/top/dt",
+            "//sw/device/lib/arch:device",
+            "//sw/device/lib/base:abs_mmio",
+            "//sw/device/lib/dif:rv_timer",
+            "//sw/device/lib/dif:uart",
+            "//sw/device/lib/testing/eg2:test",
+        ],
+    )
+    for mode, platform in [
+        ("", None),
+        ("_cheriot", CHERIOT_PLATFORM),
+    ]
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", ["EG2_DIF_INJECT_FAIL"]),
+    ]
+]

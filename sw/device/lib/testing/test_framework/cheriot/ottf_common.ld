@@ -122,6 +122,25 @@ SECTIONS {
     *(.text)
     *(.text.*)
 
+    /**
+     * Read-only data is in this executable output section, not in a `.rodata`
+     * of its own. Purecap code reaches a read-only global PCC-relative
+     * (AUIPCC) only when the linker finds it in an executable output section;
+     * in any other section the linker resolves the access CGP-relative
+     * (AUICGP), into the globals in RAM, which reads the wrong memory. PCC
+     * covers this section, so the constants are reachable from code as they
+     * are in the CHERIoT RTOS, whose read-only data is part of each
+     * compartment's code.
+     *
+     * Small read-only data comes before regular read-only data for the same
+     * reasons as in the data section.
+     */
+    . = ALIGN(8);
+    *(.srodata)
+    *(.srodata.*)
+    *(.rodata)
+    *(.rodata.*)
+
     /* Ensure section end is word-aligned. */
     . = ALIGN(4);
   } > ottf_nvm
@@ -138,22 +157,6 @@ SECTIONS {
     /* Ensure section end is word-aligned. */
     . = ALIGN(4);
     _text_end = .;
-  } > ottf_nvm
-
-  /**
-   * Read-only data section, containing all large compile-time constants, like
-   * strings.
-   */
-  .rodata : ALIGN(8) {
-    /**
-     * Small read-only data comes before regular read-only data for the same
-     * reasons as in the data section.
-     */
-    *(.srodata)
-    *(.srodata.*)
-    *(.rodata)
-    *(.rodata.*)
-
   } > ottf_nvm
 
   /**

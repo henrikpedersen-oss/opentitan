@@ -17,9 +17,15 @@ cc_library(
 
 cc_library(
     name = "dev",
-    srcs = ["eg2_dev.c"],
+    srcs = [
+        "eg2_dev.c",
+        "eg2_mmio.c",
+    ],
     hdrs = ["eg2_dev.h"],
-    deps = [":tables"],
+    deps = [
+        ":tables",
+        "//sw/device/lib/base:mmio",
+    ],
 )
 
 # The console, the verdict and the status sweep call each other, so they are one library.

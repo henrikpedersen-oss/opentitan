@@ -420,7 +420,12 @@ dual_cc_library(
             "mock_mmio.h",
             "mock_mmio_test_utils.h",
         ],
-        shared = ["mmio.h"],
+        # cheriot_mmio.h: the capability behind an MMIO address in a CHERIoT build, used by
+        # mmio.h and abs_mmio.h.
+        shared = [
+            "cheriot_mmio.h",
+            "mmio.h",
+        ],
     ),
     deps = dual_inputs(
         host = [

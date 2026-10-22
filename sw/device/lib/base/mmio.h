@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "sw/device/lib/base/bitfield.h"
+#include "sw/device/lib/base/cheriot_mmio.h"
 #include "sw/device/lib/base/macros.h"
 
 #ifdef __cplusplus
@@ -60,7 +61,7 @@ typedef struct mmio_region {
 OT_WARN_UNUSED_RESULT
 inline mmio_region_t mmio_region_from_addr(uintptr_t address) {
   return (mmio_region_t){
-      .base = (volatile void *)address,
+      .base = OT_MMIO_ADDR_TO_PTR(address),
   };
 }
 
