@@ -35,6 +35,20 @@
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
+      // Every register window in both modes; in CHERIoT mode each device capability's bounds and
+      // store permission as well (EG2 verification spec REQ_PER_01/02).
+      name: chip_sw_cheriot_periph_smoketest
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:cheriot_periph_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      name: chip_sw_cheriot_epmp_periph_smoketest
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:cheriot_periph_smoketest_epmp:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
       name: chip_sw_clkmgr_smoketest
       uvm_test_seq: chip_sw_base_vseq
       sw_images: ["//sw/device/tests:clkmgr_smoketest:1:new_rules"]
