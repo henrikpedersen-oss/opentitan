@@ -441,3 +441,37 @@ sim_dv(
     exec_env = "sim_dv",
     rom = "//sw/device/lib/testing/test_rom:test_rom",
 )
+
+# The full secure-boot chain in simulation (eg2_top_verification, EG2 spec REQ_PBF_01 and the
+# framework's secure boot library): the ROM verifies ROM_EXT, ROM_EXT verifies the owner image (the
+# test), as `fpga_cw340_rom_ext` does on FPGA. The test is linked and signed as an owner image and
+# assembled with ROM_EXT into one RRAM image (the `assemble` parameter, rules/opentitan/sim_dv.bzl).
+# dvsim runs it with the `sw_test_mode_mask_rom` run mode and the `rom_ext` image flag.
+sim_dv(
+    name = "sim_dv_rom_ext",
+    testonly = True,
+    base = ":sim_dv_base",
+    ecdsa_key = select({
+        "//signing:test_keys": {"//sw/device/silicon_creator/lib/ownership/keys/fake:ecdsa_keyset": "app_prod_0"},
+        "//conditions:default": {"//signing:appkey": "0"},
+    }),
+    exec_env = "sim_dv_rom_ext",
+    libs = [
+        "//sw/device/lib/arch:boot_stage_owner",
+        "//sw/device/lib/arch:sim_dv",
+        "//hw/top_earlgrey/sw/dt:sim_dv",
+    ],
+    linker_script = select({
+        "//toolchain:isa_cheriot": "//sw/device/lib/testing/test_framework/cheriot:ottf_ld_silicon_owner_slot_a",
+        "//conditions:default": "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
+    }),
+    manifest = "//sw/device/silicon_owner:manifest",
+    param = {
+        # The signed binaries: in sim_dv the default output of each is its RRAM VMEM.
+        # Slot A only (1 MiB): opentitantool's default size, 2 MiB, also covers the OTP pages at the
+        # top of the RRAM (the RRAM RFC: the data partition is 2 MiB - 2.5 KiB).
+        "assemble": "--size=0x100000 {rom_ext:signed_bin}@{rom_ext_slot_a} {firmware:signed_bin}@{owner_slot_a}",
+    },
+    rom = "//sw/device/silicon_creator/rom:mask_rom",
+    rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_dice_x509_slot_a",
+)

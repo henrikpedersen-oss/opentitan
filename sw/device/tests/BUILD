@@ -863,7 +863,11 @@ CHERIOT_PERIPH_SMOKETEST_FAILURE = "FAIL |[RC]TRAP "
     opentitan_test(
         name = "eg2_status_smoketest" + mode + variant,
         srcs = ["eg2_status_smoketest.c"],
-        exec_env = {"//hw/top_earlgrey:sim_dv": None},
+        exec_env = {
+            "//hw/top_earlgrey:sim_dv": None,
+            # Behind the full secure-boot chain (ROM, ROM_EXT, owner image).
+            "//hw/top_earlgrey:sim_dv_rom_ext": None,
+        },
         local_defines = defines,
         platform = platform,
         deps = [

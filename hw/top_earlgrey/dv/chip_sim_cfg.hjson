@@ -80,6 +80,8 @@
                 "{proj_root}/hw/ip/otbn/dv/memutil/otbn_memutil_sim_opts.hjson",
                 "{proj_root}/hw/ip/otbn/dv/tracer/otbn_tracer_sim_opts.hjson",
                 "{top_dv_path}/chip_smoketests.hjson",
+                // EG2 mutation runs (generated from eg2_mutations.hjson; in no regression list).
+                "{top_dv_path}/chip_eg2_mutations.hjson",
                 "{top_dv_path}/chip_rom_tests.hjson",
                 "{top_dv_path}/chip_manuf_ate_tests.hjson",
                 // Enable C compilation of chip level dpi

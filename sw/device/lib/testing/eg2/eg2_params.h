@@ -75,6 +75,15 @@ extern const size_t kEg2ParamCount;
  */
 bool eg2_params_begin(void);
 
+/** Size of the mutation name the bench writes (kEg2MutationName), terminator included. */
+enum { kEg2MutationNameSize = 48 };
+
+/**
+ * The bench's active mutation (`+eg2_mutate=<name>`, EG2 spec "Mutation"), or "" without one.
+ * A mutation changes the hardware, never what a test checks; tests use this only to log it.
+ */
+const char *eg2_mutation_active(void);
+
 /** The software seed the bench wrote; 0 if none did. */
 uint32_t eg2_seed(void);
 

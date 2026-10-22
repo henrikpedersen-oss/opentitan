@@ -875,6 +875,9 @@ module tb;
   `include "../autogen/tb__xbar_connect.sv"
   `include "../autogen/tb__alert_handler_connect.sv"
 
+  // EG2 mutations: +eg2_mutate=<name> (eg2_mutations.hjson).
+  `include "eg2_mutate.svh"
+
 // Gatesim initial
 `ifdef GATE_LEVEL
   initial begin

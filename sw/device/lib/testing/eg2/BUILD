@@ -47,6 +47,7 @@ cc_library(
         "//hw/top:rv_core_ibex_c_regs",
         "//hw/top:uart_c_regs",
         "//sw/device/lib/arch:device",
+        "//sw/device/lib/base:multibits",
     ],
 )
 

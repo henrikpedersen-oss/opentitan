@@ -112,6 +112,22 @@
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
+      // The status smoke test behind the full secure-boot chain: the ROM (mask ROM, fake keys)
+      // verifies ROM_EXT, ROM_EXT verifies the test as a signed owner image (exec env
+      // sim_dv_rom_ext, image flag `rom_ext`). EG2 framework step 6, REQ_PBF_01.
+      name: chip_sw_eg2_status_smoketest_secure_boot
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+    }
+    {
+      // The same, the owner image switching to CHERIoT mode after ROM_EXT.
+      name: chip_sw_eg2_status_smoketest_cheriot_secure_boot
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+    }
+    {
       name: chip_sw_clkmgr_smoketest
       uvm_test_seq: chip_sw_base_vseq
       sw_images: ["//sw/device/tests:clkmgr_smoketest:1:new_rules"]

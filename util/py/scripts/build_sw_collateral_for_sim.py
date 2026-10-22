@@ -135,6 +135,9 @@ KNOWN_FLAGS = [
     "fake_rsa_dev_key_0",
     "fake_rsa_prod_key_0",
     "fake_rsa_test_key_0",
+    # The test behind ROM_EXT (exec env `sim_dv_rom_ext`, EG2 secure-boot runs): the test slot
+    # holds ROM_EXT and the test as an owner image, assembled into one RRAM image.
+    "rom_ext",
     # Don't filter out runfiles for other sw_build_devices if this flag is present
     "dont_filter",
 ]
@@ -336,7 +339,11 @@ def _deploy_software_collateral(args) -> None:
             sw_type_e.SwTypeSecondROM,
             sw_type_e.SwTypeOTBN,
         ):
-            if "silicon_creator" in image_string.flags:
+            if "rom_ext" in image_string.flags:
+                # The test behind ROM_EXT (exec env sim_dv_rom_ext): its runfiles hold the owner
+                # image and ROM_EXT assembled into one RRAM image.
+                label = f"{image_string.label}_{args.sw_build_device}_rom_ext"
+            elif "silicon_creator" in image_string.flags:
                 # Add the flag `silicon_creator` when using a flash image built
                 # for the `silicon_creator` device.
                 # This is used for GLS tests that integrate the ROM macro, which
@@ -395,10 +402,15 @@ def _deploy_software_collateral(args) -> None:
         # Perform a crude string-contains check to determine if this is one of those rules,
         # and if so, remove files unrelated to this device
         dev = args.sw_build_device
+        # A test behind ROM_EXT: its files are `<test>_<dev>_rom_ext.*` (the owner image) and
+        # `<test>_<dev>_rom_ext_assembled.*` (ROM_EXT and the owner image in one RRAM image).
+        suffixes = (dev,)
+        if "rom_ext" in iq.image_string.flags:
+            suffixes = (f"{dev}_rom_ext", f"{dev}_rom_ext_assembled")
 
         def _f_endswith_dev(f: Path) -> bool:
             f_stem = str(f).split(".")[0]
-            return f_stem.endswith(dev)
+            return f_stem.endswith(suffixes)
 
         is_device_specific = any([_f_endswith_dev(Path(f)) for f in runfiles])
         if is_device_specific and ("dont_filter" not in iq.image_string.flags):

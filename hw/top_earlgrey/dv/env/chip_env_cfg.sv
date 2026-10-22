@@ -18,6 +18,10 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   // skip ROM backdoor loading (when using ROM macro block)
   bit                 skip_rom_bkdr_load = 0;
 
+  // The test slot image is ROM_EXT and the test as an owner image, assembled (the `rom_ext` image
+  // flag; EG2 secure-boot runs).
+  bit                 rom_ext_assembled = 0;
+
   // chip top interfaces
   virtual chip_if       chip_vif;
 
@@ -491,7 +495,13 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
           // to use a flash image built for the `silicon_creator` device. This
           // is used for GLS tests that integrate the ROM macro, which is built
           // for the `silicon_creator` device, not the `sim_dv` device.
-          if ("silicon_creator" inside {sw_image_flags[i]}) begin
+          if ("rom_ext" inside {sw_image_flags[i]}) begin
+            // The test as an owner image behind ROM_EXT (exec env sim_dv_rom_ext): the software
+            // log database is the owner image's; the RRAM holds ROM_EXT and the owner image
+            // assembled (`<name>_assembled.128.scr.vmem`, see chip_sw_base_vseq::cpu_init).
+            sw_images[i] = $sformatf("%0s_%0s_rom_ext", sw_images[i], sw_build_device);
+            rom_ext_assembled = 1'b1;
+          end else if ("silicon_creator" inside {sw_image_flags[i]}) begin
             sw_images[i] = $sformatf("%0s_silicon_creator", sw_images[i]);
           // If test type is `opentitan_test` and the flash image was generated
           // by the `opentitan_test` Bazel macro itself, or it was generated

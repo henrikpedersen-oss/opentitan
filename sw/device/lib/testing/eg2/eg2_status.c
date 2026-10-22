@@ -6,6 +6,8 @@
 
 #include "hw/top/alert_handler_regs.h"  // Generated.
 #include "hw/top/rstmgr_regs.h"         // Generated.
+#include "hw/top/rv_core_ibex_regs.h"   // Generated.
+#include "sw/device/lib/base/multibits.h"
 #include "sw/device/lib/testing/eg2/eg2_result.h"
 
 // Per-alert and per-class register arrays of the alert handler.
@@ -218,6 +220,19 @@ static bool check_core(void) {
     report("wrong execution mode", "rv_core_ibex", "misa", misa);
     ok = false;
   }
+#ifdef __CHERIOT__
+  // The mode is locked (REQ_SOC_03): a second lock, for RISC-V mode, must change nothing. Only in
+  // CHERIoT builds, whose start-up code locked the mode; a broken lock flips the core to RISC-V
+  // mode here, and the code below still runs far enough to say so.
+  eg2_dev_write32(kEg2DevRvCoreIbexCfg, RV_CORE_IBEX_CHERIOT_ENA_REG_OFFSET, kMultiBitBool4False);
+  eg2_dev_write32(kEg2DevRvCoreIbexCfg, RV_CORE_IBEX_CHERIOT_LOCK_REG_OFFSET, kMultiBitBool4True);
+  __asm__ volatile("fence.i");
+  __asm__ volatile("csrr %0, misa" : "=r"(misa));
+  if ((misa & (kMisaE | kMisaI)) != kMisaE) {
+    report("mode switch not locked", "rv_core_ibex", "misa", misa);
+    ok = false;
+  }
+#endif
   uint32_t info = eg2_dev_read32(kEg2DevRstmgr, RSTMGR_RESET_INFO_REG_OFFSET);
   if (info & ~(1u << RSTMGR_RESET_INFO_POR_BIT)) {
     report("unexpected reset", "rstmgr", "RESET_INFO", info);

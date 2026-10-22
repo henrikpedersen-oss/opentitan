@@ -1,0 +1,92 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// The EG2 mutation table (eg2_top_verification: EG2 verification specification, "Mutation";
+// doc/eg2_test_framework.md, part 4). The single input for every mutation: the bench applies the
+// mechanism (tb/eg2_mutate.svh, `+eg2_mutate=<name>`), scripts/gen_eg2_mutation_cfg.py makes one
+// dvsim run per mutation and test, scripts/eg2_mutation_check.py grades the runs.
+//
+//   name          unique; the bench's case label and the plusarg value
+//   requirements  the requirements whose checker must catch it
+//   kind          rtl: a hardware fault the chip must not hide
+//   interface     the interface group of the spec's "Interface mutations" table
+//   mechanism     what is forced, in words (the bench has the code)
+//   activation    when the mutant changes the design's behaviour; the bench counts those cycles,
+//                 and a run with none is INACTIVE (it says nothing about the checkers)
+//   tests         dvsim tests that must fail with it
+//   caught_by     regular expressions naming the check meant to catch it; a failed run whose log
+//                 matches one is CAUGHT, any other failure CAUGHT-OTHER
+//   must_not_log  optional: regular expressions that must not appear for a CAUGHT (the check
+//                 fires before that line would be printed)
+{
+  mutations: [
+    {
+      name: cheriot_ena_core_stuck_false
+      requirements: ["REQ_SOC_05"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "rv_core_ibex.cheriot_enable_ibex forced Off: core, shadow core and TRVK stay in RISC-V mode while cheriot_mem_sys sees CHERIoT"
+      activation: "cheriot_ena_o is MuBi4True"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // The start-up code's mode check fails before the console is up: it writes the failure
+      // word in RISC-V mode and prints nothing, so the run's only trace is the failed status
+      // without the line "EG2 test, CHERIoT mode".
+      caught_by: ["SW TEST FAILED"]
+      must_not_log: ["EG2 test, CHERIoT mode"]
+    }
+    {
+      name: cheriot_lock_ignored
+      requirements: ["REQ_SOC_03"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "u_cheriot_switch's next state forced so a locked switch takes a second lock: CHERIOT_ENA stays writable after CHERIOT_LOCK"
+      activation: "a lock request while the switch is already locked"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // The status module's second lock attempt (eg2_status.c, check_core).
+      caught_by: ["STATUS mode switch not locked"]
+    }
+    {
+      name: load_tag_dropped
+      requirements: ["REQ_CMS_10"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "rv_core_ibex.main_core_data_tag_d2h forced 0: every load returns tag 0 to both cores"
+      activation: "a response from cheriot_mem_sys carries tag 1 (cored_tag_d2h_i)"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      caught_by: ["CTRAP 0000001c"]
+    }
+    {
+      name: store_tag_dropped
+      requirements: ["REQ_CMS_10"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "cheriot_tag_filter.tag_m_o keeps only the TBRE's tag: a capability store writes tag 0 to the meta SRAM"
+      activation: "a core write with tag 1 reaches the tag filter"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      caught_by: ["CTRAP 0000001c"]
+    }
+    {
+      name: xbar_peri_uart1_to_uart2
+      requirements: ["REQ_PER_01"]
+      kind: rtl
+      interface: noc
+      mechanism: "xbar_peri socket u_s1n_25 routes UART1's device select to UART2"
+      activation: "a request to UART1 enters xbar_peri"
+      tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest", "chip_sw_eg2_dif_smoketest_cheriot"]
+      caught_by: ["STATUS (missing|unexpected) (interrupt|alert)", "step FAILED: UART1 loopback"]
+    }
+    {
+      name: xbar_peri_unmapped_no_error
+      requirements: ["REQ_PER_02"]
+      kind: rtl
+      interface: noc
+      mechanism: "xbar_peri's error responder answers an unmapped address without d_error"
+      activation: "the error responder answers a request"
+      tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // No test reaches an unmapped peripheral address yet: expected MISSED until the
+      // capability-fault random test (REQ_PBF_13) does.
+      caught_by: ["unmapped"]
+    }
+  ]
+}

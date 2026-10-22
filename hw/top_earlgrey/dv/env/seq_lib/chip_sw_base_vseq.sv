@@ -151,7 +151,8 @@ class chip_sw_base_vseq extends chip_base_vseq;
       // true absolute address in the RRAM data partition, so their vmem files' own addresses
       // don't overlap and can be loaded directly.
       if (cfg.sw_images.exists(SwTypeTestSlotA)) begin
-        string image_path = {cfg.sw_images[SwTypeTestSlotA], ".128.scr.vmem"};
+        string image_path = {cfg.sw_images[SwTypeTestSlotA],
+                             cfg.rom_ext_assembled ? "_assembled" : "", ".128.scr.vmem"};
         cfg.mem_bkdr_util_h[RramData].load_mem_from_file(image_path);
       end
       if (cfg.sw_images.exists(SwTypeTestSlotB)) begin

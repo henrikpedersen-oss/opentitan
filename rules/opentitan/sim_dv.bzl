@@ -3,7 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@lowrisc_opentitan//rules/opentitan:providers.bzl", "SimDvBinaryInfo")
-load("@lowrisc_opentitan//rules/opentitan:util.bzl", "get_fallback")
+load(
+    "@lowrisc_opentitan//rules/opentitan:util.bzl",
+    "assemble_for_test",
+    "get_fallback",
+    "recursive_format",
+)
 load(
     "//rules/opentitan:exec_env.bzl",
     "ExecEnvInfo",
@@ -160,6 +165,42 @@ def _test_dispatch(ctx, exec_env, firmware):
       (File, List[File]) The test script and needed runfiles.
     """
     test_harness, data_labels, data_files, param, action_param = common_test_setup(ctx, exec_env, firmware)
+
+    # An environment with a ROM_EXT (sim_dv_rom_ext): ROM_EXT and the signed owner image assembled
+    # into one NVM image, as the FPGA environments do, then made into the RRAM VMEM files the chip
+    # bench loads. dvsim collects them from the runfiles; the chip bench's `rom_ext` image flag
+    # selects `<name>_assembled.128.scr.vmem` for the test slot.
+    if "assemble" in param:
+        assemble = recursive_format(param.get("assemble"), action_param)
+        assemble = ctx.expand_location(assemble, data_labels)
+        name = ctx.attr.name + "_assembled"
+        image = assemble_for_test(
+            ctx,
+            name = name,
+            spec = assemble.strip().split(" "),
+            data_files = data_files,
+            opentitantool = exec_env._opentitantool,
+        )
+        vmem_base = convert_to_vmem(
+            ctx,
+            name = name,
+            src = image,
+            word_size = 128,
+            fill = "0x00",
+        )
+        data_files = data_files + [image, vmem_base]
+        if exec_env.rram_scramble_tool != None:
+            data_files.append(scramble_rram(
+                ctx,
+                name = name,
+                suffix = "128.scr.vmem",
+                src = vmem_base,
+                otp = get_fallback(ctx, "file.otp", exec_env),
+                otp_mmap = exec_env.otp_mmap,
+                top_secret_cfg = exec_env.top_secret_cfg,
+                otp_data_perm = exec_env.otp_data_perm,
+                _tool = exec_env.rram_scramble_tool.files_to_run,
+            ))
 
     # Perform all relevant substitutions on the test_cmd.
     test_cmd = get_fallback(ctx, "attr.test_cmd", exec_env)

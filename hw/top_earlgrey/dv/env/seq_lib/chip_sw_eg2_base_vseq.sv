@@ -73,11 +73,31 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
 
   virtual task cpu_init();
     bit pinned;
+    string mutation;
     super.cpu_init();
     if (!$value$plusargs("eg2_icache=%d", pinned)) set_otp_icache(icache_at_boot, "random");
+    // Behind ROM_EXT the test is a signed owner image: a write into its .rodata would break the
+    // signature, and ROM_EXT would rightly refuse to boot it. Until the overrides live outside the
+    // signed region, a secure-boot run keeps the image's defaults (seed 0, default parameters).
+    if (cfg.rom_ext_assembled) begin
+      `uvm_info(`gfn, {"EG2 secure boot: the owner image is signed, so the seed, the parameters ",
+                       "and the mutation name keep the image's defaults"}, UVM_LOW)
+      return;
+    end
     write_word("kEg2Seed", "eg2_seed", sw_seed);
+    if ($value$plusargs("eg2_mutate=%s", mutation)) write_mutation_name(mutation);
     write_params();
   endtask
+
+  // The active mutation's name into kEg2MutationName (eg2_params.h), so the software's log names
+  // it. The size must match the software's array exactly.
+  localparam int unsigned MutationNameSize = 48;
+  protected function void write_mutation_name(string name);
+    bit [7:0] bytes[MutationNameSize];
+    `DV_CHECK_LT_FATAL(name.len(), MutationNameSize, $sformatf("mutation name too long: %s", name))
+    foreach (bytes[i]) bytes[i] = (i < name.len()) ? name[i] : 8'h00;
+    sw_symbol_backdoor_overwrite("kEg2MutationName", bytes);
+  endfunction
 
   protected task log_uart_lines(int uart_idx);
     uart_item item;
