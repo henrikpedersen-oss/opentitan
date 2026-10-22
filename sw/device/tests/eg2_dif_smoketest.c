@@ -58,10 +58,13 @@ static bool uart_loopback(void) {
       .parity_enable = kDifToggleDisabled,
       .parity = kDifUartParityEven,
       .tx_enable = kDifToggleEnabled,
-      .rx_enable = kDifToggleEnabled,
+      .rx_enable = kDifToggleDisabled,
   };
+  // The receiver is enabled only once loopback is on: before that it samples UART1's RX pad,
+  // which nothing drives in this test, and an undriven pad fills the receive FIFO with X.
   if (dif_uart_configure(&uart, config) != kDifOk ||
-      dif_uart_loopback_set(&uart, kDifUartLoopbackSystem, kDifToggleEnabled) != kDifOk) {
+      dif_uart_loopback_set(&uart, kDifUartLoopbackSystem, kDifToggleEnabled) != kDifOk ||
+      dif_uart_set_enable(&uart, kDifUartDatapathRx, kDifToggleEnabled) != kDifOk) {
     return false;
   }
 
