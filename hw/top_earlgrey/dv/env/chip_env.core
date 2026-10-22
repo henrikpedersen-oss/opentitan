@@ -55,6 +55,8 @@ filesets:
       - seq_lib/chip_jtag_mem_vseq.sv: {is_include_file: true}
       - seq_lib/chip_tap_straps_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_status_smoketest_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_uart_tx_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_lc_base_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_uart_smoke_vseq.sv: {is_include_file: true}

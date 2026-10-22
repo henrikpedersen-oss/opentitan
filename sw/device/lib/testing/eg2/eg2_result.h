@@ -45,7 +45,8 @@ void eg2_result_in_test(void);
 
 /**
  * The end of a test: the final status sweep (`eg2_status_check`), then the GPIO verdict.
- * Returns `passed` and the sweep's verdict; `test_main` returns this.
+ * Returns `passed` and the sweep's verdict. The framework's `test_main` calls it after the
+ * test's body.
  */
 bool eg2_test_end(bool passed);
 

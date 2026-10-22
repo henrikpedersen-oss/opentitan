@@ -50,7 +50,6 @@ cc_library(
         "cheriot/eg2_cheriot_main.c",
         "cheriot/eg2_cheriot_start.S",
     ],
-    hdrs = ["eg2_test.h"],
     target_compatible_with = ["//toolchain:isa_cheriot"],
     deps = [
         ":status",
@@ -64,9 +63,25 @@ cc_library(
 )
 
 cc_library(
+    name = "params",
+    srcs = ["eg2_params.c"],
+    hdrs = ["eg2_params.h"],
+    deps = [
+        ":status",
+        "//sw/device/lib/base:macros",
+    ],
+)
+
+# The framework's test_main: parameters, status, the test's eg2_test_main, the final sweep.
+cc_library(
     name = "test",
+    srcs = ["eg2_test.c"],
     hdrs = ["eg2_test.h"],
-    deps = [":status"] + select({
+    alwayslink = True,
+    deps = [
+        ":params",
+        ":status",
+    ] + select({
         "//toolchain:isa_cheriot": [":cheriot_crt"],
         "//conditions:default": [
             "//sw/device/lib/testing/test_framework:ottf_main",

@@ -61,13 +61,13 @@
       // The EG2 framework's status module (alert handler, error interrupts, error registers,
       // mode, reset reason), one source in RISC-V mode (OTTF) and in CHERIoT mode.
       name: chip_sw_eg2_status_smoketest
-      uvm_test_seq: chip_sw_base_vseq
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
       name: chip_sw_eg2_status_smoketest_cheriot
-      uvm_test_seq: chip_sw_base_vseq
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
@@ -75,13 +75,13 @@
       // Must FAIL, with `STATUS unexpected alert uart1_fatal_fault` (REQ_STE_03). In no
       // regression list.
       name: chip_sw_eg2_status_smoketest_inject_fail
-      uvm_test_seq: chip_sw_base_vseq
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
       name: chip_sw_eg2_status_smoketest_cheriot_inject_fail
-      uvm_test_seq: chip_sw_base_vseq
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
