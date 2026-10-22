@@ -856,6 +856,31 @@ CHERIOT_PERIPH_SMOKETEST_FAILURE = "FAIL |[RC]TRAP "
     ]
 ]
 
+# The EG2 framework's status module (eg2_top_verification, doc/eg2_test_framework.md), one source
+# built for each mode: RISC-V (OTTF) and CHERIoT (`_cheriot`, the framework's start-up code).
+# `_inject_fail` must fail with `STATUS unexpected alert uart1_fatal_fault` (REQ_STE_03).
+[
+    opentitan_test(
+        name = "eg2_status_smoketest" + mode + variant,
+        srcs = ["eg2_status_smoketest.c"],
+        exec_env = {"//hw/top_earlgrey:sim_dv": None},
+        local_defines = defines,
+        platform = platform,
+        deps = [
+            "//hw/top:uart_c_regs",
+            "//sw/device/lib/testing/eg2:test",
+        ],
+    )
+    for mode, platform in [
+        ("", None),
+        ("_cheriot", CHERIOT_PLATFORM),
+    ]
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", ["EG2_STATUS_INJECT_FAIL"]),
+    ]
+]
+
 opentitan_test(
     name = "chip_power_idle_load_test",
     srcs = ["chip_power_idle_load_test.c"],

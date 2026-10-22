@@ -206,22 +206,16 @@ SECTIONS {
     /* Ensure section end is word-aligned. */
     . = ALIGN(4);
     _data_end = .;
-    _data_init_end = LOADADDR(.data) + SIZEOF(.data);
 
     /**
-     * This puts it in ram_main at runtime (for the VMA), but puts the section
-     * into NVM for load time (for the LMA). This is why `_data_init_*` uses
-     * `LOADADDR`.
-     *
-     * Using `AT>` means we don't have to keep track of the next free part of
-     * NVM, as we do in our other linker scripts.
+     * BSS is in the same output section as the data, not in a `.bss` of its
+     * own. Purecap code reaches every global through CGP, and the linker
+     * resolves a global's CGP offset from the middle of the output section
+     * that holds it (the CHERIoT ABI's biased CGP). One output section for all
+     * globals gives one CGP: a capability to this section, with its address in
+     * the middle. The cost is that the zeroes of BSS are stored in the image;
+     * the CRT's copy of `.data` then clears BSS as well.
      */
-  } > ram_main AT> ottf_nvm :data_segment
-
-  /**
-   * Standard BSS section. This will be zeroed at runtime by the CRT.
-   */
-  .bss : ALIGN(8) {
     _bss_start = .;
 
     /**
@@ -236,7 +230,17 @@ SECTIONS {
     /* Ensure section end is word-aligned. */
     . = ALIGN(4);
     _bss_end = .;
-  } > ram_main
+    _data_init_end = LOADADDR(.data) + SIZEOF(.data);
+
+    /**
+     * This puts it in ram_main at runtime (for the VMA), but puts the section
+     * into NVM for load time (for the LMA). This is why `_data_init_*` uses
+     * `LOADADDR`.
+     *
+     * Using `AT>` means we don't have to keep track of the next free part of
+     * NVM, as we do in our other linker scripts.
+     */
+  } > ram_main AT> ottf_nvm :data_segment
 
   /**
    * FreeRTOS heap (for OTTF).

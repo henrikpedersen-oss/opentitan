@@ -49,6 +49,43 @@
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
+      // Must FAIL, with `FAIL b 00` on the UART: built to expect the wrong cause for the bounds
+      // check, so a pass means the check is dead (EG2 verification spec REQ_STE_03). In no
+      // regression list.
+      name: chip_sw_cheriot_periph_smoketest_inject_fail
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:cheriot_periph_smoketest_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      // The EG2 framework's status module (alert handler, error interrupts, error registers,
+      // mode, reset reason), one source in RISC-V mode (OTTF) and in CHERIoT mode.
+      name: chip_sw_eg2_status_smoketest
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_cheriot
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      // Must FAIL, with `STATUS unexpected alert uart1_fatal_fault` (REQ_STE_03). In no
+      // regression list.
+      name: chip_sw_eg2_status_smoketest_inject_fail
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_cheriot_inject_fail
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+    }
+    {
       name: chip_sw_clkmgr_smoketest
       uvm_test_seq: chip_sw_base_vseq
       sw_images: ["//sw/device/tests:clkmgr_smoketest:1:new_rules"]
