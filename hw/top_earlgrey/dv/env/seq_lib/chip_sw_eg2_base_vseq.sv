@@ -29,10 +29,35 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
     sw_seed != 0;
   }
 
+  // UART0 carries the framework's console: the seed and parameters as the software read them, the
+  // status module's findings (`STATUS ...`), each step, a trap (`CTRAP ...`) and the verdict. The
+  // bench connects it and copies every line into the run log, so a failure explains itself.
+  virtual task body();
+    configure_uart_agent(.uart_idx(0), .enable(1));
+    fork
+      log_uart_lines(0);
+    join_none
+    super.body();
+  endtask
+
   virtual task cpu_init();
     super.cpu_init();
     write_word("kEg2Seed", "eg2_seed", sw_seed);
     write_params();
+  endtask
+
+  protected task log_uart_lines(int uart_idx);
+    uart_item item;
+    string line;
+    forever begin
+      p_sequencer.uart_tx_fifos[uart_idx].get(item);
+      if (item.data inside {8'h0a, 8'h0d}) begin
+        if (line != "") `uvm_info("EG2_UART", line, UVM_LOW)
+        line = "";
+      end else begin
+        line = {line, string'(item.data)};
+      end
+    end
   endtask
 
   // Overridden by a test's vseq: one set_param() per parameter, from its rand fields.
