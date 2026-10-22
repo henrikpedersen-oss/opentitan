@@ -54,6 +54,7 @@ cc_library(
     deps = [
         ":status",
         "//hw/top:rv_core_ibex_c_regs",
+        "//hw/top:sram_ctrl_c_regs",
         "//hw/top:top_lib",
         "//hw/top:uart_c_regs",
         "//sw/device/lib/base:multibits",

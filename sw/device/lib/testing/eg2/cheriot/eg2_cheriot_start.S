@@ -6,6 +6,7 @@
  * Start-up code of the EG2 framework's CHERIoT build: from reset to `eg2_cheriot_main` with
  * CHERIoT mode locked and purecap C ready to run (EG2 spec REQ_STE_02).
  *
+ *  0. Zero the meta SRAM (tags, revocation bitmap) through sram_ctrl_meta's hardware init.
  *  1. Switch to CHERIoT mode and lock it, as `cheriot_smoketest.S` does: the trap vector armed
  *     first, CHERIOT_ENA read back before the once-only lock. Any trap from here on ends the
  *     test with `CTRAP <mcause> <mtval> <mepc>` and the failure word in the DV status window.
@@ -27,6 +28,7 @@
  */
 
 #include "hw/top/rv_core_ibex_regs.h"  // Generated.
+#include "hw/top/sram_ctrl_regs.h"     // Generated.
 #include "hw/top/top_memory.h"         // Generated.
 #include "hw/top/uart_regs.h"          // Generated.
 #include "sw/device/lib/base/multibits_asm.h"
@@ -148,10 +150,26 @@ _ottf_start:
   .option norvc
   .option norelax
 
-  // 1. The mode switch, with integer addresses while still in RISC-V mode.
   la_abs t0, _eg2_cheriot_trap
   csrw   mtvec, t0
   li     s1, TOP_RV_CORE_IBEX_CFG_BASE_ADDR
+
+  // 0. The meta SRAM (tags and revocation bitmap) to zero, before the first store in CHERIoT
+  // mode: every data store to tagged memory first reads the meta word that holds its tag, and an
+  // uninitialised word reads as X. `sram_ctrl_meta` is built with SecZeroInit, so CTRL.INIT
+  // (after a new scrambling key) writes zeros, but only when boot code requests it, and neither
+  // the ROM nor the test ROM does yet (top_earlgrey.hjson).
+  li     t0, TOP_SRAM_CTRL_META_REGS_BASE_ADDR
+  addi   t1, x0, (1 << SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT) | (1 << SRAM_CTRL_CTRL_INIT_BIT)
+  sw     t1, SRAM_CTRL_CTRL_REG_OFFSET(t0)
+.L_meta_init_wait:
+  lw     t1, SRAM_CTRL_STATUS_REG_OFFSET(t0)
+  andi   t2, t1, (1 << SRAM_CTRL_STATUS_INIT_ERROR_BIT)
+  bnez   t2, .L_no_cheriot
+  andi   t2, t1, (1 << SRAM_CTRL_STATUS_INIT_DONE_BIT)
+  beqz   t2, .L_meta_init_wait
+
+  // 1. The mode switch, with integer addresses while still in RISC-V mode.
   addi   t0, x0, MULTIBIT_ASM_BOOL4_TRUE
   sw     t0, RV_CORE_IBEX_CHERIOT_ENA_REG_OFFSET(s1)
   lw     t1, RV_CORE_IBEX_CHERIOT_ENA_REG_OFFSET(s1)
