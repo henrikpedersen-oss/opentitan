@@ -34,8 +34,11 @@
 
 EG2_TEST_CONFIG();
 
+// n_accesses 0 draws 128-2048. The vseq always writes it (128-2048); the default is for runs
+// without a bench: 128, the lowest draw (regr-vlt 2026-10-26: 1557 drawn, TIMEOUT at 3600 s with
+// no line after the count; was 0).
 #define PERIPH_CAP_RANDOM_PARAMS(X)  \
-  X(n_accesses, 0, 0, 2048)          \
+  X(n_accesses, 128, 0, 2048)        \
   X(w_fault_legal, 40, 1, 100)       \
   X(w_fault_above, 15, 1, 100)       \
   X(w_fault_below, 15, 1, 100)       \

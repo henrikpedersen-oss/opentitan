@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "hw/top/keymgr_dpe_regs.h"  // Generated.
+#include "hw/top/kmac_regs.h"        // Generated.
 #include "hw/top/lc_ctrl_regs.h"     // Generated.
 #include "hw/top/otp_ctrl_regs.h"    // Generated.
 #include "hw/top/rram_ctrl_regs.h"   // Generated.
@@ -261,8 +262,33 @@ uint32_t eg2_kmgr_meta_hi(uint32_t slot) {
   return eg2_kmgr_reg(KEYMGR_DPE_METADATA_HIGH_0_REG_OFFSET + 4 * slot);
 }
 
+// keymgr_dpe derives through KMAC's application interface, which rejects a KMAC request while
+// KMAC's CFG_SHADOWED.entropy_ready is 0 (kmac theory_of_operation.md, "Service rejected error");
+// keymgr_dpe then reports FAULT_STATUS.KMAC_OP and KMAC_OUT and raises fatal_fault_err. The ROM
+// configures KMAC; the test ROM does not, so before the first operation KMAC gets the software
+// entropy mode as kmac_testutils_config sets it (registers.md: CFG_SHADOWED, ENTROPY_SEED written
+// 6 times). Left alone if the boot code already made the entropy ready. 2026-10-26 (regr-vlt
+// 2026-10-26: FAULT_STATUS 0x18 after the first advance in every eg2_sec keymgr test).
+static void kmac_entropy_ready(void) {
+  if (eg2_dev_read32(kEg2DevKmac, KMAC_CFG_SHADOWED_REG_OFFSET) &
+      (1u << KMAC_CFG_SHADOWED_ENTROPY_READY_BIT)) {
+    return;
+  }
+  eg2_dev_write32(kEg2DevKmac, KMAC_ENTROPY_PERIOD_REG_OFFSET, 0);
+  eg2_dev_write32_shadowed(kEg2DevKmac, KMAC_ENTROPY_REFRESH_THRESHOLD_SHADOWED_REG_OFFSET, 0);
+  eg2_dev_write32_shadowed(
+      kEg2DevKmac, KMAC_CFG_SHADOWED_REG_OFFSET,
+      (KMAC_CFG_SHADOWED_ENTROPY_MODE_VALUE_SW_MODE << KMAC_CFG_SHADOWED_ENTROPY_MODE_OFFSET) |
+          (1u << KMAC_CFG_SHADOWED_ENTROPY_FAST_PROCESS_BIT) |
+          (1u << KMAC_CFG_SHADOWED_ENTROPY_READY_BIT));
+  for (uint32_t i = 0; i < 6; ++i) {
+    eg2_dev_write32(kEg2DevKmac, KMAC_ENTROPY_SEED_REG_OFFSET, 0);
+  }
+}
+
 uint32_t eg2_kmgr_op(uint32_t op, uint32_t dest, uint32_t src, uint32_t dst, bool sw_binding_only,
                      uint32_t *err) {
+  kmac_entropy_ready();
   uint32_t ctrl =
       ((op & KEYMGR_DPE_CONTROL_SHADOWED_OPERATION_MASK)
        << KEYMGR_DPE_CONTROL_SHADOWED_OPERATION_OFFSET) |

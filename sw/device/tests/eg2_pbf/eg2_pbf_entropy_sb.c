@@ -210,6 +210,12 @@ static bool refused_after_uninstantiate(void) {
   ok = eg2_pbf_step("csrng_recov_alert reached the alert handler",
                     alert >= 0 && eg2_status_wait_alert((size_t)alert, 10000)) &&
        ok;
+  // 2026-10-26: csrng.hjson HW_EXC_STS and cs_hw_inst_exc are the hardware instances' (one bit per
+  // HW instance; "the SW instance: check SW_CMD_STS"), so this software-instance error sets
+  // neither. Checked here so a set bit is named, not only seen by the status sweep (F49).
+  ok = eg2_pbf_check("csrng HW_EXC_STS after a software-instance error", 0,
+                     eg2_dev_read32(kEg2DevCsrng, CSRNG_HW_EXC_STS_REG_OFFSET)) &&
+       ok;
   eg2_dev_write32(kEg2DevCsrng, CSRNG_RECOV_ALERT_STS_REG_OFFSET,
                   ~(1u << CSRNG_RECOV_ALERT_STS_CMD_STAGE_INVALID_CMD_SEQ_ALERT_BIT));
   return ok;

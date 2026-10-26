@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("//sw/device/tests:eg2_exec.bzl", "EG2_VERILATOR")
+load("//sw/device/tests:eg2_exec.bzl", "EG2_VERILATOR", "EG2_VERILATOR_LONG")
 
 # The CHERIoT test suite of the EG2 verification specification (eg2_top_verification,
 # eg2_toplevel_verification_spec.md, "CHERIoT Test Suite"), on the EG2 framework
@@ -278,9 +278,18 @@ _TESTS = [
     ("eg2_revbm_errors", ["eg2_revbm_errors.c"], ["_cheriot"], "EG2_REVBM_ERRORS_INJECT_FAIL", "revoke", []),  # chip_sw_cheriot_revbm_errors_* (REQ_CMS_08, REQ_CIB_03)
 ]
 
+# Verilator runs longer than VLT_TIMEOUT (regr_vlt.sh VLT_TIMEOUT_LONG): the software draws the
+# number of instructions or accesses from the seed (256-4096, 1000-20000), on Xcelium too
+# (regr-vlt 2026-10-26: rand_mem_cheriot TIMEOUT in its random phase, rand_isa both modes TIMEOUT
+# with no line after the count).
+_VLT_LONG = [
+    "eg2_rand_isa",
+    "eg2_rand_mem",
+]
+
 [
     opentitan_test(
-        verilator = EG2_VERILATOR,
+        verilator = EG2_VERILATOR_LONG if name in _VLT_LONG else EG2_VERILATOR,
         name = name + mode + variant,
         srcs = srcs,
         exec_env = _EXEC_ENV,

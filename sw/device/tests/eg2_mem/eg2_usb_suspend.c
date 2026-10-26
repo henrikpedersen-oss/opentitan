@@ -295,7 +295,11 @@ bool eg2_test_main(void) {
   }
   bool ok = true;
   uint32_t dev_addr = 0;
-  usb_ctx_t u;
+  // Zeroed: usb_testutils_init does not clear the per-endpoint transfer state (ctx->in[ep].transfer:
+  // buffer, next_valid), which upstream's static contexts get zeroed. On the stack it held garbage,
+  // and the first packet-sent interrupt "continued" a transfer that was never started (regr-vlt
+  // 2026-10-26: "dif_usbdev_send(ctx->dev, ep, &transfer->next_part) returns 3", kDifBadArg).
+  usb_ctx_t u = {0};
   if (gaps) {
     eg2_chk_skip("enumeration, data and Suspend (no USB host in eg2sim)");
   } else {

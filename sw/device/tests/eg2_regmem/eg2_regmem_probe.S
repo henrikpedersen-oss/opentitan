@@ -187,6 +187,13 @@ eg2_rm_probe:
   csrr       t1, mtval
   csrw       mepc, t2
   mret
+  // Ibex takes the NMI at base + 0x7C, and with it the internal interrupt of a load integrity
+  // error (mcause 0xFFFFFFE0, mtval the address; Ibex manual "Internal Interrupts"), which a
+  // probe of a word with invalid integrity raises. Without this entry it ran whatever code
+  // follows the handler (regr-vlt 2026-10-26, eg2_mem_test: a jump into otbn.DMEM after the
+  // "first word" probe). 2026-10-26.
+  .org .Lrm_trap + 0x7C
+  j          .Lrm_trap
   .size eg2_rm_probe, . - eg2_rm_probe
 
 #endif  // __CHERIOT__

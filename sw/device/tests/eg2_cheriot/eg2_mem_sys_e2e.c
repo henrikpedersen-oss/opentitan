@@ -26,7 +26,7 @@
  *    a TL-UL error while the system is in ePMP mode").
  *  - rekey (CHERIoT twin, `n_rekey_caps` 0-64): capabilities in sec SRAM, then sram_ctrl_sec INIT
  *    after a new key: every one reloads untagged (REQ_CMS_16; expected to fail on the RTL of
- *    2026-10-24, see chip_sw_cheriot_sram_rekey_tag).
+ *    2026-10-24, see chip_sw_cheriot_sram_rekey_tag; rtl_tickets F50).
  *
  * The SystemC model has no revoking engine, answers the bitmap window at any width and in RISC-V
  * mode, and keeps tags through INIT (dv_todo G2, eg2_mpact_cpu.h): with `model_gaps` those checks

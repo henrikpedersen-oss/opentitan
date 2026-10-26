@@ -22,7 +22,8 @@ tables hold no pointers (an object with a pointer is not in .rodata in the CHERI
 
 Kinds and fields (F_* indices into eg2_nist_vec_t.off/len):
   aes   KAT ECB/CBC/CFB128/OFB: KEY IV IN OUT ; param = DIF mode bit ; flag DECRYPT
-  gcm   GCM, 96-bit IVs only (the hardware's): KEY IV IN OUT AAD TAG ; flags DECRYPT, FAIL
+  gcm   GCM through the crypto library (software, EG2 HLS), 96- and 128-bit IVs (the files have
+        96-bit ones): KEY IV IN OUT AAD TAG ; flags DECRYPT, FAIL
   sha2  SHA-256/384/512 short, long, Monte: MSG MD ; param = digest bits ; flag MONTE (MSG = Seed)
   hmac  HMAC with SHA-256/384/512 (L = 32/48/64): KEY MSG MAC ; param = digest bits
   sha3  SHA3-224..512 and SHAKE128/256: MSG MD ; param = bits ; flags SHAKE, MONTE ; SHAKE Monte
@@ -156,10 +157,19 @@ def read_aes(path, fidx):
 
 
 def read_gcm(path, fidx):
+    # EG2 has GCM in software only (EG2 HLS: "GCM mode through software on Ibex"; AES built with
+    # AESGCMEnable 0), the crypto library's aes_gcm over the AES engine (2026-10-26). It takes IVs
+    # of 96 or 128 bits only (aes_gcm.h; other lengths return OTCRYPTO_BAD_ARGS), and the files have
+    # 96, 1024 and 8: the 96-bit IVs run, the others are reported not run (SP 800-38D allows any
+    # length; a crypto library limit, status/rtl_tickets.md).
     dec = "Decrypt" in Path(path).name
     vs = []
     for hdr, kv, line in parse(path):
-        if get(kv, "Key") is None or hdr.get("IVlen") != "96":
+        if get(kv, "Key") is None:
+            continue
+        if hdr.get("IVlen") not in ("96", "128"):
+            not_run(Path(path).name, "IV of %s bits: the crypto library's aes_gcm takes 96 or 128"
+                    % hdr.get("IVlen"))
             continue
         v = Vec(fidx, int(get(kv, "Count")), line)
         v.flags |= FLAGS["DECRYPT"] if dec else 0
@@ -172,7 +182,8 @@ def read_gcm(path, fidx):
         v.set("OUT", b"" if v.flags & FLAGS["FAIL"] else (pt if dec else ct))
         v.set("AAD", unhex(get(kv, "AAD") or ""))
         v.set("TAG", unhex(get(kv, "Tag")))
-        v.section = "PT%s AAD%s TAG%s" % (hdr.get("PTlen"), hdr.get("AADlen"), hdr.get("Taglen"))
+        v.section = "IV%s PT%s AAD%s TAG%s" % (hdr.get("IVlen"), hdr.get("PTlen"), hdr.get("AADlen"),
+                                               hdr.get("Taglen"))
         vs.append(v)
     return vs
 
@@ -474,7 +485,7 @@ def mark_boundary(vs, kind):
     elif kind == "gcm":
         seen = set()
         for v in vs:
-            key = (len(v.fields[F["IN"]]), len(v.fields[F["AAD"]]))
+            key = (len(v.fields[F["IV"]]), len(v.fields[F["IN"]]), len(v.fields[F["AAD"]]))
             tl = ("tag", len(v.fields[F["TAG"]]), bool(v.flags & FLAGS["FAIL"]))
             if key not in seen and len(v.fields[F["TAG"]]) == 16 and not v.flags & FLAGS["FAIL"]:
                 seen.add(key)

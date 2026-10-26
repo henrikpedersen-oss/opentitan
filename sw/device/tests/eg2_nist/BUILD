@@ -141,7 +141,16 @@ _DRBG = [":drbgvectors_{}/CTR_DRBG.rsp".format(v) for v in [
 # name, generator kind, vector files, random vectors per file in the pool, engine deps.
 _TESTS = [
     ("aes", "aes", _AES_KAT, 4, ["//sw/device/lib/dif:aes"]),
-    ("aes_gcm", "gcm", _GCM, 4, ["//sw/device/lib/dif:aes", "//hw/top:aes_c_regs"]),
+    # GCM through the crypto library (software GHASH over the AES engine): EG2 has no GCM in
+    # hardware (EG2 HLS; top_earlgrey.hjson AESGCMEnable 0), 2026-10-26.
+    ("aes_gcm", "gcm", _GCM, 4, [
+        "//sw/device/lib/base:hardened",
+        "//sw/device/lib/crypto/drivers:aes",
+        "//sw/device/lib/crypto/impl/aes_gcm",
+        "//sw/device/lib/crypto/include:crypto_hdrs",
+        "//sw/device/lib/crypto/include:datatypes",
+        "//sw/device/lib/testing:entropy_testutils",
+    ]),
     ("sha2", "sha2", _SHA2, 2, [":eg2_nist_sha2_engine"]),
     ("hmac", "hmac", ["@nist_cavp_hmac_fips_198_1//:HMAC.rsp"], 6, [":eg2_nist_sha2_engine"]),
     ("sha3", "sha3", _SHA3, 2, ["//sw/device/lib/dif:kmac", "//hw/top:kmac_c_regs"]),
@@ -213,6 +222,7 @@ _TESTS_LIB = [
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/crypto/drivers:aes",
         "//sw/device/lib/crypto/impl/aes_kwp",
+        "//sw/device/lib/testing:entropy_testutils",  # 2026-10-26: EDN0 in auto mode first
     ]),
     ("otbn_ecdsa", "ecdsa", [
         _ECDSA + "SigVer.rsp",

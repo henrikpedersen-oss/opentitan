@@ -33,7 +33,6 @@
  * flipped: the run must fail with `PBF FAIL`.
  */
 
-#include "hw/top/alert_handler_regs.h"  // Generated.
 #include "hw/top/sensor_ctrl_regs.h"  // Generated.
 #include "sw/device/tests/eg2_pbf/eg2_pbf.h"
 #include "sw/device/tests/eg2_pbf/eg2_pbf_system.h"
@@ -189,19 +188,12 @@ bool eg2_test_main(void) {
   eg2_status_expect_alert(a);
   eg2_status_expect_intr(kEg2DevAlertHandler, 1u << (uint32_t)cls);
   ok = (EG2_PARAM(fault) == 0 ? second_event(cls) : corrupted_config()) && ok;
-  // The alert handler's side: the class cleared, the expected cause and interrupt cleared. The
-  // last acknowledged event's alert can still be in its sender/receiver handshake and raise the
-  // class's interrupt again after a clear (regr-vlt 2026-10-26: "unexpected interrupt
-  // alert_handler INTR_STATE = 0x2" at the end, the accumulator at 0x1149): clear until it stays
-  // clear.
-  for (int i = 0; i < 8; ++i) {
-    eg2_pbf_class_clear(cls);
-    eg2_status_clear_expected();
-    eg2_pbf_spin(200);
-    if ((eg2_dev_read32(kEg2DevAlertHandler, ALERT_HANDLER_INTR_STATE_REG_OFFSET) &
-         (1u << (uint32_t)cls)) == 0) {
-      break;
-    }
-  }
+  // The alert handler's side: the class cleared, the expected cause and interrupt cleared.
+  // (regr-vlt 2026-10-26, "unexpected interrupt alert_handler INTR_STATE = 0x2": nothing cleared
+  // INTR_STATE.CLASSx, because eg2_status_clear_expected skipped the alert handler's declared
+  // interrupt; fixed in eg2_status.c, so one clear does it. A late alert would now show as an
+  // unexpected alert cause in the sweep, not be hidden by repeated clears.)
+  eg2_pbf_class_clear(cls);
+  eg2_status_clear_expected();
   return ok;
 }

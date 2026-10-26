@@ -45,6 +45,14 @@ static void be_to_words(const uint8_t *be, uint32_t *w) {
   }
 }
 
+/**
+ * The digest as the driver takes it: the hash's 32 bytes in order (p256.c `set_message_digest`
+ * reverses them into OTBN's little-endian `msg`, as otcrypto's callers pass the hash output).
+ * Converted with be_to_words, like the integers, the driver reversed it into another e
+ * (regr-vlt 2026-10-26: S wrong with R right, a valid SigVer vector refused). 2026-10-26.
+ */
+static void digest_words(const uint8_t *hash, uint32_t *w) { memcpy(w, hash, 32); }
+
 static void words_to_be(const uint32_t *w, uint8_t *be) {
   for (uint32_t i = 0; i < 8; ++i) {
     uint8_t *b = be + 28 - 4 * i;
@@ -86,7 +94,7 @@ static void share(const uint8_t *be, p256_masked_scalar_t *m) {
 bool eg2_pbf_otbn_verify_start(const eg2_pbf_kat_ecdsa_t *v, bool corrupt) {
   uint32_t digest[8];
   p256_point_t pub;
-  be_to_words(eg2_pbf_kat(v->digest), digest);
+  digest_words(eg2_pbf_kat(v->digest), digest);
   be_to_words(eg2_pbf_kat(v->qx), pub.x);
   be_to_words(eg2_pbf_kat(v->qy), pub.y);
   be_to_words(eg2_pbf_kat(v->r), sig.r);
@@ -109,7 +117,7 @@ bool eg2_pbf_otbn_verify_end(bool *valid) {
 bool eg2_pbf_otbn_sign(const eg2_pbf_kat_ecdsa_t *v, uint8_t rs[64]) {
   uint32_t digest[8];
   p256_masked_scalar_t d, k;
-  be_to_words(eg2_pbf_kat(v->digest), digest);
+  digest_words(eg2_pbf_kat(v->digest), digest);
   share(eg2_pbf_kat(v->d), &d);
   share(eg2_pbf_kat(v->k), &k);
   if (!status_ok(p256_ecdsa_sign_config_k_start(digest, &d, &k))) {

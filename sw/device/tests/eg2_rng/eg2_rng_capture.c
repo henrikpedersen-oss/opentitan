@@ -46,8 +46,12 @@ EG2_TEST_CONFIG();
 
 // capture_words up to 2^22: the model's assessment run (make rng-assess-model) takes 3,200,000
 // words per tap, SP 800-22's 100 sequences of 10^6 bits (2026-10-26; was at most 2^20).
+// The default is for runs without a bench (Verilator, FPGA): 64, the vseq's lowest draw. The vseq
+// always writes capture_words (64-4096) and rng_model_capture.sh passes its own; at 4096 the
+// Verilator run had written ~1200 of raw_boot's 4096 words, the first of 9 streams, when Bazel
+// stopped it at 3600 s (regr-vlt 2026-10-26; was 4096).
 #define RNG_CAPTURE_PARAMS(X)          \
-  X(capture_words, 4096, 8, 4194304)   \
+  X(capture_words, 64, 8, 4194304)     \
   X(taps, 15, 1, 15)                   \
   X(modes, 7, 1, 7)                    \
   X(model_gaps, 0, 0, 1)

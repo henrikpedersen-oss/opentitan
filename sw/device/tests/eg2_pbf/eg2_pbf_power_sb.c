@@ -32,6 +32,11 @@
  *
  * Built with EG2_PBF_INJECT_FAIL the first value check (the wake-up reason) expects bit 0
  * flipped: the run must fail with `PBF FAIL`.
+ *
+ * EG2_NEEDS_BENCH: the low-power exit needs the DV bench's AST clock and power model; on the
+ * Verilator top (AST_BYPASS_CLK) no sleep entered by WFI came back within the hour (regr-vlt
+ * 2026-10-26: this test, pbf_sensor_sb, rram_idle_low_power, revocation_sleep and OpenTitan's
+ * pwrmgr_smoketest, whose Verilator target upstream marks manual).
  */
 
 #include "hw/top/pinmux_regs.h"       // Generated.

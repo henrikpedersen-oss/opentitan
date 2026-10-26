@@ -82,6 +82,14 @@
   .globl _eg2_late_trap
   .type _eg2_late_trap, @function
 _eg2_late_trap:
+  j    .L_late_trap_body
+  // Ibex takes the NMI at base + 0x7C, and with it the internal interrupt of a load integrity
+  // error (mcause 0xFFFFFFE0): without this entry it entered the middle of the body below and
+  // printed garbage (review 2026-10-26, the sibling of the probes' fix in eg2_regmem_probe.S and
+  // eg2_boot_probe.S). The body is longer than 0x7C bytes, so both entries jump to it.
+  .org _eg2_late_trap + 0x7C
+  j    .L_late_trap_body
+.L_late_trap_body:
   csrr t0, misa
   andi t0, t0, MISA_E
   beqz t0, .L_trap_rv32

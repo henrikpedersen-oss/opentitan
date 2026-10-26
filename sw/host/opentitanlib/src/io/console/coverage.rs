@@ -286,7 +286,20 @@ impl<T: ConsoleDevice> ConsoleDevice for CoverageMiddleware<T> {
                 Ok(1) => {
                     state.match_buf.push_back(one_byte[0]);
                 }
-                _ => unreachable!(),
+                // The inner device failed: in these runs the Verilator console's read ended in an
+                // error, not EOF, once the simulation had exited. This was
+                // `_ => unreachable!()`, which panicked and turned passing tests into failures (EG2
+                // regr-vlt 2026-10-26: 10 tests with "SW TEST PASSED" from the simulator panicked
+                // here). Handled as the end of input, as Ok(0) above, after a warning.
+                Err(e) => {
+                    log::warn!("Console read failed, treated as end of input: {:?}", e);
+                    if !state.match_buf.is_empty() {
+                        let safe_len = state.match_buf.len();
+                        self.flush_match_buf(&mut state, safe_len);
+                    }
+                    return Poll::Ready(Ok(0));
+                }
+                Ok(_) => unreachable!("a one-byte read returned more than one byte"),
             }
         }
     }

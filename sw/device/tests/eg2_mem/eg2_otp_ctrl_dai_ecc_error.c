@@ -37,6 +37,10 @@
  *
  * Built with EG2_OTP_CTRL_DAI_ECC_ERROR_INJECT_FAIL the first value check expects bit 0 flipped:
  * the run must fail with `MEM FAIL`.
+ *
+ * EG2_NEEDS_BENCH: the bench makes this test's stimulus, so regr_vlt.sh leaves it out of the Verilator runs.
+ * (2026-10-26: the bench plants the error, restores the word and resets the chip; Verilator has no
+ * bench, so the planted-error checks failed there.)
  */
 
 #include "hw/top/otp_ctrl_regs.h"  // Generated.

@@ -168,9 +168,17 @@ static bool check_alert_handler(void) {
     }
   }
   uint32_t intr = ah_read(ALERT_HANDLER_INTR_STATE_REG_OFFSET);
-  uint32_t allowed = d_allowed ? 1u << ALERT_HANDLER_INTR_STATE_CLASSD_BIT : 0;
+  // The alert handler is not in kIntrs (its class interrupts are not error interrupts), so a class
+  // interrupt a test declares (eg2_status_expect_intr) is allowed and checked here. Before
+  // 2026-10-26 it was ignored: a declared class A-C interrupt was reported as unexpected.
+  uint32_t expected = expected_intrs[kEg2DevAlertHandler];
+  uint32_t allowed = (d_allowed ? 1u << ALERT_HANDLER_INTR_STATE_CLASSD_BIT : 0) | expected;
   if (intr & ~allowed) {
     report("unexpected interrupt", "alert_handler", "INTR_STATE", intr);
+    ok = false;
+  }
+  if ((intr & expected) != expected) {
+    report("missing interrupt", "alert_handler", "INTR_STATE", intr);
     ok = false;
   }
   return ok;
@@ -308,6 +316,12 @@ void eg2_status_clear_expected(void) {
     ah_write_shadowed(ALERT_HANDLER_CLASSD_CLR_SHADOWED_REG_OFFSET, 1);
     eg2_dev_write32(kEg2DevAlertHandler, ALERT_HANDLER_INTR_STATE_REG_OFFSET,
                     1u << ALERT_HANDLER_INTR_STATE_CLASSD_BIT);
+  }
+  // The declared class interrupts of the alert handler, which the kIntrs loop below does not
+  // reach (2026-10-26).
+  if (expected_intrs[kEg2DevAlertHandler] != 0) {
+    eg2_dev_write32(kEg2DevAlertHandler, ALERT_HANDLER_INTR_STATE_REG_OFFSET,
+                    expected_intrs[kEg2DevAlertHandler]);
   }
   for (size_t i = 0; i < sizeof(kIntrs) / sizeof(kIntrs[0]); ++i) {
     const eg2_intr_t *r = &kIntrs[i];

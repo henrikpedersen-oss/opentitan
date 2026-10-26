@@ -38,6 +38,9 @@
  *
  * Built with EG2_REVOCATION_SLEEP_INJECT_FAIL, the retention SRAM capability is expected tagged
  * before the first sleep: the run must fail with `MISMATCH retention SRAM tag before sleeping`.
+ *
+ * EG2_NEEDS_BENCH: on the Verilator top no sleep entered by WFI came back within the hour
+ * (regr-vlt 2026-10-26: TIMEOUT after `EG2 revocation_sleep sleeps`; see eg2_pbf_power_sb.c).
  */
 
 #include "hw/top/aon_timer_regs.h"

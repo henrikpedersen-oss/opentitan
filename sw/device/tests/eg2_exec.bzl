@@ -20,3 +20,12 @@ EG2_VERILATOR = verilator_params(
     exit_success = r"PASS!\r?\n",
     exit_failure = r"(FAIL!|FAULT: |[CR]TRAP |BFV:[0-9a-f]{8})",
 )
+
+# The same verdicts with Bazel's "eternal" timeout, which regr_vlt.sh maps to VLT_TIMEOUT_LONG:
+# for tests whose work the software draws from the seed on Xcelium too, so it cannot be cut for
+# Verilator alone, and which need more than VLT_TIMEOUT there (2026-10-26).
+EG2_VERILATOR_LONG = verilator_params(
+    timeout = "eternal",
+    exit_success = r"PASS!\r?\n",
+    exit_failure = r"(FAIL!|FAULT: |[CR]TRAP |BFV:[0-9a-f]{8})",
+)

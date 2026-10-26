@@ -33,6 +33,9 @@
  *
  * Built with EG2_PBF_INJECT_FAIL the first value check (STATUS.AST_INIT_DONE) expects bit 0
  * flipped: the run must fail with `PBF FAIL`.
+ *
+ * EG2_NEEDS_BENCH: boot 0 ends in normal sleep, and on the Verilator top no sleep entered by WFI
+ * came back within the hour (regr-vlt 2026-10-26; see eg2_pbf_power_sb.c).
  */
 
 #include "hw/top/sensor_ctrl_regs.h"  // Generated.

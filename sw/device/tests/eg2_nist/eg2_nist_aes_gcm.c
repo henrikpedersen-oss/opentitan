@@ -3,145 +3,146 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * NIST CAVP AES-GCM vectors on the AES engine (chip_sw_eg2_nist_aes_gcm, REQ_PBF_10,
- * REQ_PBF_23): encryption and decryption with 96-bit IVs (the hardware's fixed IV length), every
- * plaintext, AAD and tag length the files have, AES-128/192/256, in both execution modes.
+ * NIST CAVP AES-GCM vectors through the crypto library's software GCM (chip_sw_eg2_nist_aes_gcm,
+ * REQ_PBF_10, REQ_PBF_23): SP 800-38D authenticated encryption and decryption with the crypto
+ * library's `aes_gcm_encrypt` and `aes_gcm_decrypt` (sw/device/lib/crypto/impl/aes_gcm: GHASH in
+ * software, the AES engine in ECB/CTR), AES-128/192/256, in both execution modes.
  *
- * The phases follow the AES programmer's guide: INIT (dif_aes_start), AAD blocks, then text blocks,
- * each phase entered with 16 valid bytes and set again before a partial last block, every phase
- * write while the unit is idle, then the tag from len(AAD) || len(text). The
- * output and the first Taglen bytes of the tag are compared with the NIST values; a decryption
- * the file marks FAIL must not authenticate. The scoreboard checks every instruction. With
+ * EG2 has GCM in software only: the EG2 High-Level Specification lists "GCM mode through software
+ * on Ibex" under AES, and the top builds its AES with `AESGCMEnable: "0"` (top_earlgrey.hjson).
+ * The test drove the engine's GCM phases until 2026-10-26; on EG2 that mode resolves to none and
+ * every vector waited out its polls (regr-vlt TIMEOUT, Xcelium killed at 8 h).
+ *
+ * Encryption: the ciphertext and the first Taglen bytes of the 128-bit tag equal the NIST values.
+ * Decryption: the plaintext equals the NIST value and the tag authenticates; a vector the file
+ * marks FAIL does not. The 96-bit IVs run; the files' 1024- and 8-bit IVs are reported not run:
+ * the library takes 96 or 128 bits only (aes_gcm.h), where SP 800-38D allows any length. Decryption with a
+ * tag of 104, 112 or 120 bits is skipped and reported: the library compares the tag in whole
+ * 32-bit words, so it cannot verify a tag truncated inside a word (SP 800-38D allows them; a
+ * finding for the crypto library owners, F52, as aes_kwp's short plaintexts in eg2_nist_aes_kw.c).
+ *
+ * `model_gaps` 1 (eg2sim only) skips every vector: the crypto library's AES driver waits for
+ * rv_core_ibex's RND_STATUS.RND_DATA_VALID, which the SystemC model never sets. With
  * EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail.
  */
 
-#include "hw/top/aes_regs.h"  // Generated.
-#include "hw/top/dt/aes.h"    // Generated.
-#include "hw/top/dt/api.h"    // Generated.
+#include "sw/device/lib/base/hardened.h"
 #include "sw/device/lib/base/memory.h"
-#include "sw/device/lib/dif/dif_aes.h"
+#include "sw/device/lib/crypto/drivers/aes.h"
+#include "sw/device/lib/crypto/impl/aes_gcm/aes_gcm.h"
+#include "sw/device/lib/crypto/include/datatypes.h"
+#include "sw/device/lib/crypto/include/integrity.h"
 #include "sw/device/lib/testing/eg2/eg2_test.h"
+#include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/tests/eg2_nist/eg2_nist.h"
 
 EG2_TEST_CONFIG();
 
-#define NIST_AES_GCM_PARAMS(X) X(random_vectors, 8, 0, 256)
+#define NIST_AES_GCM_PARAMS(X)  \
+  X(random_vectors, 8, 0, 256)  \
+  X(model_gaps, 0, 0, 1)
 EG2_TEST_PARAMS(NIST_AES_GCM_PARAMS);
 
 enum {
-  kPolls = 100000,
-  kMaxText = 64,  // bytes: the longest plaintext in the 96-bit-IV sections is 51
+  kMaxText = 64,     // bytes: the longest plaintext in the files is 408 bits (51 bytes)
+  kMaxIvWords = 4,  // 96 or 128 bits: all the library takes
+  kTagWords = 4,
 };
 
-static dif_aes_t aes;
-
-static bool wait_status(dif_aes_status_t flag) {
-  for (uint32_t i = 0; i < kPolls; ++i) {
-    bool set = false;
-    if (dif_aes_get_status(&aes, flag, &set) != kDifOk) {
-      return false;
-    }
-    if (set) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// The phase register takes writes only while the unit is idle (aes.hjson CTRL_GCM_SHADOWED).
-static bool set_phase(uint32_t phase, uint32_t valid) {
-  return wait_status(kDifAesStatusIdle) && dif_aes_set_gcm_phase(&aes, phase, valid) == kDifOk;
-}
-
-// Loads `len` bytes as zero-padded blocks in `phase`; for text, reads each output block. The
-// phase is entered with 16 valid bytes, and set again only before a partial last block
-// (programmer's guide).
-static bool blocks(uint32_t phase, const uint8_t *in, uint32_t len, uint8_t *out) {
-  if (len > 0 && !set_phase(phase, 16)) {
-    return false;
-  }
-  for (uint32_t off = 0; off < len; off += 16) {
-    uint32_t valid = len - off < 16 ? len - off : 16;
-    if (valid < 16 && !set_phase(phase, valid)) {
-      return false;
-    }
-    dif_aes_data_t d;
-    memset(&d, 0, sizeof(d));
-    memcpy(d.data, in + off, valid);
-    if (!wait_status(kDifAesStatusInputReady) || dif_aes_load_data(&aes, d) != kDifOk) {
-      return false;
-    }
-    if (out != NULL) {
-      dif_aes_data_t o;
-      if (!wait_status(kDifAesStatusOutputValid) || dif_aes_read_output(&aes, &o) != kDifOk) {
-        return false;
-      }
-      memcpy(out + off, o.data, valid);
-    }
-  }
-  return true;
-}
+static const uint32_t kZeroShare[8] = {0};
 
 static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
+  if (EG2_PARAM(model_gaps)) {
+    return eg2_nist_skip(v, "model_gap: rv_core_ibex RND_STATUS never valid in the SystemC model");
+  }
   bool dec = v->flags & kEg2NistDecrypt, must_fail = v->flags & kEg2NistFail;
-  uint32_t klen = eg2_nist_len(v, kEg2NistKey), n = eg2_nist_len(v, kEg2NistIn);
-  uint32_t alen = eg2_nist_len(v, kEg2NistAad), tlen = eg2_nist_len(v, kEg2NistTag);
-  if (eg2_nist_len(v, kEg2NistIv) != 12 || n > kMaxText || tlen > 16) {
-    return eg2_nist_result(eg2_nist_error(v, "unsupported IV, text or tag length"));
+  uint32_t klen = eg2_nist_len(v, kEg2NistKey), ivlen = eg2_nist_len(v, kEg2NistIv);
+  uint32_t n = eg2_nist_len(v, kEg2NistIn), alen = eg2_nist_len(v, kEg2NistAad);
+  uint32_t tlen = eg2_nist_len(v, kEg2NistTag);
+  if (klen % 4 != 0 || klen > 32 || ivlen % 4 != 0 || ivlen / 4 > kMaxIvWords || n > kMaxText ||
+      tlen == 0 || tlen > 16) {
+    return eg2_nist_result(eg2_nist_error(v, "unsupported key, IV, text or tag length"));
   }
-  dif_aes_transaction_t txn = {
-      .operation = dec ? kDifAesOperationDecrypt : kDifAesOperationEncrypt,
-      .mode = kDifAesModeGcm,
-      .key_len = klen == 16 ? kDifAesKey128 : klen == 24 ? kDifAesKey192 : kDifAesKey256,
-      .manual_operation = kDifAesManualOperationAuto,
-      .key_provider = kDifAesKeySoftwareProvided,
-      .mask_reseeding = kDifAesReseedPerBlock,
-      .reseed_on_key_change = false,
-      .force_masks = false,
-      .ctrl_aux_lock = false,
-  };
-  dif_aes_key_share_t key;
-  memset(&key, 0, sizeof(key));
-  memcpy(key.share0, eg2_nist_data(v, kEg2NistKey), klen);
-  dif_aes_iv_t iv;
-  memset(&iv, 0, sizeof(iv));  // IV_3 = 0: the hardware's counter starts there
-  memcpy(iv.iv, eg2_nist_data(v, kEg2NistIv), 12);
+  if (dec && tlen % 4 != 0) {
+    return eg2_nist_skip(v, "tag of 104/112/120 bits: aes_gcm_decrypt compares whole words");
+  }
 
-  uint8_t out[kMaxText];
-  if (!wait_status(kDifAesStatusIdle) || dif_aes_start(&aes, &txn, &key, &iv) != kDifOk) {
-    return eg2_nist_result(eg2_nist_error(v, "AES did not start"));
+  uint32_t key[8], iv[kMaxIvWords], tag[kTagWords];
+  memset(key, 0, sizeof(key));
+  memcpy(key, eg2_nist_data(v, kEg2NistKey), klen);
+  memcpy(iv, eg2_nist_data(v, kEg2NistIv), ivlen);
+  aes_key_t aes_key = {
+      .mode = kAesCipherModeCtr,
+      .sideload = kHardenedBoolFalse,
+      .key_len = klen / 4,
+      .key_shares = {key, kZeroShare},
+  };
+  aes_key.checksum = aes_key_integrity_checksum(&aes_key);
+  otcrypto_const_word32_buf_t iv_buf =
+      OTCRYPTO_MAKE_BUF(otcrypto_const_word32_buf_t, iv, ivlen / 4);
+  otcrypto_const_byte_buf_t in_buf =
+      OTCRYPTO_MAKE_BUF(otcrypto_const_byte_buf_t, eg2_nist_data(v, kEg2NistIn), n);
+  otcrypto_const_byte_buf_t aad_buf =
+      OTCRYPTO_MAKE_BUF(otcrypto_const_byte_buf_t, eg2_nist_data(v, kEg2NistAad), alen);
+  // A sentinel after the text, to see that nothing is written past it.
+  uint8_t out[kMaxText + 1];
+  memset(out, 0xa5, sizeof(out));
+  otcrypto_byte_buf_t out_buf = OTCRYPTO_MAKE_BUF(otcrypto_byte_buf_t, out, n);
+
+  if (!dec) {
+    otcrypto_word32_buf_t tag_buf = OTCRYPTO_MAKE_BUF(otcrypto_word32_buf_t, tag, kTagWords);
+    if (!status_ok(aes_gcm_encrypt(aes_key, &iv_buf, &in_buf, &aad_buf, &tag_buf,
+                                   kOtcryptoKeySecurityLevelLow, &out_buf))) {
+      return eg2_nist_result(eg2_nist_error(v, "aes_gcm_encrypt returned an error"));
+    }
+    bool ok = n == 0 || eg2_nist_expect(v, kEg2NistOut, out, n, corrupt);
+    if (out[n] != 0xa5) {
+      ok = eg2_nist_error(v, "aes_gcm_encrypt wrote past the ciphertext");
+    }
+    // NIST's Tag is the leftmost Taglen bits of the 128-bit tag (SP 800-38D 7.1, MSB_t).
+    return eg2_nist_result(
+        eg2_nist_expect(v, kEg2NistTag, (const uint8_t *)tag, tlen, corrupt && n == 0) && ok);
   }
-  if (!blocks(AES_CTRL_GCM_SHADOWED_PHASE_VALUE_GCM_AAD, eg2_nist_data(v, kEg2NistAad), alen,
-              NULL) ||
-      !blocks(AES_CTRL_GCM_SHADOWED_PHASE_VALUE_GCM_TEXT, eg2_nist_data(v, kEg2NistIn), n, out)) {
-    return eg2_nist_result(eg2_nist_error(v, "AES AAD or text phase"));
+
+  memcpy(tag, eg2_nist_data(v, kEg2NistTag), tlen);
+  if (corrupt && !must_fail && n == 0) {
+    // No plaintext to corrupt the expectation of: corrupt the tag instead, which must then not
+    // authenticate ("valid vector did not authenticate" below).
+    ((uint8_t *)tag)[0] ^= 1;
   }
-  dif_aes_data_t tag;
-  if (!set_phase(AES_CTRL_GCM_SHADOWED_PHASE_VALUE_GCM_TAG, 16) ||
-      !wait_status(kDifAesStatusInputReady) ||
-      dif_aes_load_gcm_tag_len(&aes, (uint64_t)n * 8, (uint64_t)alen * 8) != kDifOk ||
-      !wait_status(kDifAesStatusOutputValid) || dif_aes_read_output(&aes, &tag) != kDifOk ||
-      dif_aes_end(&aes) != kDifOk) {
-    return eg2_nist_result(eg2_nist_error(v, "AES tag phase"));
+  otcrypto_const_word32_buf_t tag_buf =
+      OTCRYPTO_MAKE_BUF(otcrypto_const_word32_buf_t, tag, tlen / 4);
+  hardened_bool_t success = kHardenedBoolFalse;
+  if (!status_ok(aes_gcm_decrypt(aes_key, &iv_buf, &in_buf, &aad_buf, &tag_buf, &out_buf,
+                                 kOtcryptoKeySecurityLevelLow, &success))) {
+    return eg2_nist_result(eg2_nist_error(v, "aes_gcm_decrypt returned an error"));
   }
-  const uint8_t *got_tag = (const uint8_t *)tag.data;
   if (must_fail) {
-    // The tag over this ciphertext differs from the file's: decryption must not authenticate.
-    bool authenticates = memcmp(got_tag, eg2_nist_data(v, kEg2NistTag), tlen) == 0;
-    if (authenticates != corrupt) {
+    // The tag over this ciphertext differs from the file's: the decryption must not authenticate.
+    // With `corrupt` the expectation is reversed, so the inject-fail build fails here too.
+    bool refused = success != kHardenedBoolTrue;
+    if (refused == corrupt) {
       return eg2_nist_result(eg2_nist_error(
-          v, corrupt ? "FAIL vector expected to authenticate (-D..._INJECT_FAIL)"
+          v, corrupt ? "FAIL vector refused (expectation reversed, -D..._INJECT_FAIL)"
                      : "a FAIL vector authenticated"));
     }
     return kEg2NistPassed;
   }
+  if (success != kHardenedBoolTrue) {
+    return eg2_nist_result(eg2_nist_error(v, "valid vector did not authenticate"));
+  }
   bool ok = n == 0 || eg2_nist_expect(v, kEg2NistOut, out, n, corrupt);
-  return eg2_nist_result(eg2_nist_expect(v, kEg2NistTag, got_tag, tlen, corrupt && n == 0) && ok);
+  if (out[n] != 0xa5) {
+    ok = eg2_nist_error(v, "aes_gcm_decrypt wrote past the plaintext");
+  }
+  return eg2_nist_result(ok);
 }
 
 bool eg2_test_main(void) {
-  if (dif_aes_init_from_dt(kDtAes, &aes) != kDifOk || dif_aes_reset(&aes) != kDifOk) {
-    eg2_puts("AES init failed\r\n");
+  // The crypto library's AES driver takes masks and random orders from rv_core_ibex's RND (as in
+  // eg2_nist_aes_kw.c): EDN0 in auto mode first, or wait_rnd_valid can spin for ever.
+  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+    eg2_puts("NIST aes_gcm: entropy complex not in auto mode\r\n");
     return false;
   }
   return eg2_nist_run("aes_gcm", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);

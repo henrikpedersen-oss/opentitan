@@ -115,9 +115,12 @@ bool eg2_test_main(void) {
   check_cap("PCC", 0, eg2_hw_read(eg2_late_cap(EG2_LATE_PCC)), eg2_cap_root_exe(pcc_at), true);
   ++tally.done;
 
-  // MTCC and MEPCC: the executable root at mtvec's and mepc's values.
+  // MTCC and MEPCC: the executable root at mtvec's and mepc's values. MTCC's address bits [1:0]
+  // read 0 (core REQ_SCR_02: CHERIoT has direct mode only), so a vectored mtvec (MODE 01, as the
+  // fill sets) shows without its mode bit (F39, fixed 2026-10-25).
   ++tally.planned;
-  check_cap("MTCC", 0, eg2_hw_read(eg2_late_cap(EG2_LATE_MTCC)), eg2_cap_root_exe(mtvec), true);
+  check_cap("MTCC", 0, eg2_hw_read(eg2_late_cap(EG2_LATE_MTCC)), eg2_cap_root_exe(mtvec & ~3u),
+            true);
   ++tally.done;
   ++tally.planned;
   check_cap("MEPCC", 0, eg2_hw_read(eg2_late_cap(EG2_LATE_MEPCC)), eg2_cap_root_exe(mepc), true);

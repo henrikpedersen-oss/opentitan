@@ -48,6 +48,7 @@ cc_library(
     hdrs = ["eg2_boot.h"],
     deps = [
         "//hw/top:keymgr_dpe_c_regs",
+        "//hw/top:kmac_c_regs",
         "//hw/top:lc_ctrl_c_regs",
         "//hw/top:otp_ctrl_c_regs",
         "//hw/top:rram_ctrl_c_regs",

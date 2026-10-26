@@ -37,6 +37,9 @@
  *
  * Built with EG2_PERIPH_INJECT_FAIL the first data check (the first unmapped load's cause) is
  * made against a wrong expected value: the run must fail with `PERIPH FAIL`.
+ *
+ * EG2_NEEDS_BENCH: the I2C phase needs the bench's I2C agent as the peer; the Verilator top has
+ * none, so each transfer waits out kPolls (regr-vlt 2026-10-26: TIMEOUT at `i2c0 write bytes`).
  */
 
 #include "hw/top/gpio_regs.h"      // Generated.

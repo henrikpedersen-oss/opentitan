@@ -22,6 +22,10 @@
  *
  * Built with EG2_SEC_RMA_KEY_CHANGE_INJECT_FAIL K1 is expected unchanged: the run must fail with
  * `EG2CHK FAIL K1 differs across RMA`.
+ *
+ * EG2_NEEDS_BENCH: phase 0 waits (WFI) for the bench's RMA transition over the LC TAP and its
+ * reset, and needs the DEV/PROD state the bench provisions (regr-vlt 2026-10-26: TIMEOUT after
+ * `EG2 RMA KEYS READY`).
  */
 
 #include "sw/device/lib/base/macros.h"

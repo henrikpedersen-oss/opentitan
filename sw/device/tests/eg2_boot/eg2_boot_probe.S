@@ -122,6 +122,11 @@ eg2_boot_probe_trap:
   addi       a2, x0, 0
   csrw       mepc, t2
   mret
+  // The NMI, and the internal interrupt of a load integrity error (mcause 0xFFFFFFE0), enter at
+  // base + 0x7C (Ibex manual "Internal Interrupts"): without this entry they ran the code after
+  // the handler (found in eg2_regmem_probe.S, regr-vlt 2026-10-26). 2026-10-26.
+  .org eg2_boot_probe_trap + 0x7C
+  j          eg2_boot_probe_trap
   .size eg2_boot_probe_trap, . - eg2_boot_probe_trap
 
 #endif  // __CHERIOT__

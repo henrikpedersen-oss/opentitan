@@ -94,7 +94,12 @@ static const uint16_t kSize[kParts] = {
 // 1: secret (64-bit granule); 2: read through the software config window too;
 // 4: the DAI cannot read it in this state or ever (the life-cycle partition is
 // the life-cycle controller's).
-static const uint8_t kFlags[kParts] = {2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 4};
+// HW_CFG0/1 through the DAI only: the programmer's guide ("Direct Access Memory Map") makes only
+// CREATOR_SW_CFG and OWNER_SW_CFG accessible through the memory-mapped window. A window read at a
+// buffered partition's address is never answered (no grant, no error) and hangs the bus, against
+// the documented error for a window access out of bounds: F53 (2026-10-26: regr-vlt hung on the
+// HW_CFG0 window read in both modes).
+static const uint8_t kFlags[kParts] = {2, 2, 2, 2, 2, 0, 0, 1, 1, 1, 4};
 
 static uint32_t otp_rd(uint32_t off) {
   return eg2_dev_read32(kEg2DevOtpCtrlCore, off);

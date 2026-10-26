@@ -111,19 +111,26 @@ bool eg2_test_main(void) {
                                             &op, b0, b1) &&
                         op) &&
        ok;
-  ok = eg2_pbf_step("same inputs, same key",
-                    memcmp(a0, b0, 32) == 0 && memcmp(a1, b1, 32) == 0) &&
-       ok;
-  ok = eg2_pbf_step("the key's shares are not zero", nonzero(a0) || nonzero(a1)) && ok;
+  // The key is share0 ^ share1 (kmac theory_of_operation: the digest comes in two shares, the
+  // unmasked value is their XOR); the split itself follows the masking randomness (keymgr_dpe
+  // theory_of_operation "Available": the slots are masked with entropy), so two generations give
+  // the same key in other shares. Compared share by share before (regr-vlt 2026-10-26: "same
+  // inputs, same key" failed in both modes). 2026-10-26.
+  uint32_t ka[8], kb[8], kc[8];
+  for (uint32_t i = 0; i < 8; ++i) {
+    ka[i] = a0[i] ^ a1[i];
+    kb[i] = b0[i] ^ b1[i];
+  }
+  ok = eg2_pbf_step("same inputs, same key", memcmp(ka, kb, 32) == 0) && ok;
+  // The unmasked key: a random share0 alone would pass a check on the shares (review 2026-10-26).
+  ok = eg2_pbf_step("the key is not zero", nonzero(ka)) && ok;
   salt[eg2_rand_range(0, 7)] ^= 1u << eg2_rand_range(0, 31);
   ok = eg2_pbf_step("keymgr generates with one salt bit changed",
                     eg2_pbf_keymgr_generate(&km, kDifKeymgrDpeKeyDestNone, false, salt, version,
                                             &op, c0, c1) &&
                         op) &&
        ok;
-  uint32_t ka[8], kc[8];
   for (uint32_t i = 0; i < 8; ++i) {
-    ka[i] = a0[i] ^ a1[i];
     kc[i] = c0[i] ^ c1[i];
   }
   ok = eg2_pbf_step("one salt bit changes the key", memcmp(ka, kc, 32) != 0) && ok;

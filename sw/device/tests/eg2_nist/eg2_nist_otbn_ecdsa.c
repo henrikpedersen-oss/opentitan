@@ -59,9 +59,24 @@ static eg2_nist_result_t verdict(const eg2_nist_vec_t *v, bool valid, bool corru
   return kEg2NistPassed;
 }
 
+/**
+ * The digest as the drivers take it: the hash's leftmost bytes in order (big-endian;
+ * p256.c/p384.c `set_message_digest` reverse them into OTBN's little-endian `msg`). The table
+ * holds e little-endian, as the OTBN reference checker writes `msg` straight into DMEM; passed
+ * as it was, the driver reversed it into another e (regr-vlt 2026-10-26: every S wrong with R
+ * right, every valid signature refused, ECDH and RSA passing). 2026-10-26.
+ */
+static void digest_words(const eg2_nist_vec_t *v, uint32_t *digest, uint32_t nwords) {
+  uint32_t le[kP384ScalarWords];
+  eg2_nist_otbn_words(v, kEg2NistEcdsaE, le, nwords);
+  for (uint32_t i = 0; i < nwords; ++i) {
+    digest[i] = __builtin_bswap32(le[nwords - 1 - i]);
+  }
+}
+
 static eg2_nist_result_t run_p256(const eg2_nist_vec_t *v, bool corrupt) {
   uint32_t digest[kP256ScalarWords];
-  eg2_nist_otbn_words(v, kEg2NistEcdsaE, digest, kP256ScalarWords);
+  digest_words(v, digest, kP256ScalarWords);
   if (v->flags & kEg2NistSign) {
     p256_masked_scalar_t d, k;
     eg2_nist_otbn_words(v, kEg2NistEcdsaD0, d.share0, kP256MaskedScalarShareWords);
@@ -93,7 +108,7 @@ static eg2_nist_result_t run_p256(const eg2_nist_vec_t *v, bool corrupt) {
 
 static eg2_nist_result_t run_p384(const eg2_nist_vec_t *v, bool corrupt) {
   uint32_t digest[kP384ScalarWords];
-  eg2_nist_otbn_words(v, kEg2NistEcdsaE, digest, kP384ScalarWords);
+  digest_words(v, digest, kP384ScalarWords);
   if (v->flags & kEg2NistSign) {
     p384_masked_scalar_t d, k;
     eg2_nist_otbn_words(v, kEg2NistEcdsaD0, d.share0, kP384MaskedScalarShareWords);

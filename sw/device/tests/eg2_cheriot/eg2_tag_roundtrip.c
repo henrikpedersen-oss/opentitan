@@ -49,8 +49,11 @@
 
 EG2_TEST_CONFIG();
 
+// n_caps 0 draws 16-512. The vseq always writes it (16-512); the default is for runs without a
+// bench: 16, the lowest draw (regr-vlt 2026-10-26: 460 drawn, TIMEOUT at 3600 s with no line after
+// the weights; was 0).
 #define TAG_ROUNDTRIP_PARAMS(X)  \
-  X(n_caps, 0, 0, 512)           \
+  X(n_caps, 16, 0, 512)          \
   X(w_region_main, 30, 1, 100)   \
   X(w_region_sec, 25, 1, 100)    \
   X(w_region_rram, 25, 1, 100)   \

@@ -19,7 +19,7 @@
  *  B. Ranges: a start with TBRE_NUM_CAPS 0 is ignored (start_err, busy stays 0, the epoch
  *     unchanged; registers.md TBRE_STATUS.start_err); a sweep of the whole of main and sec SRAM
  *     (with the slots marked again: the marked slots untagged after it), and of the whole of RRAM
- *     below the OTP pages (0x3000_0000 to 0x301F_F600; programmers_guide.md): each ends without an
+ *     below the OTP pages (0x3000_0000 to 0x301F_F400, kEg2MsNvmHostTop): each ends without an
  *     error and advances the epoch by 2.
  *  C. Then, for each reset of `resets` (1 software reset through rstmgr, 2 an escalation reset:
  *     rv_core_ibex's fatal_sw_err in class A, escalation signal 3), one window: the slots stored
@@ -71,7 +71,10 @@ enum {
   kOps = kEg2WorkBase,
   kMaxOps = 512,
   kOut = kOps + 12 * kMaxOps,
-  kOtpPages = 0x301ff600u,
+  // Below the OTP integrity page 4090 as well (rram_ctrl README "Address Map": pages 4090-4095
+  // are reached by the OTP interface only; cheriot_mem_sys programmers_guide.md names only the
+  // pages from 0x301F_F600, rtl_tickets F51): the end valid under both. 2026-10-26.
+  kOtpPages = kEg2MsNvmHostTop,
   kMuBi4True = 0x6,
   kBusy = 1u << CHERIOT_MEM_SYS_TBRE_STATUS_BUSY_BIT,
   // The boot record's words.

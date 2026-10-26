@@ -399,6 +399,11 @@ static void testable(const eg2_rm_mem_t *m, uint32_t kind, uint32_t *lo, uint32_
     *lo = (globals_end + (uint32_t)kGuard + (uint32_t)kKiB - 1u) & ~((uint32_t)kKiB - 1u);
     *hi = (stack_lo - (uint32_t)kGuard) & ~((uint32_t)kKiB - 1u);
   }
+  if (kind == kMemRom) {
+    // Not the top eight words: the expected digest, which reads with an integrity error (see the
+    // boundaries in one_memory). 2026-10-26.
+    *hi -= 32;
+  }
 #ifdef __CHERIOT__
   if (kind == kMemMeta) {
     // Revocation bits of main SRAM's free part only: one bitmap byte covers 64 bytes (eight
@@ -561,20 +566,31 @@ static void one_memory(ctx_t *c, const eg2_rm_mem_t *m) {
   }
 
   // Boundaries: first and last word and byte answer; the address after the last faults.
-  if (kind == kMemBuf) {
-    // A peripheral buffer (usbdev's packet buffer) has no hardware initialisation, unlike the
-    // SRAMs (INIT) and OTBN's memories (wiped at start): a word the march window did not cover
-    // reads as X in simulation (u_usbdev ... rspfifo DataKnown_A, regr-xlm 2026-10-25), stale data
-    // on silicon. Write the boundary words first; only the access is checked here. 2026-10-26.
+  // The ROM's last word is below its top eight words, the expected digest, which are stored so
+  // that they unscramble with invalid ECC (rom_ctrl theory_of_operation: the checker reads them
+  // "ignoring ECC bits"; scramble_image.py add_hash): a bus read of them is an integrity error.
+  // 2026-10-26 (regr-vlt: "rom_ctrl.rom last word at 0x0006fffc: got 0xffffffe0").
+  uint32_t last = kind == kMemRom ? m->size - 32 - 4 : m->size - 4;
+  if (writable && kind != kMemMain && kind != kMemMeta) {
+    // A word nothing wrote since reset is not known to hold valid integrity: the packet buffer
+    // has no initialisation (a word the march did not cover reads as X in simulation, u_usbdev
+    // rspfifo DataKnown_A, regr-xlm 2026-10-25), and neither have sec and retention SRAM (INIT is
+    // software's, sram_ctrl programmers_guide "Initialization"; the test ROM runs none for them)
+    // nor OTBN's IMEM and DMEM (its reset wipe is of internal state: otbn theory_of_operation).
+    // A read of one is a load integrity error (Ibex internal interrupt, mcause 0xFFFFFFE0;
+    // regr-vlt 2026-10-26, CHERIoT run: first word of otbn.DMEM/IMEM, sec and ret SRAM). Write
+    // the boundary words first; only the access is checked here. Not main SRAM (globals at its
+    // base, the stack at its top; the test ROM initialises it) nor the bitmap window (revokes).
+    // 2026-10-26.
     expect_access(c, "first word written", win, kEg2RmSw, 0);
-    expect_access(c, "last word written", win + m->size - 4, kEg2RmSw, 0);
+    expect_access(c, "last word written", win + last, kEg2RmSw, 0);
   }
   expect_access(c, "first word", win, kEg2RmLw, 0);
   expect_access(c, "first byte", win, kEg2RmLbu, 0);
   if (kind != kMemRram) {
     // (RRAM's last words are the OTP pages, which the host window does not reach.)
-    expect_access(c, "last word", win + m->size - 4, kEg2RmLw, 0);
-    expect_access(c, "last byte", win + m->size - 1, kEg2RmLbu, 0);
+    expect_access(c, "last word", win + last, kEg2RmLw, 0);
+    expect_access(c, "last byte", win + last + 3, kEg2RmLbu, 0);
   }
   if (!(m->flags & kEg2RmMemNextMapped)) {
     if (c->gaps && kind == kMemMeta) {

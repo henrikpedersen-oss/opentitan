@@ -540,6 +540,47 @@ interface chip_if;
     __enable_i2c[inst_num] = enable;
   endfunction
 
+  // Functional (muxed) interface: I3C loopback (EG2, 2026-10-26).
+  //
+  // Joins the I3C0 and I3C1 buses on the board, so one instance can act as Controller and the
+  // other as Target with no I3C agent (chip_sw_i3c_loopback, lowRISC/opentitan#31933, to port once
+  // its RTL fixes, #31812 and the SCL release, are merged). Pads as #31933 and the EG2 pad matrix
+  // use them (software sets the pinmux): I3C0 on IOB11 (SCL) / IOB12 (SDA), the instance with the
+  // AON wakeup detector; I3C1 on IOB9 / IOB10; IOB7 and IOB8 carry the instances' SDA pull-up
+  // enables. Bidirectional switches, not the changed DUT port connections of #31933 (its TODO: "a
+  // cleaner solution shall need to be found"), so the DUT is wired as in every other test. Off
+  // unless a test calls enable_i3c_loopback(1) or runs with +i3c_loopback=1. Shares IOB9-IOB12
+  // with the I2C agents 1 and 2: not both at once.
+  bit __enable_i3c_loopback = 1'b0;  // Internal signal.
+
+  tranif1 i3c_scl_join(mios[top_earlgrey_pkg::MioPadIob11], mios[top_earlgrey_pkg::MioPadIob9],
+                       __enable_i3c_loopback);
+  tranif1 i3c_sda_join(mios[top_earlgrey_pkg::MioPadIob12], mios[top_earlgrey_pkg::MioPadIob10],
+                       __enable_i3c_loopback);
+  // A high-keeper on SCL, which holds it while no instance drives it (role handover). SDA has no
+  // keeper, only the pull-up resistor, switched by either instance's pull-up enable (IOB7, IOB8):
+  // with no enable set an undriven SDA floats (Z), so a missing pull-up enable shows instead of
+  // being hidden by a keeper. All weak: the pads drive at pull strength by default
+  // (prim_generic_pad_wrapper, drive_strength[0] 0), and a pad driving 0 must win (review
+  // 2026-10-26; a pull-strength resistor here would resolve SDA to X against such a pad). Only a 1
+  // on the enable pulls: #31933's copy of the enable would also drive a 0 while it is 0.
+  assign (weak0, weak1) mios[top_earlgrey_pkg::MioPadIob11] = __enable_i3c_loopback ? 1'b1 : 1'bz;
+  assign (weak0, weak1) mios[top_earlgrey_pkg::MioPadIob12] =
+      (__enable_i3c_loopback && mios[top_earlgrey_pkg::MioPadIob7] === 1'b1) ? 1'b1 : 1'bz;
+  assign (weak0, weak1) mios[top_earlgrey_pkg::MioPadIob12] =
+      (__enable_i3c_loopback && mios[top_earlgrey_pkg::MioPadIob8] === 1'b1) ? 1'b1 : 1'bz;
+
+  function automatic void enable_i3c_loopback(bit enable);
+    `DV_CHECK_FATAL(!enable || __enable_i2c[2:1] == '0,
+                    "I3C loopback and the I2C agents 1/2 share IOB9-IOB12", MsgId)
+    __enable_i3c_loopback = enable;
+  endfunction
+
+  initial begin
+    bit i3c_loopback;
+    if ($value$plusargs("i3c_loopback=%0b", i3c_loopback)) enable_i3c_loopback(i3c_loopback);
+  end
+
   // Functional (muxed) interface: external clock source.
   //
   // The reset port is passive only.

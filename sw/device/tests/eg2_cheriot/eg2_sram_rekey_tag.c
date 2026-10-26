@@ -24,7 +24,7 @@
  * Only sec SRAM is re-keyed: main SRAM holds the test's stack and globals.
  *
  * Expected to fail on the RTL of 2026-10-24: no RTL path clears a tag on INIT or a key renewal
- * (dv_todo, mutation library: "Not expressible as a mutation: REQ_CMS_16").
+ * (dv_todo, mutation library: "Not expressible as a mutation: REQ_CMS_16"); rtl_tickets F50.
  *
  * The SystemC model keeps tags through INIT and renewal (its sram_ctrl does not touch the meta
  * SRAM): with `model_gaps` sec SRAM's capabilities are not checked.

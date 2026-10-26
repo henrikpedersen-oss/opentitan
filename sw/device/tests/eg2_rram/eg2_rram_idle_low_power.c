@@ -45,6 +45,9 @@
  *
  * Built with EG2_RRAM_IDLE_LOW_POWER_INJECT_FAIL the first value check expects bit 0 flipped: the
  * run must fail with `RRAM FAIL`.
+ *
+ * EG2_NEEDS_BENCH: on the Verilator top no sleep entered by WFI came back within the hour
+ * (regr-vlt 2026-10-26: TIMEOUT after `RRAM deep sleep`; see eg2_pbf_power_sb.c).
  */
 
 #include "sw/device/tests/eg2_rram/eg2_rram.h"

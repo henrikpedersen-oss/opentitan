@@ -34,6 +34,7 @@
 #include "sw/device/lib/crypto/drivers/aes.h"
 #include "sw/device/lib/crypto/impl/aes_kwp/aes_kwp.h"
 #include "sw/device/lib/testing/eg2/eg2_test.h"
+#include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/tests/eg2_nist/eg2_nist.h"
 
 EG2_TEST_CONFIG();
@@ -108,5 +109,15 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 }
 
 bool eg2_test_main(void) {
+  // The crypto library's AES driver takes masks and random orders from rv_core_ibex's RND
+  // (drivers/aes.c: "the caller must ensure the entropy complex is up"; upstream's functests call
+  // otcrypto_init). The test ROM leaves EDN0 in boot-time mode, one generate of 4095 blocks
+  // (edn.hjson BOOT_GEN_CMD) and then no more words, so wait_rnd_valid can spin for ever: the
+  // 2026-10-26 runs (regr-vlt, Xcelium 8 h) printed nothing after the parameters. The SystemC
+  // model skips every vector (model_gaps) and models no entropy complex.
+  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+    eg2_puts("NIST aes_kw: entropy complex not in auto mode\r\n");
+    return false;
+  }
   return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }

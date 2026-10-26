@@ -32,6 +32,8 @@
  *     emulated OTP, from 0x301F_F600) cannot be read, "so sweeping them results in an error":
  *     sweep_err set, the epoch not advanced, no read at or above 0x3020_0000. The spec row expects
  *     no error here; the test follows the IP documentation (reported as a spec discrepancy).
+ *     rram_ctrl's README also gives page 4090 (0x301F_F400, the OTP integrity page) to the OTP
+ *     interface only, so software's NVM ends at 0x301F_F400 (F51, the two documents disagree).
  *
  * `model_gaps` (eg2sim): its TBRE does not revoke and there is no bench: the revoked slots' tags,
  * the bench's read counts and phase 7 are skipped.
