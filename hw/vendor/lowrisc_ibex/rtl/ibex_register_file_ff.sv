@@ -99,6 +99,42 @@ module ibex_register_file_ff import ibex_pkg::*; #(
     logic [CapWidth-1:0] wshared_data;
     assign wshared_data = cheriot_enabled ? wcap_a_i : CapWidth'(wdata_a_i);
 
+    // Which entries hold a capability written in CHERIoT mode. In RISC-V mode the shared flops hold
+    // x16-x31's data with its data integrity code, which read as a capability fails the capability
+    // integrity check: the lockstep raised a fatal alert at the first capability read after the
+    // switch into CHERIoT mode (cheriot_enable_handover, 2026-10-25). An entry's bit is 0 while the
+    // pin is Off and is set by a write in CHERIoT mode; a capability read of an entry whose bit is 0
+    // returns CapWordZeroVal, the null capability with a valid code. So x1-x15 read null from the
+    // switch cycle itself until they are written (EG2 REQ_SOC_07), and so does x0's dummy
+    // capability. In the lockstep each register file sees its own (delayed) enable.
+    logic [15:0] cap_written_q, cap_written_d;
+    always_comb begin
+      cap_written_d = cap_written_q;
+      if (!cheriot_enabled) begin
+        cap_written_d = '0;
+      end else begin
+        for (int unsigned i = 1; i < 16; i++) begin
+          if (we_a_dec[i] && !waddr_a_i[4]) begin
+            cap_written_d[i] = 1'b1;
+          end
+        end
+        // x0: only a dummy instruction writes it (g_dummy_r0)
+        if (we_a_dec[0] && !waddr_a_i[4] && dummy_instr_wb_i) begin
+          cap_written_d[0] = 1'b1;
+        end
+      end
+    end
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        cap_written_q <= '0;
+      end else begin
+        cap_written_q <= cap_written_d;
+      end
+    end
+
+    // The capability an entry reads as (rf_shared itself stays the x16-x31 data for RISC-V reads).
+    logic [CapWidth-1:0] rcap_shared [16];
+
     // Data flops for x1-x15 (lower bank, waddr[4]=0)
     for (genvar i = 1; i < 16; i++) begin : g_rf_data_flops
       logic [DataWidth-1:0] rf_reg_q;
@@ -170,7 +206,7 @@ module ibex_register_file_ff import ibex_pkg::*; #(
       // Output rf_shared[0] unconditionally for the x16 case
       // Output the dummy capability only for dummy instructions, otherwise R0 reads as zero
       assign rf_shared[0] = rf_shared_r0_q;
-      assign rcap_r0 = dummy_instr_id_i ? rf_shared[0] : CapWordZeroVal;
+      assign rcap_r0 = dummy_instr_id_i ? rcap_shared[0] : CapWordZeroVal;
 
     end else begin : g_normal_r0
       assign rf_data[0] = WordZeroVal;
@@ -210,17 +246,23 @@ module ibex_register_file_ff import ibex_pkg::*; #(
     assign rdata_b_o = (raddr_b_i[4] && !cheriot_enabled) ?
     DataWidth'(rf_shared[raddr_b_i[3:0]]) : rf_data[raddr_b_i[3:0]];
 
-    // Cap: gated to CapWordZeroVal in non-CHERIoT mode.
+    // Cap: gated to CapWordZeroVal in non-CHERIoT mode, and per entry until written in CHERIoT
+    // mode (cap_written_q).
+    for (genvar i = 0; i < 16; i++) begin : g_rcap_shared
+      assign rcap_shared[i] = cap_written_q[i] ? rf_shared[i] : CapWordZeroVal;
+    end
     assign rcap_a_o = cheriot_enabled ?
-    ((raddr_a_i[3:0] == '0) ? rcap_r0 : rf_shared[raddr_a_i[3:0]]) : CapWordZeroVal;
+    ((raddr_a_i[3:0] == '0) ? rcap_r0 : rcap_shared[raddr_a_i[3:0]]) : CapWordZeroVal;
     assign rcap_b_o = cheriot_enabled ?
-    ((raddr_b_i[3:0] == '0) ? rcap_r0 : rf_shared[raddr_b_i[3:0]]) : CapWordZeroVal;
+    ((raddr_b_i[3:0] == '0) ? rcap_r0 : rcap_shared[raddr_b_i[3:0]]) : CapWordZeroVal;
 
     logic unused_test_en;
     assign unused_test_en = test_en_i;
 
     // In CHERIoT mode all register addresses are 4-bit (implicit E extension). Hence, the MSB must
     // never be set. The bank-select bit is anyway forced to 0.
+    // The write address is only meaningful with we_a_i: without ResetAll the writeback address
+    // register is unreset and X until the first instruction writes back.
     `ASSERT(CheriotWaddrMSBClear,  (cheriot_enabled && we_a_i) |-> !waddr_a_i[4])
     `ASSERT(CheriotRaddrAMSBClear, cheriot_enabled |-> !raddr_a_i[4])
     `ASSERT(CheriotRaddrBMSBClear, cheriot_enabled |-> !raddr_b_i[4])

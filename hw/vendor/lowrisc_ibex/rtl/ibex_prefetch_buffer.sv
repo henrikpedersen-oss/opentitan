@@ -8,9 +8,21 @@
  *
  * Prefetch Buffer that caches instructions. This cuts overly long critical
  * paths to the instruction cache.
+ *
+ * With OutputReg = 0 a new request is issued on the bus in the cycle it is made, so instr_req_o
+ * and instr_addr_o depend combinationally on branch_i and addr_i, and through them on every core
+ * input that can cause a branch or a trap (data_rvalid_i, data_err_i, irq_*). With OutputReg = 1
+ * both outputs come from flops: a request goes into stored_addr_q / valid_req_q first and is on
+ * the bus from the next cycle until granted. A request counts as outstanding from that cycle, so
+ * the queue is one deeper to keep one fetch per cycle from a single-cycle memory. Each taken
+ * branch, jump and trap then costs one more cycle.
  */
+
+`include "prim_assert.sv"
+
 module ibex_prefetch_buffer #(
-  parameter bit ResetAll        = 1'b0
+  parameter bit ResetAll        = 1'b0,
+  parameter bit OutputReg       = 1'b0
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -41,9 +53,14 @@ module ibex_prefetch_buffer #(
   output logic        busy_o
 );
 
-  localparam int unsigned NUM_REQS  = 2;
+  localparam int unsigned NUM_REQS  = OutputReg ? 3 : 2;
 
   logic                valid_new_req, valid_req;
+  // req_issue: a request becomes outstanding (with OutputReg = 0 when granted, with OutputReg = 1
+  // when it enters the output register); req_issue_discard: its response is to be dropped.
+  logic                req_issue, req_issue_discard;
+  // A new request takes fetch_addr_q (or addr_i on a branch) this cycle, so fetch_addr_q moves on.
+  logic                fetch_addr_inc;
   logic                valid_req_d, valid_req_q;
   logic                discard_req_d, discard_req_q;
   logic [NUM_REQS-1:0] rdata_outstanding_n, rdata_outstanding_s, rdata_outstanding_q;
@@ -121,11 +138,24 @@ module ibex_prefetch_buffer #(
 
   assign valid_req = valid_req_q | valid_new_req;
 
-  // Hold the request stable for requests that didn't get granted
-  assign valid_req_d = valid_req & ~instr_gnt_i;
-
-  // Record whether an outstanding bus request is cancelled by a branch
-  assign discard_req_d = valid_req_q & (branch_i | discard_req_q);
+  if (OutputReg) begin : g_req_out_reg
+    // A new request enters the output register when it is empty or its request is granted.
+    assign req_issue         = valid_new_req & (~valid_req_q | instr_gnt_i);
+    // Its address is addr_i on a branch, so it is never stale. A branch after it marks it in
+    // branch_discard_q, as it is already outstanding.
+    assign req_issue_discard = 1'b0;
+    assign valid_req_d       = req_issue | (valid_req_q & ~instr_gnt_i);
+    assign discard_req_d     = 1'b0;
+    assign fetch_addr_inc    = req_issue;
+  end else begin : g_req_no_out_reg
+    assign req_issue         = valid_req & instr_gnt_i;
+    assign req_issue_discard = discard_req_d;
+    // Hold the request stable for requests that didn't get granted
+    assign valid_req_d       = valid_req & ~instr_gnt_i;
+    // Record whether an outstanding bus request is cancelled by a branch
+    assign discard_req_d     = valid_req_q & (branch_i | discard_req_q);
+    assign fetch_addr_inc    = valid_new_req & ~valid_req_q;
+  end
 
   ////////////////
   // Fetch addr //
@@ -143,11 +173,17 @@ module ibex_prefetch_buffer #(
 
   // 1. stored_addr_q
 
-  // Only update stored_addr_q for new ungranted requests
-  assign stored_addr_en = valid_new_req & ~valid_req_q & ~instr_gnt_i;
+  if (OutputReg) begin : g_stored_addr_out_reg
+    // Every new request goes through stored_addr_q, which drives the bus.
+    assign stored_addr_en = req_issue;
+    assign stored_addr_d  = branch_i ? addr_i : fetch_addr_q;
+  end else begin : g_stored_addr_no_out_reg
+    // Only update stored_addr_q for new ungranted requests
+    assign stored_addr_en = valid_new_req & ~valid_req_q & ~instr_gnt_i;
 
-  // Store whatever address was issued on the bus
-  assign stored_addr_d = instr_addr;
+    // Store whatever address was issued on the bus
+    assign stored_addr_d = instr_addr;
+  end
 
   // CPU resets with a branch, so no need to reset these addresses
   if (ResetAll) begin : g_stored_addr_ra
@@ -168,11 +204,11 @@ module ibex_prefetch_buffer #(
   // 2. fetch_addr_q
 
   // Update on a branch or as soon as a request is issued
-  assign fetch_addr_en = branch_i | (valid_new_req & ~valid_req_q);
+  assign fetch_addr_en = branch_i | fetch_addr_inc;
 
   assign fetch_addr_d = (branch_i ? addr_i : {fetch_addr_q[31:2], 2'b00}) +
                         // Current address + 4
-                        {{29{1'b0}},(valid_new_req & ~valid_req_q),2'b00};
+                        {{29{1'b0}},fetch_addr_inc,2'b00};
 
   if (ResetAll) begin : g_fetch_addr_ra
     always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -204,13 +240,13 @@ module ibex_prefetch_buffer #(
   for (genvar i = 0; i < NUM_REQS; i++) begin : g_outstanding_reqs
     // Request 0 (always the oldest outstanding request)
     if (i == 0) begin : g_req0
-      // A request becomes outstanding once granted, and is cleared once the rvalid is received.
-      // Outstanding requests shift down the queue towards entry 0.
-      assign rdata_outstanding_n[i] = (valid_req & instr_gnt_i) |
+      // A request becomes outstanding once issued (req_issue), and is cleared once the rvalid is
+      // received. Outstanding requests shift down the queue towards entry 0.
+      assign rdata_outstanding_n[i] = req_issue |
                                       rdata_outstanding_q[i];
       // If a branch is received at any point while a request is outstanding, it must be tracked
       // to ensure we discard the data once received
-      assign branch_discard_n[i]    = (valid_req & instr_gnt_i & discard_req_d) |
+      assign branch_discard_n[i]    = (req_issue & req_issue_discard) |
                                       (branch_i & rdata_outstanding_q[i]) |
                                       branch_discard_q[i];
 
@@ -218,10 +254,10 @@ module ibex_prefetch_buffer #(
     // Entries > 0 consider the FIFO fill state to calculate their next state (by checking
     // whether the previous entry is valid)
 
-      assign rdata_outstanding_n[i] = (valid_req & instr_gnt_i &
+      assign rdata_outstanding_n[i] = (req_issue &
                                        rdata_outstanding_q[i-1]) |
                                       rdata_outstanding_q[i];
-      assign branch_discard_n[i]    = (valid_req & instr_gnt_i & discard_req_d &
+      assign branch_discard_n[i]    = (req_issue & req_issue_discard &
                                        rdata_outstanding_q[i-1]) |
                                       (branch_i & rdata_outstanding_q[i]) |
                                       branch_discard_q[i];
@@ -261,7 +297,30 @@ module ibex_prefetch_buffer #(
   // Outputs //
   /////////////
 
-  assign instr_req_o  = valid_req;
-  assign instr_addr_o = instr_addr_w_aligned;
+  if (OutputReg) begin : g_out_reg
+    assign instr_req_o  = valid_req_q;
+    assign instr_addr_o = {stored_addr_q[31:2], 2'b00};
+
+    logic unused_instr_addr_w_aligned;
+    assign unused_instr_addr_w_aligned = ^{instr_addr_w_aligned, instr_addr[1:0], discard_req_q,
+                                           valid_req};
+  end else begin : g_no_out_reg
+    assign instr_req_o  = valid_req;
+    assign instr_addr_o = instr_addr_w_aligned;
+  end
+
+  ////////////////
+  // Assertions //
+  ////////////////
+
+  // A request is never issued with the queue full: the queue would lose it.
+  `ASSERT(IbexPrefetchNoIssueWhenFull, req_issue |-> !rdata_outstanding_q[NUM_REQS-1])
+  // No response arrives with nothing outstanding.
+  `ASSERT(IbexPrefetchRvalidOutstanding, instr_rvalid_i |-> rdata_outstanding_q[0])
+  if (OutputReg) begin : g_out_reg_asserts
+    // The bus request is the head of the output register and stays stable until granted.
+    `ASSERT(IbexPrefetchOutRegStable, instr_req_o && !instr_gnt_i |=>
+            instr_req_o && $stable(instr_addr_o))
+  end
 
 endmodule

@@ -15,8 +15,18 @@
 static const dt_sram_ctrl_t kSramCtrlDt = kDtSramCtrlRet;
 
 retention_sram_t *retention_sram_get(void) {
+#ifdef __CHERIOT__
+  // In a CHERIoT (purecap) build an integer cast to a pointer has no tag: the
+  // retention SRAM is reached through a capability to its window
+  // (sw/device/lib/base/cheriot_mmio.h).
+  return (retention_sram_t *)OT_MMIO_ADDR_TO_PTR(
+      dt_sram_ctrl_memory_base(kSramCtrlDt, kDtSramCtrlMemoryRam));
+#else
+#line 18  // Keeps the original line numbers.
   return (retention_sram_t *)dt_sram_ctrl_memory_base(kSramCtrlDt,
                                                       kDtSramCtrlMemoryRam);
+#endif  // __CHERIOT__
+#line 20  // Keeps the original line numbers.
 }
 
 void retention_sram_clear(void) {

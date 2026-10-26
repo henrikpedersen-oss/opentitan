@@ -107,9 +107,12 @@ module ibex_compressed_decoder import ibex_pkg::*; #(
     return instr;
   endfunction
 
+  // decr has no default value: sv2v turns a default argument into an assignment at the top of the
+  // function body, which overwrites the caller's value, so cm.push's sp decrement came out as an
+  // increment in the converted Verilog (found by EQY, syn/eqy/run_eqy.sh). Every call passes it.
   function automatic logic [31:0] cm_sp_addi(input logic [3:0] rlist,
                                              input logic [1:0] spimm,
-                                             input logic decr = 1'b0);
+                                             input logic decr);
     logic [11:0] imm;
     logic signed [11:0] imm_signed;
     logic [31:0] instr;

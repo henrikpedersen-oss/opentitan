@@ -12,6 +12,9 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter bit          PMPEnable                 = 1'b0,
   parameter int unsigned PMPGranularity            = 0,
   parameter int unsigned PMPNumRegions             = 4,
+  parameter pmp_cfg_t    PMPRstCfg[PMP_MAX_REGIONS]   = PmpCfgRst,
+  parameter logic [PMP_ADDR_MSB:0] PMPRstAddr[PMP_MAX_REGIONS] = PmpAddrRst,
+  parameter pmp_mseccfg_t PMPRstMsecCfg            = PmpMseccfgRst,
   parameter int unsigned MHPMCounterNum            = 0,
   parameter int unsigned MHPMCounterWidth          = 40,
   parameter bit          RV32E                     = 1'b0,
@@ -25,6 +28,8 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter bit          ICacheECC                 = 1'b0,
   parameter bit          ICacheTweakInfection      = 1'b0,
   parameter bit          BranchPredictor           = 1'b0,
+  parameter bit          FetchOutputReg            = 1'b0,
+  parameter bit          DataIfReg                 = 1'b0,
   parameter bit          DbgTriggerEn              = 1'b0,
   parameter int unsigned DbgHwBreakNum             = 1,
   parameter bit          SecureIbex                = 1'b0,
@@ -39,7 +44,9 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter int unsigned DmHaltAddr                = 32'h1A110800,
   parameter int unsigned DmExceptionAddr           = 32'h1A110808,
   parameter int unsigned CheriotRevBitmapAddrWidth = 32'd11,
-  parameter int unsigned CheriotRevBitmapBaseAddr  = 32'h0
+  parameter int unsigned CheriotRevBitmapBaseAddr  = 32'h0,
+  // 2026-10-25 (EG2 F38): passed to ibex_top (revocation bitmap size in bytes).
+  parameter int unsigned CheriotRevBitmapSizeBytes = 32'd1 << CheriotRevBitmapAddrWidth
 ) (
   // Clock and Reset
   input  logic                                                         clk_i,
@@ -225,6 +232,9 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .PMPEnable            ( PMPEnable            ),
     .PMPGranularity       ( PMPGranularity       ),
     .PMPNumRegions        ( PMPNumRegions        ),
+    .PMPRstCfg            ( PMPRstCfg            ),
+    .PMPRstAddr           ( PMPRstAddr           ),
+    .PMPRstMsecCfg        ( PMPRstMsecCfg        ),
     .MHPMCounterNum       ( MHPMCounterNum       ),
     .MHPMCounterWidth     ( MHPMCounterWidth     ),
     .RV32E                ( RV32E                ),
@@ -237,6 +247,8 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .ICacheECC            ( ICacheECC            ),
     .ICacheTweakInfection ( ICacheTweakInfection ),
     .BranchPredictor      ( BranchPredictor      ),
+    .FetchOutputReg       ( FetchOutputReg       ),
+    .DataIfReg            ( DataIfReg            ),
     .DbgTriggerEn         ( DbgTriggerEn         ),
     .DbgHwBreakNum        ( DbgHwBreakNum        ),
     .WritebackStage       ( WritebackStage       ),
@@ -252,7 +264,8 @@ module ibex_top_tracing import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .DmHaltAddr                ( DmHaltAddr                ),
     .DmExceptionAddr           ( DmExceptionAddr           ),
     .CheriotRevBitmapAddrWidth ( CheriotRevBitmapAddrWidth ),
-    .CheriotRevBitmapBaseAddr  ( CheriotRevBitmapBaseAddr  )
+    .CheriotRevBitmapBaseAddr  ( CheriotRevBitmapBaseAddr  ),
+    .CheriotRevBitmapSizeBytes ( CheriotRevBitmapSizeBytes )
   ) u_ibex_top (
     .clk_i,
     .rst_ni,

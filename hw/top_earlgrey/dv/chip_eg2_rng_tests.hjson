@@ -1,0 +1,184 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// EG2 random-number tests (eg2_top_verification spec "Random Number Generation Test Suite",
+// REQ_PBF_24). Software in sw/device/tests/eg2_rng/, vseqs in env/seq_lib/chip_sw_eg2_rng_vseq.sv
+// (chip_eg2_rng_vseq_list.sv). They run in build mode en_eg2_rng (below): en_eg2_cosim plus the
+// bench's noise source (tb/eg2_rng_src.svh, EG2_RNG; dv/eg2_rng/eg2_rng_dpi.c), which forces
+// entropy_src's noise input with `+eg2_rng=<source>` or the source a vseq selects. Without this
+// build mode nothing changes. Every `_inject_fail` run must FAIL (Makefile MUST_FAIL_TESTS) and is
+// in no regression.
+
+{
+  build_modes: [
+    {
+      name: en_eg2_rng
+      en_build_modes: ["en_eg2_cosim"]
+      build_opts: ["+define+EG2_RNG",
+                   "{proj_root}/hw/top_earlgrey/dv/eg2_rng/eg2_rng_dpi.c"]
+    }
+  ]
+
+  tests: [
+    {
+      name: chip_sw_eg2_rng_capture
+      uvm_test_seq: chip_sw_eg2_rng_capture_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_capture:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_rng=host", "+eg2_closes=chip_sw_eg2_rng_capture:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_capture_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_capture_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_capture_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_rng=host", "+eg2_closes=chip_sw_eg2_rng_capture:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_capture_cheriot
+      uvm_test_seq: chip_sw_eg2_rng_capture_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_capture_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_rng=host", "+eg2_closes=chip_sw_eg2_rng_capture:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_capture_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_capture_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_capture_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_rng=host", "+eg2_closes=chip_sw_eg2_rng_capture:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_health
+      uvm_test_seq: chip_sw_eg2_rng_health_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_health:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_health:REQ_PBF_24,REQ_PBF_12"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_health_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_health_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_health_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_health:REQ_PBF_24,REQ_PBF_12"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_health_cheriot
+      uvm_test_seq: chip_sw_eg2_rng_health_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_health_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_health:REQ_PBF_24,REQ_PBF_12"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_health_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_health_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_health_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_health:REQ_PBF_24,REQ_PBF_12"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_stuck
+      uvm_test_seq: chip_sw_eg2_rng_stuck_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_stuck:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_stuck:REQ_PBF_24,REQ_PBF_12,REQ_SEC_23"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_stuck_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_stuck_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_stuck_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_stuck:REQ_PBF_24,REQ_PBF_12,REQ_SEC_23"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_stuck_cheriot
+      uvm_test_seq: chip_sw_eg2_rng_stuck_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_stuck_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_stuck:REQ_PBF_24,REQ_PBF_12,REQ_SEC_23"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_stuck_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_stuck_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_stuck_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_stuck:REQ_PBF_24,REQ_PBF_12,REQ_SEC_23"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_conditioner_kat
+      uvm_test_seq: chip_sw_eg2_rng_conditioner_kat_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_conditioner_kat:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_conditioner_kat:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_conditioner_kat_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_conditioner_kat_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_conditioner_kat_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_conditioner_kat:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_conditioner_kat_cheriot
+      uvm_test_seq: chip_sw_eg2_rng_conditioner_kat_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_conditioner_kat_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_conditioner_kat:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rng_conditioner_kat_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_rng_conditioner_kat_vseq
+      sw_images: ["//sw/device/tests/eg2_rng:eg2_rng_conditioner_kat_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_rng"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_eg2_rng_conditioner_kat:REQ_PBF_24"]
+      run_timeout_mins: 480
+    }
+  ]
+
+  regressions: [
+    {
+      // The random-number tests; the capture's EG2_RNG lines feed `make rng-assess`.
+      name: eg2_rng
+      tests: ["chip_sw_eg2_rng_capture",
+              "chip_sw_eg2_rng_capture_cheriot",
+              "chip_sw_eg2_rng_health",
+              "chip_sw_eg2_rng_health_cheriot",
+              "chip_sw_eg2_rng_stuck",
+              "chip_sw_eg2_rng_stuck_cheriot",
+              "chip_sw_eg2_rng_conditioner_kat",
+              "chip_sw_eg2_rng_conditioner_kat_cheriot"]
+    }
+  ]
+}

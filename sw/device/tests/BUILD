@@ -865,6 +865,7 @@ CHERIOT_PERIPH_SMOKETEST_FAILURE = "FAIL |[RC]TRAP "
         srcs = ["eg2_status_smoketest.c"],
         exec_env = {
             "//hw/top_earlgrey:sim_dv": None,
+            "//hw/top_earlgrey:sim_verilator": None,
             # Behind the full secure-boot chain (ROM, ROM_EXT, owner image).
             "//hw/top_earlgrey:sim_dv_rom_ext": None,
         },
@@ -8146,7 +8147,10 @@ opentitan_test(
     opentitan_test(
         name = "eg2_dif_smoketest" + mode + variant,
         srcs = ["eg2_dif_smoketest.c"],
-        exec_env = {"//hw/top_earlgrey:sim_dv": None},
+        exec_env = {
+            "//hw/top_earlgrey:sim_dv": None,
+            "//hw/top_earlgrey:sim_verilator": None,
+        },
         local_defines = defines,
         platform = platform,
         deps = [
@@ -8168,3 +8172,23 @@ opentitan_test(
         ("_inject_fail", ["EG2_DIF_INJECT_FAIL"]),
     ]
 ]
+
+# Alert escalation through the NMI, the life-cycle escalation and the escalation reset, with the
+# crash dump (REQ_PBF_17). RISC-V mode only: the CHERIoT build's start-up code ends the test on any
+# trap, the NMI included, and the EG2 model's CHERIoT-mode instruction-set model has no NMI.
+opentitan_test(
+    name = "eg2_alert_escalation_smoketest",
+    srcs = ["eg2_alert_escalation_smoketest.c"],
+    exec_env = {"//hw/top_earlgrey:sim_dv": None},
+    deps = [
+        "//hw/top:alert_handler_c_regs",
+        "//hw/top:rstmgr_c_regs",
+        "//hw/top:rv_core_ibex_c_regs",
+        "//sw/device/lib/base:macros",
+        "//sw/device/lib/dif:rstmgr",
+        "//sw/device/lib/testing:ret_sram_testutils",
+        "//sw/device/lib/testing:rstmgr_testutils",
+        "//sw/device/lib/testing/eg2:test",
+        "//sw/device/lib/testing/test_framework:ottf_isrs",
+    ],
+)

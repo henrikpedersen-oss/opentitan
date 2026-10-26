@@ -107,22 +107,56 @@ module ibex_fetch_fifo #(
 
   // If there is an error, rdata is unknown
 `ifdef DII_SIM
-  logic [31:0] instr_rdata_dii;
-  logic [31:0] instr_pc;
-  logic        instr_ack;
+  // Direct Instruction Injection (DII) for TestRIG. The testbench supplies the whole
+  // instruction word by hierarchical reference, bypassing the two-word reconstruction.
+  //   32-bit instruction: dii_insn[31:0] = instr
+  //   16-bit instruction: dii_insn[15:0] = compressed instruction
 
-  // for DII we directly force out_rdata_o (re-aligned instruction)
-  // to keep the unaligned/aligned_is_compressed signals in sync
-  //   32-bit instruction; instr_rdata_dii[31:0] = instr
-  //   16-bit instruction: instr_rdata_dii[15:0] = compressed instruction
-  //                       instr_rdata_dii[31:0] = don't care
+  // Driven/read hierarchically by the testbench. One instruction in flight: the testbench offers
+  // dii_insn with dii_valid, the core consumes it once (dii_ack), and the testbench offers the
+  // next only after that one has retired. Nothing acked can then be flushed by a branch, trap or
+  // fence.i, so nothing ever needs replaying.
+  //
+  // Zcmp (cm.push/pop/mv*): the IF stage holds the instruction here (out_ready_i low) while the
+  // compressed decoder issues its micro-ops, and takes it only with the last one, so the packet
+  // was acked after its first micro-ops had retired, and never if one of them trapped (the core
+  // then ran the same cm.push again at the handler, forever). The testbench therefore also drives
+  // dii_uop_first and dii_expanding from this core's compressed decoder; see the same block in
+  // ibex_icache.sv.
+  logic [31:0] dii_insn;
+  logic        dii_valid;
+  logic [31:0] dii_pc;
+  logic        dii_ack;
+  logic        dii_uop_first;
+  logic        dii_expanding;
+
+  // Set on consumption, cleared when the testbench withdraws the packet, so the core cannot
+  // take the same packet twice in the cycles before the testbench reacts to dii_ack.
+  logic        dii_taken_q;
+  logic        dii_avail;
+
+  // The injected word is served at every PC, as the reference model executes it at every PC
+  // (RVFI-DII): an instruction stream does not depend on where the core fetches from.
+  assign dii_pc       = out_addr_o;
+  assign dii_avail    = (dii_valid && !dii_taken_q) || dii_expanding;
+  // Not in a cycle where the fetch stage is being cleared: the packet stays offered and is
+  // consumed from the new PC instead.
+  assign dii_ack      = out_valid_o &&
+                        (dii_uop_first || (out_ready_i && !clear_i && !dii_expanding));
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : dii_ff
+    if (!rst_ni) begin
+      dii_taken_q <= 1'b0;
+    end else if (!dii_valid) begin
+      dii_taken_q <= 1'b0;
+    end else if (dii_ack) begin
+      dii_taken_q <= 1'b1;
+    end
+  end
 
   assign unaligned_is_compressed = out_addr_o[1] & cheriot_force_uc_i
-                                 | ((instr_rdata_dii[1:0] != 2'b11) & ~err);
-  assign aligned_is_compressed   = ~out_addr_o[1] & (instr_rdata_dii[1:0] != 2'b11) & ~err;
-
-  assign instr_ack = out_ready_i & out_valid_o;
-  assign instr_pc  = out_addr_o;
+                                 | ((dii_insn[1:0] != 2'b11) & ~err);
+  assign aligned_is_compressed   = ~out_addr_o[1] & (dii_insn[1:0] != 2'b11) & ~err;
 `else
   assign unaligned_is_compressed = cheriot_force_uc_i | ((rdata[17:16] != 2'b11) & ~err);
   assign aligned_is_compressed   = (rdata[ 1: 0] != 2'b11) & ~err;
@@ -137,7 +171,7 @@ module ibex_fetch_fifo #(
       // unaligned case
 
 `ifdef DII_SIM
-     out_rdata_o      = instr_rdata_dii;
+      out_rdata_o     = dii_insn;
 `else
       out_rdata_o     = rdata_unaligned;
 `endif
@@ -152,7 +186,7 @@ module ibex_fetch_fifo #(
     end else begin
       // aligned case
 `ifdef DII_SIM
-     out_rdata_o      = instr_rdata_dii;
+      out_rdata_o     = dii_insn;
 `else
       out_rdata_o     = rdata;
 `endif
@@ -160,6 +194,10 @@ module ibex_fetch_fifo #(
       out_err_plus2_o = 1'b0;
       out_valid_o     = valid;
     end
+`ifdef DII_SIM
+    // Only present an instruction while an unconsumed DII packet is on offer.
+    out_valid_o = out_valid_o & dii_avail;
+`endif
   end
 
   /////////////////////////

@@ -32,6 +32,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter int unsigned            TagSizeECC                  = IC_TAG_SIZE,
   parameter int unsigned            LineSizeECC                 = IC_LINE_SIZE,
   parameter bit                     BranchPredictor             = 1'b0,
+  parameter bit                     FetchOutputReg              = 1'b0,
   parameter bit                     DbgTriggerEn                = 1'b0,
   parameter int unsigned            DbgHwBreakNum               = 1,
   parameter bit                     ResetAll                    = 1'b0,
@@ -79,6 +80,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   input  logic                         data_tag_i,
   input  logic [MemDataWidth-1:0]      data_rdata_i,
   input  logic                         data_rdata_tag_i,
+  input  logic                         data_rdata_tag_revoked_i,
   input  logic                         data_err_i,
 
   input  logic [RegFileDataWidth-1:0]  rf_rdata_a_i,
@@ -249,6 +251,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     logic                        data_rvalid;
     logic [MemDataWidth-1:0]     data_rdata;
     logic                        data_rdata_tag;
+    logic                        data_rdata_tag_revoked;
     logic                        data_err;
     logic [RegFileDataWidth-1:0] rf_rdata_a;
     logic [RegFileDataWidth-1:0] rf_rdata_b;
@@ -334,6 +337,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   assign shadow_inputs_in.data_rvalid         = data_rvalid_i;
   assign shadow_inputs_in.data_rdata          = data_rdata_i;
   assign shadow_inputs_in.data_rdata_tag      = data_rdata_tag_i;
+  assign shadow_inputs_in.data_rdata_tag_revoked = data_rdata_tag_revoked_i;
   assign shadow_inputs_in.data_err            = data_err_i;
   assign shadow_inputs_in.rf_rdata_a          = rf_rdata_a_i;
   assign shadow_inputs_in.rf_rdata_b          = rf_rdata_b_i;
@@ -465,6 +469,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .TagSizeECC           ( TagSizeECC           ),
     .LineSizeECC          ( LineSizeECC          ),
     .BranchPredictor      ( BranchPredictor      ),
+    .FetchOutputReg       ( FetchOutputReg       ),
     .DbgTriggerEn         ( DbgTriggerEn         ),
     .DbgHwBreakNum        ( DbgHwBreakNum        ),
     .WritebackStage       ( WritebackStage       ),
@@ -511,6 +516,7 @@ module ibex_lockstep import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .data_tag_o          (shadow_outputs_d.data_tag),
     .data_rdata_i        (shadow_inputs_q[0].data_rdata),
     .data_tag_i          (shadow_inputs_q[0].data_rdata_tag),
+    .data_tag_revoked_i  (shadow_inputs_q[0].data_rdata_tag_revoked),
     .data_err_i          (shadow_inputs_q[0].data_err),
 
     .dummy_instr_id_o    (shadow_dummy_instr_id),

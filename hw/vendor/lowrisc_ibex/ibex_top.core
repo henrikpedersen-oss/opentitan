@@ -27,6 +27,7 @@ filesets:
       - rtl/ibex_register_file_fpga.sv # FPGA
       - rtl/ibex_register_file_latch.sv # ASIC
       - rtl/ibex_trvk.sv
+      - rtl/ibex_mem_if_reg.sv
       - rtl/ibex_lockstep.sv
       - rtl/ibex_top.sv
     file_type: systemVerilogSource
@@ -124,11 +125,28 @@ parameters:
     default: 0
     description: "Enables static branch prediction (EXPERIMENTAL)"
 
+  FetchOutputReg:
+    datatype: int
+    paramtype: vlogparam
+    default: 0
+    description: "Registers the instruction request outputs (if ICache == 0) [0/1]"
+  DataIfReg:
+    datatype: int
+    paramtype: vlogparam
+    default: 0
+    description: "Registers the data and revocation bitmap ports: requests from flops, responses registered [0/1]"
+
   DbgTriggerEn:
     datatype: int
     default: 0
     paramtype: vlogparam
     description: "Enable support for debug triggers. "
+
+  DbgHwBreakNum:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: "Number of debug hardware triggers (with DbgTriggerEn)"
 
   SecureIbex:
     datatype: int

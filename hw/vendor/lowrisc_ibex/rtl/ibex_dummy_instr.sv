@@ -22,6 +22,9 @@ module ibex_dummy_instr import ibex_pkg::*; #(
   input  logic [2:0]  dummy_instr_mask_i,
   input  logic        dummy_instr_seed_en_i,
   input  logic [31:0] dummy_instr_seed_i,
+  // Operands limited to x0-x15: in CHERIoT mode the decoder makes any instruction naming x16-x31
+  // illegal (ibex_decoder.sv illegal_reg_16), so a dummy drawn from all 32 registers could trap.
+  input  logic        reg16_only_i,
 
   // Interface to IF stage
   input  logic        fetch_valid_i,
@@ -142,8 +145,12 @@ module ibex_dummy_instr import ibex_pkg::*; #(
     endcase
   end
 
-  //                    SET        RS2             RS1             OP            RD
-  assign dummy_instr = {dummy_set, lfsr_data.op_b, lfsr_data.op_a, dummy_opcode, 5'h00, 7'h33};
+  logic [OP_W-1:0] dummy_op_a, dummy_op_b;
+  assign dummy_op_a = {lfsr_data.op_a[OP_W-1] & ~reg16_only_i, lfsr_data.op_a[OP_W-2:0]};
+  assign dummy_op_b = {lfsr_data.op_b[OP_W-1] & ~reg16_only_i, lfsr_data.op_b[OP_W-2:0]};
+
+  //                    SET        RS2         RS1         OP            RD
+  assign dummy_instr = {dummy_set, dummy_op_b, dummy_op_a, dummy_opcode, 5'h00, 7'h33};
 
   // Assign outputs
   assign insert_dummy_instr_o = insert_dummy_instr;

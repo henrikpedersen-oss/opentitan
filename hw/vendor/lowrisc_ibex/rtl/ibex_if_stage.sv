@@ -31,6 +31,7 @@ module ibex_if_stage import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter lfsr_seed_t  RndCnstLfsrSeed      = RndCnstLfsrSeedDefault,
   parameter lfsr_perm_t  RndCnstLfsrPerm      = RndCnstLfsrPermDefault,
   parameter bit          BranchPredictor      = 1'b0,
+  parameter bit          FetchOutputReg       = 1'b0,
   parameter bit          MemECC               = 1'b0,
   parameter int unsigned MemDataWidth         = MemECC ? 32 + 7 : 32
 ) (
@@ -348,7 +349,8 @@ module ibex_if_stage import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   end else begin : gen_prefetch_buffer
     // prefetch buffer, caches a fixed number of instructions
     ibex_prefetch_buffer #(
-      .ResetAll        (ResetAll)
+      .ResetAll        (ResetAll),
+      .OutputReg       (FetchOutputReg)
     ) prefetch_buffer_i (
         .clk_i               ( clk_i                      ),
         .rst_ni              ( rst_ni                     ),
@@ -490,7 +492,10 @@ module ibex_if_stage import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .clk_i            (clk_i),
     .rst_ni           (rst_ni),
     .valid_i          (fetch_valid & ~fetch_err),
-    .id_in_ready_i    (id_in_ready_i & ~pc_set_i),
+    // A dummy instruction takes ID in place of the decoder's output, so the decoder's output is
+    // not consumed that cycle: without ~stall_dummy_instr the Zcmp FSM steps on and the micro-op
+    // it was presenting is lost (a cm.push skips stores). fetch_ready holds the fetch the same way.
+    .id_in_ready_i    (id_in_ready_i & ~pc_set_i & ~stall_dummy_instr),
     .instr_i          (if_instr_rdata),
     .cheriot_enable_i (cheriot_enable_i),
     .instr_o          (instr_decompressed),
@@ -532,6 +537,8 @@ module ibex_if_stage import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .dummy_instr_mask_i   (dummy_instr_mask_i),
       .dummy_instr_seed_en_i(dummy_instr_seed_en_i),
       .dummy_instr_seed_i   (dummy_instr_seed_i),
+      .reg16_only_i         ((BaseIsa == BaseIsaRV32IorCHERIoT) &
+                             (cheriot_enable_i == IbexMuBiOn)),
       .fetch_valid_i        (fetch_valid),
       .id_in_ready_i        (id_in_ready_i),
       .insert_hold_i        (dummy_instr_hold),

@@ -76,6 +76,8 @@ module ibex_controller import ibex_pkg::*; #(
   output logic                  wb_exception_o,          // Instruction in WB taking an exception
   output logic                  id_exception_o,          // Instruction in ID taking an exception
   output logic                  id_exception_nc_o,       // no-cheriot
+  output logic                  cheriot_exc_id_o,        // ID/EX instruction raises a CHERIoT
+                                                         // exception (EX error or ASR fault)
 
   // jump/branch signals
   input  logic                  branch_set_i,            // branch set signal (branch definitely
@@ -278,6 +280,12 @@ module ibex_controller import ibex_pkg::*; #(
 
   assign id_exception_o = exc_req_d;
   assign id_exception_nc_o = exc_req_nc;
+
+  // The CHERIoT exceptions of the instruction in ID/EX: a CHERI EX error (e.g. CJALR through an
+  // untagged capability) or an ASR fault (a CSR access or MRET without PCC.SR). Such an instruction
+  // does not retire, so the ID stage must not count it in minstret (instr_perf_count_id_o), as
+  // ecall, ebreak and illegal instructions are not counted.
+  assign cheriot_exc_id_o = ((cheriot_enable_i == IbexMuBiOn) & cheriot_ex_err) | cheriot_asr_err_d;
 
   // special requests: special instructions, pipeline flushes, exceptions...
   // All terms in these expressions are qualified by instr_valid_i except exc_req_lsu which can come

@@ -75,6 +75,8 @@ class SpikeCosim : public simif_t, public Cosim {
 
   bool pc_is_debug_ebreak(uint32_t pc);
   bool check_debug_ebreak(uint32_t write_reg, uint32_t pc, bool sync_trap);
+  // A WFI Spike completed without a trace log: recorded as retired (spike_cosim.cc).
+  void recognise_completed_wfi(uint32_t initial_pc);
 
   bool check_gpr_write(const commit_log_reg_t::value_type &reg_change,
                        uint32_t write_reg, uint32_t write_reg_data);
@@ -101,6 +103,13 @@ class SpikeCosim : public simif_t, public Cosim {
   uint32_t mhpm_counter_num;
 
  public:
+  // EG2 (eg2_top_verification): read-only access to the architectural state, for the handover
+  // to CHERIoT-Sail at the CHERIoT lock (hw/top_earlgrey/dv/env/eg2_cosim_dpi.cc). Not in Cosim:
+  // only the EG2 bench uses them.
+  uint32_t get_gpr(int idx) { return processor->get_state()->XPR[idx]; }
+  uint32_t get_pc() { return processor->get_state()->pc; }
+  uint32_t get_csr(int csr_num) { return processor->get_csr(csr_num); }
+
   SpikeCosim(const std::string &isa_string, uint32_t start_pc,
              uint32_t start_mtvec, const std::string &trace_log_path,
              bool secure_ibex, bool icache_en, uint32_t pmp_num_regions,

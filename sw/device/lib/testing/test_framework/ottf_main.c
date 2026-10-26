@@ -7,9 +7,15 @@
 #include <assert.h>
 #include <stddef.h>
 
+#ifndef __CHERIOT__
+// FreeRTOS (`enable_concurrency`) is not built in CHERIoT mode: its port is
+// RV32 assembly.
+#line 10  // Keeps the original line numbers.
 #include "external/freertos/include/FreeRTOS.h"
 #include "external/freertos/include/queue.h"
 #include "external/freertos/include/task.h"
+#endif  // __CHERIOT__
+#line 13  // Keeps the original line numbers.
 #include "hw/top/dt/rstmgr.h"
 #include "hw/top/dt/rv_core_ibex.h"
 #include "sw/device/lib/arch/device.h"
@@ -49,6 +55,8 @@ extern void *pxCurrentTCB;
 // A global random number generator testutil handle.
 rand_testutils_rng_t rand_testutils_rng_ctx;
 
+#ifndef __CHERIOT__
+#line 52  // Keeps the original line numbers.
 // The OTTF overrides the default machine ecall exception handler to implement
 // FreeRTOS context switching, required for supporting cooperative scheduling.
 void ottf_machine_ecall_handler(uint32_t *exc_info) {
@@ -82,6 +90,16 @@ void ottf_task_delete_self(void) { vTaskDelete(/*xTask=*/NULL); }
 char *ottf_task_get_self_name(void) {
   return pcTaskGetName(/*xTaskToQuery=*/NULL);
 }
+#else   // __CHERIOT__
+// No FreeRTOS in CHERIoT mode, so an ecall is never a context switch: logged,
+// as above without a current task.
+void ottf_machine_ecall_handler(uint32_t *exc_info) {
+  LOG_ERROR(
+      "OTTF currently only supports use of machine-mode ecall for FreeRTOS "
+      "context switching.");
+}
+#endif  // __CHERIOT__
+#line 85  // Keeps the original line numbers.
 
 /* Array holding the report statuses.
  *
@@ -193,11 +211,18 @@ void _ottf_main(void) {
 
   // Run the test.
   if (kOttfTestConfig.enable_concurrency) {
+#ifndef __CHERIOT__
+#line 196  // Keeps the original line numbers.
     // Run `test_main()` in a FreeRTOS task, allowing other FreeRTOS tasks to
     // be spawned, if requested in the main test task. Note, we spawn the main
     // test task at a priority level of 0.
     ottf_task_create(test_wrapper, "test_main", /*task_stack_depth=*/1024, 0);
     vTaskStartScheduler();
+#else   // __CHERIOT__
+    LOG_ERROR("OTTF concurrency is not supported in CHERIoT mode");
+    report_test_status(false);
+#endif  // __CHERIOT__
+#line 201  // Keeps the original line numbers.
   } else {
     // Otherwise, launch `test_main()` on bare-metal.
     test_wrapper(NULL);

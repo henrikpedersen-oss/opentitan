@@ -18,6 +18,15 @@
 //
 // The symbols are constants in .rodata (EG2_TEST_PARAMS in eg2_params.h), which the backdoor
 // writes in the RRAM image. Writable globals cannot be used: the start-up code overwrites them.
+// A console character from the DV channel (eg2_dv_console_if.sv), put on UART0's monitor FIFO
+// like a received byte so that every reader of the console lines works on both channels.
+class eg2_console_item extends uart_item;
+  // The line's UVM verbosity, from the software (eg2_verbosity_t).
+  uvm_verbosity verbosity = UVM_LOW;
+  `uvm_object_utils(eg2_console_item)
+  `uvm_object_new
+endclass
+
 class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
   `uvm_object_utils(chip_sw_eg2_base_vseq)
 
@@ -29,12 +38,33 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
     sw_seed != 0;
   }
 
-  // UART0 carries the framework's console: the seed and parameters as the software read them, the
-  // status module's findings (`STATUS ...`), each step, a trap (`CTRAP ...`) and the verdict. The
-  // bench connects it and copies every line into the run log, so a failure explains itself.
+  // The framework's console: the seed and parameters as the software read them, the status
+  // module's findings (`STATUS ...`), each step, a trap (`CTRAP ...`) and the verdict. It has two
+  // channels (eg2_result.h). By default (`dv_console`, +eg2_dv_console=1) the software writes it
+  // to the DV window, which costs no simulated time; each line is printed in run.log as `EG2_SW`
+  // with the verbosity the software gave it (UVM_LOW unless it says otherwise), so +UVM_VERBOSITY
+  // selects what is shown, and a line reporting a failure is always printed. UART0 then carries
+  // only the verdict, `PASS!` or `FAIL! <first failing line>`, printed as `EG2_UART`. With
+  // +eg2_dv_console=0 the whole console goes over UART0, as on every other platform.
+  // The DV channel's characters are put on UART0's monitor FIFO (eg2_console_item), so each
+  // reader of the console lines (this class, chip_sw_eg2_rand_vseq's bench steps, the boot
+  // checks) sees one stream.
+  bit dv_console = 1'b1;
+
+  // What a console line came with: its channel and, from the DV channel, its verbosity.
+  typedef struct {
+    bit           dv;
+    uvm_verbosity verbosity;
+  } console_line_t;
+  // The line being assembled per channel (console_char).
+  protected string dv_line, uart_line;
+  protected uvm_verbosity dv_line_verbosity = UVM_LOW;
+
   virtual task body();
     configure_uart_agent(.uart_idx(0), .enable(1));
+    cfg.eg2_sb_uart_required[0] = 1'b1;
     fork
+      forward_dv_console();
       log_uart_lines(0);
       log_boot_profile();
     join_none
@@ -85,6 +115,17 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
       return;
     end
     write_word("kEg2Seed", "eg2_seed", sw_seed);
+    write_console_channel();
+`ifdef EG2_PERIPH_SB
+    // For the header of the EG2 scoreboards' logs (eg2_sb_log).
+    begin
+      bit [31:0] s = sw_seed;
+      bit        ic = icache_at_boot;
+      void'($value$plusargs("eg2_seed=%d", s));
+      void'($value$plusargs("eg2_icache=%d", ic));
+      eg2_sb_log::set_sw(s, ic ? "on" : "off");
+    end
+`endif
     if ($value$plusargs("eg2_mutate=%s", mutation)) write_mutation_name(mutation);
     write_params();
   endtask
@@ -102,16 +143,92 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
   protected task log_uart_lines(int uart_idx);
     uart_item item;
     string line;
+    console_line_t cl;
     forever begin
       p_sequencer.uart_tx_fifos[uart_idx].get(item);
-      if (item.data inside {8'h0a, 8'h0d}) begin
-        if (line != "") `uvm_info("EG2_UART", line, UVM_LOW)
-        line = "";
-      end else begin
-        line = {line, string'(item.data)};
-      end
+      if (console_char(item, cl, line)) log_console_line(line, cl);
     end
   endtask
+
+  // The DV channel's words, one character each, onto UART0's monitor FIFO.
+  protected task forward_dv_console();
+    bit [31:0] w;
+    eg2_console_item item;
+    cfg.eg2_console_vif.console_addr = SW_DV_EG2_CONSOLE_ADDR;
+    forever begin
+      wait (cfg.eg2_console_vif.words.size() > 0);
+      w = cfg.eg2_console_vif.words.pop_front();
+      item = eg2_console_item::type_id::create("eg2_console_item");
+      item.data = w[7:0];
+      case (w[11:8])
+        0:       item.verbosity = UVM_NONE;
+        1:       item.verbosity = UVM_LOW;
+        2:       item.verbosity = UVM_MEDIUM;
+        3:       item.verbosity = UVM_HIGH;
+        default: item.verbosity = UVM_DEBUG;
+      endcase
+      p_sequencer.uart_tx_fifos[0].analysis_export.write(item);
+    end
+  endtask
+
+  // Adds one console character to `line`. Returns 1 when a line is complete: `line` then holds it
+  // and `cl` its channel and verbosity, taken from its first character; the next call starts anew.
+  // Lines from the two channels are kept apart, so a UART line in flight is not broken by
+  // characters the DV channel delivers meanwhile.
+  protected function bit console_char(uart_item item, ref console_line_t cl, ref string line);
+    eg2_console_item dv_item;
+    bit dv, eol;
+    dv = $cast(dv_item, item);
+    eol = item.data inside {8'h0a, 8'h0d};
+    if (dv) begin
+      if (eol) begin
+        line = dv_line;
+        dv_line = "";
+        cl = '{dv: 1'b1, verbosity: dv_line_verbosity};
+        return line != "";
+      end
+      if (dv_line == "") dv_line_verbosity = dv_item.verbosity;
+      dv_line = {dv_line, string'(item.data)};
+      return 1'b0;
+    end
+    if (eol) begin
+      line = uart_line;
+      uart_line = "";
+      cl = '{dv: 1'b0, verbosity: UVM_LOW};
+      return line != "";
+    end
+    uart_line = {uart_line, string'(item.data)};
+    return 1'b0;
+  endfunction
+
+  // Prints a console line in run.log: `EG2_SW` with the software's verbosity for the DV channel,
+  // `EG2_UART` at UVM_LOW for UART0. A line reporting a failure (FAIL, MISMATCH, a status finding
+  // `STATUS `, a trap `TRAP`) is printed whatever the verbosity.
+  protected function void log_console_line(string line, console_line_t cl);
+    uvm_verbosity v = cl.verbosity;
+    if (console_has(line, "FAIL") || console_has(line, "MISMATCH") ||
+        console_has(line, "STATUS ") || console_has(line, "TRAP")) v = UVM_NONE;
+    if (cl.dv) `uvm_info("EG2_SW", line, v)
+    else       `uvm_info("EG2_UART", line, v)
+  endfunction
+
+  protected function bit console_has(string line, string word);
+    for (int i = 0; i + word.len() <= line.len(); i++) begin
+      if (line.substr(i, i + word.len() - 1) == word) return 1'b1;
+    end
+    return 1'b0;
+  endfunction
+
+  // kEg2ConsoleDv: the console's channel (dv_console, +eg2_dv_console=0|1).
+  protected function void write_console_channel();
+    bit on = dv_console;
+    bit [7:0] bytes[4];
+    void'($value$plusargs("eg2_dv_console=%d", on));
+    bytes = '{8'(on), 8'h00, 8'h00, 8'h00};
+    sw_symbol_backdoor_overwrite("kEg2ConsoleDv", bytes);
+    `uvm_info(`gfn, on ? {"EG2 console on the DV channel (lines in run.log as EG2_SW; UART0 ",
+                          "carries the verdict)"} : "EG2 console on UART0", UVM_LOW)
+  endfunction
 
   // Overridden by a test's vseq: one set_param() per parameter, from its rand fields.
   virtual function void write_params();

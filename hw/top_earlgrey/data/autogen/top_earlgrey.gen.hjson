@@ -11085,6 +11085,7 @@
         PMPRstMsecCfg: ibex_pmp_reset_pkg::PmpMseccfgRst
         CheriotRevBitmapAddrWidth: $clog2(tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM)
         CheriotRevBitmapBaseAddr: tl_main_pkg::ADDR_SPACE_CHERIOT_MEM_SYS__REVBM
+        CheriotRevBitmapSizeBytes: tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM
         CheriotTrvkHeapBaseAddr: tl_main_pkg::ADDR_SPACE_SRAM_CTRL_MAIN__RAM
         RV32E: "0"
         RV32M: ibex_pkg::RV32MSingleCycle
@@ -11267,6 +11268,20 @@
           local: "false"
           expose: "true"
           name_top: RvCoreIbexCheriotRevBitmapBaseAddr
+        }
+        {
+          name: CheriotRevBitmapSizeBytes
+          desc:
+            '''
+            Size of the TRVK revocation bitmap in bytes, at most 2^CheriotRevBitmapAddrWidth.
+            Capabilities based at or above the heap base plus 64 times this size are not
+            looked up and never revoked.
+            '''
+          type: int unsigned
+          default: tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM
+          local: "false"
+          expose: "true"
+          name_top: RvCoreIbexCheriotRevBitmapSizeBytes
         }
         {
           name: CheriotTrvkHeapBaseAddr

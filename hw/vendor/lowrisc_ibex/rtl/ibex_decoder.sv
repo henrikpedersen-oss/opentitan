@@ -37,6 +37,8 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
                                                       // replicated to ease fan-out)
 
   input  logic                 illegal_c_insn_i,      // compressed instruction decode failed
+  // The instruction is a dummy (ibex_dummy_instr): exempt from the CHERIoT 16-register check below
+  input  logic                 dummy_instr_i,
 
   // immediates
   output ibex_pkg::imm_a_sel_e  imm_a_mux_sel_o,       // immediate selection for operand a
@@ -116,6 +118,9 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
 
   logic        illegal_insn;
   logic        illegal_reg_16;
+  // The decoder's own view of these outputs; illegal_reg_16 gates them (see the assigns at the end).
+  logic        data_req, cheriot_data_req, csr_access;
+  logic        jump_in_dec, jump_set, branch_in_dec;
   logic        csr_illegal;
   logic        rf_we;
 
@@ -199,7 +204,12 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
   // RV32E and CHERIoT both enforce a 16-register address space (CheriLimit16Regs implies RV32E).
   // RV32E is a static build choice (unconditional); CHERIoT is runtime-gated on cheriot_enable_i.
   if (RV32E || CheriLimit16Regs) begin : gen_16reg_check_active
-    assign illegal_reg_16 = (RV32E || (cheriot_enable_i == IbexMuBiOn)) &&
+    // A dummy instruction is exempt in CHERIoT mode: it is generated in IF with operands chosen for
+    // the mode at that moment (reg16_only_i), so one generated in RISC-V mode just before the switch
+    // can name x16-x31 when it is decoded after it, and it then trapped as an illegal instruction
+    // the software never executed (found by review 2026-10-25, the switch-time twin of #955/F17).
+    // It only writes x0 and has no other effect; in CHERIoT mode raddr[4] reads the lower bank.
+    assign illegal_reg_16 = (RV32E || ((cheriot_enable_i == IbexMuBiOn) && !dummy_instr_i)) &&
                             ((raddr_a[4]   && rf_ren_a_o) ||
                              (raddr_b[4]   && rf_ren_b_o) ||
                              (instr_rd[4]  && rf_we_or_load));
@@ -226,9 +236,9 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
   /////////////
 
   always_comb begin
-    jump_in_dec_o           = 1'b0;
-    jump_set_o              = 1'b0;
-    branch_in_dec_o         = 1'b0;
+    jump_in_dec           = 1'b0;
+    jump_set              = 1'b0;
+    branch_in_dec         = 1'b0;
     icache_inval_o          = 1'b0;
 
     multdiv_operator_o      = MD_OP_MULL;
@@ -239,7 +249,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
     rf_ren_a_o              = 1'b0;
     rf_ren_b_o              = 1'b0;
 
-    csr_access_o            = 1'b0;
+    csr_access            = 1'b0;
     csr_illegal             = 1'b0;
     csr_op                  = CSR_OP_READ;
     csr_cheriot_always_ok_o = 1'b0;
@@ -247,8 +257,8 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
     data_we_o               = 1'b0;
     data_type_o             = 2'b00;
     data_sign_extension_o   = 1'b0;
-    data_req_o              = 1'b0;
-    cheriot_data_req_o      = 1'b0;
+    data_req              = 1'b0;
+    cheriot_data_req      = 1'b0;
 
     illegal_insn            = 1'b0;
     ebrk_insn_o             = 1'b0;
@@ -285,12 +295,12 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
           cheriot_adder_b_sel_o   = CHERIOT_ADDER_B_PC;
           cheriot_setaddr_sel_o   = SETADDR_PCC_PCNXT;
         end else begin
-          jump_in_dec_o     = 1'b1;
+          jump_in_dec     = 1'b1;
 
           if (instr_first_cycle_i) begin
             // Calculate jump target (and store PC + 4 if BranchTargetALU is configured)
             rf_we            = BranchTargetALU;
-            jump_set_o       = 1'b1;
+            jump_set       = 1'b1;
           end else begin
             // Calculate and store PC+4
             rf_we            = 1'b1;
@@ -314,12 +324,12 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
             illegal_insn    = 1'b1;
           end
         end else begin
-          jump_in_dec_o      = 1'b1;
+          jump_in_dec      = 1'b1;
 
           if (instr_first_cycle_i) begin
             // Calculate jump target (and store PC + 4 if BranchTargetALU is configured)
             rf_we            = BranchTargetALU;
-            jump_set_o       = 1'b1;
+            jump_set       = 1'b1;
           end else begin
             // Calculate and store PC+4
             rf_we            = 1'b1;
@@ -333,7 +343,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
       end
 
       OPCODE_BRANCH: begin // Branch
-        branch_in_dec_o       = 1'b1;
+        branch_in_dec       = 1'b1;
         // Check branch condition selection
         unique case (instr[14:12])
           3'b000,
@@ -356,7 +366,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
       OPCODE_STORE: begin
         rf_ren_a_o         = 1'b1;
         rf_ren_b_o         = 1'b1;
-        data_req_o         = 1'b1;  // keep this to pass LEC w/ ibex
+        data_req         = 1'b1;  // keep this to pass LEC w/ ibex
         data_we_o          = 1'b1;
 
         if (instr[14]) begin
@@ -365,11 +375,11 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
           if ((BaseIsa == BaseIsaRV32IorCHERIoT) & (cheriot_enable_i == IbexMuBiOn)) begin
             cheriot_operator_o.CSTORE_CAP = ~illegal_c_insn_i;
             instr_is_cheriot_o            = ~illegal_c_insn_i;
-            cheriot_data_req_o            = ~illegal_c_insn_i;
-            data_req_o                    = 1'b0;
+            cheriot_data_req            = ~illegal_c_insn_i;
+            data_req                    = 1'b0;
             illegal_insn                  = 1'b0;
           end else begin
-            cheriot_data_req_o = 1'b0;
+            cheriot_data_req = 1'b0;
             illegal_insn       = 1'b1;
           end
         end
@@ -386,7 +396,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
 
       OPCODE_LOAD: begin
         rf_ren_a_o          = 1'b1;
-        data_req_o          = 1'b1;
+        data_req          = 1'b1;
         data_type_o         = 2'b00;
 
         // sign/zero extension
@@ -411,11 +421,11 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
                 ~instr[14] && ~illegal_c_insn_i) begin
               cheriot_operator_o.CLOAD_CAP = 1'b1;
               instr_is_cheriot_o           = 1'b1;
-              cheriot_data_req_o           = 1'b1;
-              data_req_o                   = 1'b0;    // req generated by cheriot_ex
+              cheriot_data_req           = 1'b1;
+              data_req                   = 1'b0;    // req generated by cheriot_ex
               illegal_insn                 = 1'b0;
             end else begin                // CHERIoT consider instr[14]=1 illegal
-              cheriot_data_req_o = 1'b0;
+              cheriot_data_req = 1'b0;
               illegal_insn       = 1'b1;
             end
           end
@@ -649,12 +659,12 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
             // behaviour (iside prefetch buffer flushed and response to any outstanding iside
             // requests will be ignored).
             // If present, the ICache will also be flushed.
-            jump_in_dec_o   = 1'b1;
+            jump_in_dec   = 1'b1;
 
             rf_we           = 1'b0;
 
             if (instr_first_cycle_i) begin
-              jump_set_o       = 1'b1;
+              jump_set       = 1'b1;
               icache_inval_o   = 1'b1;
             end
           end
@@ -695,7 +705,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
           end
         end else begin
           // instruction to read/modify CSR
-          csr_access_o     = 1'b1;
+          csr_access     = 1'b1;
           rf_wdata_sel_o   = RF_WD_CSR;
           rf_we            = 1'b1;
 
@@ -710,12 +720,25 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
             default: csr_illegal = 1'b1;
           endcase
 
-          // always allow access to the following CSRs even without ASR permission
+          // Counter CSRs are readable without ASR permission, mirroring ext_check_CSR()
+          // in the CHERIoT Sail model:
+          //   -- 0xB00 mcycle, 0xB02 minstret, 0xB80 mcycleh, 0xB82 minstreth
           //   -- 0xC00-0xC9F (unprivileged read-only counters, per CHERIoT spec Table 7.1)
+          // Sail allows these only for reads, so the safe-list is gated on the access being
+          // read-only. Without that gate a write to mcycle from a compartment lacking ASR
+          // would take the safe-list path and then be dropped silently by csr_we_int in
+          // ibex_cs_registers.sv, where the spec requires an ASR violation. The 0xC range
+          // needs the same gate to report ASR rather than the illegal-instruction exception
+          // that csr_addr[11:10]==2'b11 would otherwise raise.
+          // A CSR access writes unless it is CSRRS/CSRRC (or the immediate forms) with a
+          // zero rs1/uimm field; instr[13:12]==2'b01 is CSRRW/CSRRWI, which always writes.
           csr_cheriot_always_ok_o = (BaseIsa == BaseIsaRV32IorCHERIoT) &
                                     (cheriot_enable_i == IbexMuBiOn) &
-                                    ((instr[31:28] == 4'hc) &&
-                                     ((instr[27] == 1'b0) || (instr[26:25] == 2'b00)));
+                                    (instr[13:12] != 2'b01) & (instr[19:15] == 5'b0) &
+                                    (((instr[31:28] == 4'hc) &&
+                                      ((instr[27] == 1'b0) || (instr[26:25] == 2'b00))) ||
+                                     (instr[31:20] inside {12'hb00, 12'hb02,
+                                                           12'hb80, 12'hb82}));
 
           illegal_insn = csr_illegal;
         end
@@ -746,6 +769,7 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
                              cheriot_cap_field_sel_o = CFIELD_LEN;  end
                 5'h04: begin cheriot_operator_o.CGET_FIELD = 1'b1;
                              cheriot_cap_field_sel_o = CFIELD_TAG;  end
+                // 5'h06 (CGetOffset in CHERI-RISC-V) is not present in CHERIoT: illegal (default)
                 5'h08: begin cheriot_operator_o.CRRL = 1'b1;
                              cheriot_setbounds_sel_o = SETBOUNDS_CRRL; end
                 5'h09: begin cheriot_operator_o.CRAM = 1'b1;
@@ -848,12 +872,12 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
     // these cases are not handled here
     if (illegal_insn) begin
       rf_we           = 1'b0;
-      data_req_o      = 1'b0;
+      data_req      = 1'b0;
       data_we_o       = 1'b0;
-      jump_in_dec_o   = 1'b0;
-      jump_set_o      = 1'b0;
-      branch_in_dec_o = 1'b0;
-      csr_access_o    = 1'b0;
+      jump_in_dec   = 1'b0;
+      jump_set      = 1'b0;
+      branch_in_dec = 1'b0;
+      csr_access    = 1'b0;
     end
   end
 
@@ -1258,6 +1282,21 @@ module ibex_decoder import ibex_cheriot_pkg::*; #(
 
   // Suppress regfile write enable when an illegal register is addressed.
   assign rf_we_o = rf_we & ~illegal_reg_16;
+
+  // The same for everything else an illegal instruction must not start. The block above that
+  // clears these for illegal_insn does not see illegal_reg_16, which is derived from this block's
+  // own outputs (rf_ren_*, rf_we), so it is applied here instead. Without it a load or store naming
+  // x16-x31 in CHERIoT mode still raised its memory request: with no writeback stage the ID stage
+  // issues it to the LSU in the same cycle (instr_executing does not wait for the exception), so an
+  // instruction that only had to trap could read or write memory; a branch or jump stalled ID as a
+  // branch with data-independent timing on (IllegalInsnStallMustBeMemStall,
+  // cheriot_illegal_branch_dit seeds 24855 and 7488).
+  assign data_req_o         = data_req         & ~illegal_reg_16;
+  assign cheriot_data_req_o = cheriot_data_req & ~illegal_reg_16;
+  assign csr_access_o       = csr_access       & ~illegal_reg_16;
+  assign jump_in_dec_o      = jump_in_dec      & ~illegal_reg_16;
+  assign jump_set_o         = jump_set         & ~illegal_reg_16;
+  assign branch_in_dec_o    = branch_in_dec    & ~illegal_reg_16;
 
   // Not all bits are used
   assign unused_instr_alu = {instr_alu[19:15], instr_alu[11:7]};

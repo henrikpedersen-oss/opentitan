@@ -135,6 +135,8 @@ module earlgrey_pd_main #(
       $clog2(tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM),
   parameter int unsigned RvCoreIbexCheriotRevBitmapBaseAddr =
       tl_main_pkg::ADDR_SPACE_CHERIOT_MEM_SYS__REVBM,
+  parameter int unsigned RvCoreIbexCheriotRevBitmapSizeBytes =
+      tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM,
   parameter int unsigned RvCoreIbexCheriotTrvkHeapBaseAddr =
       tl_main_pkg::ADDR_SPACE_SRAM_CTRL_MAIN__RAM,
   parameter bit RvCoreIbexRV32E = 0,
@@ -2649,6 +2651,7 @@ module earlgrey_pd_main #(
     .PMPRstMsecCfg(RvCoreIbexPMPRstMsecCfg),
     .CheriotRevBitmapAddrWidth(RvCoreIbexCheriotRevBitmapAddrWidth),
     .CheriotRevBitmapBaseAddr(RvCoreIbexCheriotRevBitmapBaseAddr),
+    .CheriotRevBitmapSizeBytes(RvCoreIbexCheriotRevBitmapSizeBytes),
     .CheriotTrvkHeapBaseAddr(RvCoreIbexCheriotTrvkHeapBaseAddr),
     .RV32E(RvCoreIbexRV32E),
     .RV32M(RvCoreIbexRV32M),

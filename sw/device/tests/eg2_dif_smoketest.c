@@ -111,7 +111,9 @@ static bool uart_loopback(void) {
       ok = false;
     }
   }
-  return dif_uart_loopback_set(&uart, kDifUartLoopbackSystem, kDifToggleDisabled) == kDifOk &&
+  // The receiver goes off before loopback does, for the same reason it came on after it.
+  return dif_uart_set_enable(&uart, kDifUartDatapathRx, kDifToggleDisabled) == kDifOk &&
+         dif_uart_loopback_set(&uart, kDifUartLoopbackSystem, kDifToggleDisabled) == kDifOk &&
          ok;
 }
 

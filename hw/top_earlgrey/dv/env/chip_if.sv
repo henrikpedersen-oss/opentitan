@@ -624,6 +624,68 @@ interface chip_if;
   wire rram_rd_buf_rdy = ~((|`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.buf_valid) ||
                            (|`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.buf_wip));
 
+  // rram_ctrl's controller writes into the data partition, for the ISS (eg2_iss_wrapper), whose
+  // fetches read its own memory and so must see code the software wrote through the controller
+  // (chip_sw_rram_write_then_fetch, chip_sw_rram_host_exec, chip_sw_rram_uncorr_fetch; 2026-10-25).
+  // rram_phy_wr takes one plaintext bus word per ack (word address addr_i, the host window's
+  // offset / 4; a word with a bus-integrity error is written as 0) and writes the array while
+  // busy_o is set.
+  // The array write itself is done when the macro reports done (done_i) while busy_o is set
+  // (rram_phy_wr's StWriteWait); busy_o also falls at a reset, which programs nothing. rram_wr_rst_n
+  // and rram_wr_disabled (the PHY's mubi disable, taken in its idle state, after which buffered
+  // words are never written) clear what the ISS wrapper holds. Review R10, 2026-10-25.
+`ifdef GATE_LEVEL
+  wire        rram_wr_clk  = 1'b0;
+  wire        rram_wr_word = 1'b0;
+  wire [31:0] rram_wr_addr = '0;
+  wire [31:0] rram_wr_data = '0;
+  wire        rram_wr_busy = 1'b0;
+  wire        rram_wr_done = 1'b0;
+  wire        rram_wr_rst_n = 1'b0;
+  wire        rram_wr_disabled = 1'b0;
+`else
+  wire        rram_wr_clk  = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.clk_i;
+  wire        rram_wr_word = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.ack_o &&
+                             (`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.part_i ==
+                              rram_ctrl_pkg::RramPartData);
+  wire [31:0] rram_wr_addr = 32'({`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.addr_i, 2'b00});
+  wire [31:0] rram_wr_data = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.data_intg_err_d ? '0 :
+                             `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.data_i[31:0];
+  wire        rram_wr_busy = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.busy_o;
+  wire        rram_wr_done = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.busy_o &&
+                             `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.done_i;
+  wire        rram_wr_rst_n = `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.rst_ni;
+  wire        rram_wr_disabled = prim_mubi_pkg::mubi4_test_true_loose(
+                                     `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_wr.disable_i);
+`endif
+
+  // Who else programs the RRAM's data partition (review R15, 2026-10-26): lc_ctrl's RMA request,
+  // during which rram_ctrl's lcmgr wipes the non-OTP data pages with LFSR data (rram_ctrl
+  // theory_of_operation.md "RMA Handling"); a programmed word then is the documented wipe, not a
+  // word the ISS wrapper must account for. The port of rram_ctrl, not its internals.
+  // The revocation engine's tag clears (review R18, 2026-10-26), for CHERIoT-Sail's tag memory, as
+  // the CHERIoT RTOS bench feeds them (cheriot_rtos_tb.sv): the engine presents a clear
+  // (tbre_clear_done, the capability's address), and it takes effect when cheriot_mem_sys's RMW
+  // filter accepts it, unless a core write to the same capability marked it stale meanwhile
+  // (cheriot_mem_sys theory_of_operation.md "Revocation Engine": "a capability written from then
+  // on until its clear is presented is not cleared"), when the RMW only reads the tag word.
+`ifdef GATE_LEVEL
+  wire        rram_rma_req = 1'b0;
+  wire        cms_clk = 1'b0;
+  wire        cms_tbre_clear_req = 1'b0;
+  wire [31:0] cms_tbre_clear_addr = '0;
+  wire        cms_tbre_clear_rmw = 1'b0;
+  wire        cms_tbre_clear_stale = 1'b0;
+`else
+  wire        rram_rma_req = lc_ctrl_pkg::lc_tx_test_true_loose(`RRAM_CTRL_HIER.rma_req_i);
+  wire        cms_clk              = `PD_MAIN_HIER.u_cheriot_mem_sys.clk_i;
+  wire        cms_tbre_clear_req   = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_done;
+  wire [31:0] cms_tbre_clear_addr  = 32'(`PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_addr);
+  wire        cms_tbre_clear_rmw   = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_at_rmw &&
+                                     `PD_MAIN_HIER.u_cheriot_mem_sys.rmw_tl_d2h.a_ready;
+  wire        cms_tbre_clear_stale = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_stale_q;
+`endif
+
   task static force_adc_d_o(input bit [9:0] channel_val);
     force `PD_AON_HIER.u_ast_part_secondary.adc_o.data = channel_val;
   endtask

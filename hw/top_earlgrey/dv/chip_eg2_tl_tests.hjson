@@ -1,0 +1,95 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// EG2 tl area (eg2_top_verification: status/test_writing_rules.md; spec REQ_TL_03, REQ_TL_04).
+// Software in sw/device/tests/eg2_tl/, sequences in env/seq_lib/ (chip_eg2_tl_vseq_list.sv).
+// Each test runs in both modes (`_cheriot`); every `_inject_fail` run must FAIL (REQ_STE_03:
+// Makefile MUST_FAIL_TESTS) and is in no regression list.
+{
+  tests: [
+    {
+      name: chip_sw_eg2_tl_errors
+      uvm_test_seq: chip_sw_eg2_tl_errors_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_errors:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_errors_inject_fail
+      uvm_test_seq: chip_sw_eg2_tl_errors_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_errors_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_errors_cheriot
+      uvm_test_seq: chip_sw_eg2_tl_errors_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_errors_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_errors_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_tl_errors_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_errors_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_intg_links
+      uvm_test_seq: chip_sw_eg2_tl_intg_links_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_intg_links:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_intg_links_inject_fail
+      uvm_test_seq: chip_sw_eg2_tl_intg_links_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_intg_links_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_intg_links_cheriot
+      uvm_test_seq: chip_sw_eg2_tl_intg_links_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_intg_links_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_tl_intg_links_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_tl_intg_links_vseq
+      sw_images: ["//sw/device/tests/eg2_tl:eg2_tl_intg_links_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+  ]
+  regressions: [
+    {
+      name: eg2_tl
+      tests: [
+        "chip_sw_eg2_tl_errors",
+        "chip_sw_eg2_tl_errors_cheriot",
+        "chip_sw_eg2_tl_intg_links",
+        "chip_sw_eg2_tl_intg_links_cheriot"
+      ]
+    }
+  ]
+}

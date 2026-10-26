@@ -302,8 +302,8 @@ module ibex_cheriot_ex import ibex_cheriot_pkg::*; import ibex_pkg::*; #(
                                                                  : rf_fullcap_a.top33[31:0];
             CFIELD_LEN:  result_data_o = cheriot_cap_length(rf_fullcap_a);
             CFIELD_TAG:  result_data_o = {31'h0, rf_fullcap_a.valid};
-            CFIELD_ADDR: result_data_o = rf_rdata_a;
-            CFIELD_HIGH: result_data_o = 32'(cheriot_cap_to_mem(rf_rcap_a));
+            CFIELD_ADDR:   result_data_o = rf_rdata_a;
+            CFIELD_HIGH:   result_data_o = 32'(cheriot_cap_to_mem(rf_rcap_a));
             default:     result_data_o = 32'h0;
           endcase
         end
@@ -342,7 +342,8 @@ module ibex_cheriot_ex import ibex_cheriot_pkg::*; import ibex_pkg::*; #(
       cheriot_operator_i.CSET_HIGH:         // cd <-- cs1; cd.high <-- convert(rs2)
         begin
           result_data_o        = rf_rdata_a;
-          result_cap_o         = cheriot_mem_to_cap({1'b0, rf_rdata_b}, {1'b0, rf_rdata_a}, 3'h0);
+          result_cap_o         = cheriot_mem_to_cap({1'b0, rf_rdata_b}, {1'b0, rf_rdata_a}, 3'h0,
+                                                    1'b0);
           cheriot_rf_we_raw    = 1'b1;
           cheriot_ex_valid_raw = 1'b1;
         end
@@ -978,6 +979,10 @@ module ibex_cheriot_ex import ibex_cheriot_pkg::*; import ibex_pkg::*; #(
   //  - what if the instruction gets faulted later in WB stage? Also fine since worst case
   //    even if HM is
   //    too aggressive we will just have to spend more time zeroing out more stack area.
+  //  - every request of a store counts, including the second half of a misaligned one. The
+  //    CHERIoT ISA updates mshwm from the lowest byte written only; this is the conservative
+  //    choice: a store starting below mshwmb that writes into [mshwmb, mshwm) lowers mshwm
+  //    too (lowRISC/earlgrey-internal-tracker#952).
 
   assign csr_mshwm_set_o = lsu_req_o & ~lsu_cheriot_err_o & lsu_we_o
                            & (lsu_addr_o[31:4] >= csr_mshwmb_i[31:4])

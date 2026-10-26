@@ -70,6 +70,8 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   logic              pad_in_dis_val = 1'bz;
   sw_logger_vif      sw_logger_vif;
   sw_test_status_vif sw_test_status_vif;
+  // The EG2 console's DV channel (eg2_dv_console_if.sv); chip_sw_eg2_base_vseq reads it.
+  virtual eg2_dv_console_if eg2_console_vif;
   ast_supply_vif     ast_supply_vif;
   ast_ext_clk_vif    ast_ext_clk_vif;
   usb20_vif          usb20_vif;
@@ -93,6 +95,11 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   rand jtag_dtm_reg_block   m_jtag_dtm_ral;
   rand spi_agent_cfg        m_spi_host_agent_cfg;
   rand i2c_agent_cfg        m_i2c_agent_cfgs[NUM_I2CS];
+
+  // EG2 scoreboard (eg2_scoreboard). The UARTs a test uses: a UART set here whose monitor saw
+  // nothing fails the run (REQ_STE_04). The EG2 sequences set UART0, the framework's console.
+  bit                      en_eg2_scb = 1'b1;
+  bit [NUM_UARTS-1:0]      eg2_sb_uart_required;
 
   // JTAG DMI register model
   rand jtag_dmi_reg_block jtag_dmi_ral;
@@ -225,6 +232,13 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
     // there can also be a pending response in the peripheral.
     // However, the actual ibex data port can only support 1 outstanding item.
     m_tl_agent_cfg.max_outstanding_req = 3;
+    // EG2: the agent stands in for the core, so it holds a presented request until a_ready, as
+    // Ibex's LSU does (data_req_o stays high until data_gnt_i). cheriot_mem_sys relies on it
+    // (CoredReqHeld_M: its revocation snoop watches a write from its presentation, so a retracted
+    // write could leave a revoked capability tagged); the agent's default drops a_valid
+    // (allow_a_valid_drop_wo_a_ready = 1), which failed chip_tl_errors on nyx 2026-10-24. Every
+    // build of this tree has cheriot_mem_sys, so this is not under an EG2 define (Henrik's decision).
+    m_tl_agent_cfg.allow_a_valid_drop_wo_a_ready = 1'b0;
 
     // Set the number of RAM tiles (1 each).
     num_ram_main_tiles = 1;

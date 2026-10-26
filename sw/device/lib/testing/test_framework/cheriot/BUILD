@@ -33,3 +33,39 @@ ld_library(
         "silicon_owner_slot_a",
     ]
 ]
+
+# OTTF in CHERIoT mode (eg2_top_verification, framework step 4; EG2 spec REQ_STE_02). Selected by
+# `//sw/device/lib/testing/test_framework:ottf_start` and `:ottf_isrs` on `//toolchain:isa_cheriot`
+# only; the RISC-V build of OTTF is unchanged.
+
+# OTTF's trap entry in CHERIoT mode: OTTF's frame and handlers, purecap underneath, and the
+# function that points MTCC at it.
+cc_library(
+    name = "ottf_isrs_cheriot",
+    srcs = ["ottf_isrs_cheriot.S"],
+    target_compatible_with = ["//toolchain:isa_cheriot"],
+    alwayslink = True,
+)
+
+# The start-up code: the EG2 framework's CHERIoT start-up code (mode switch and lock, CSP, CGP,
+# globals, capability relocations; the source is shared, not copied), then `eg2_cheriot_main`,
+# which here installs OTTF's trap entry and runs `_ottf_main`. The device capabilities the DIFs
+# need come from the EG2 window table (`eg2:dev`, `ot_cheriot_mmio_cap`).
+cc_library(
+    name = "ottf_start_cheriot",
+    srcs = [
+        "ottf_cheriot_main.c",
+        "//sw/device/lib/testing/eg2:cheriot/eg2_cheriot_start.S",
+    ],
+    target_compatible_with = ["//toolchain:isa_cheriot"],
+    deps = [
+        ":ottf_isrs_cheriot",
+        "//hw/top:rv_core_ibex_c_regs",
+        "//hw/top:sram_ctrl_c_regs",
+        "//hw/top:top_lib",
+        "//hw/top:uart_c_regs",
+        "//sw/device/lib/base:multibits",
+        "//sw/device/lib/testing/eg2:dev",
+    ],
+    alwayslink = True,
+)

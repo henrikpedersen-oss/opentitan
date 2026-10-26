@@ -14,13 +14,29 @@
 //   mechanism     what is forced, in words (the bench has the code)
 //   activation    when the mutant changes the design's behaviour; the bench counts those cycles,
 //                 and a run with none is INACTIVE (it says nothing about the checkers)
-//   tests         dvsim tests that must fail with it
-//   caught_by     regular expressions naming the check meant to catch it; a failed run whose log
-//                 matches one is CAUGHT, any other failure CAUGHT-OTHER
+//   tests         dvsim tests that must fail with it (chip tests that exist today)
+//   tests_new     optional: the tests that activate it and do not exist yet (the spec names them);
+//                 the grader lists a mutation without `tests` as NO TEST, it is not graded
+//   run_opts      optional: plusargs added to each of its runs (e.g. a pinned test parameter)
+//   targets       optional: the scoreboard checks (instances of eg2_inject_registry: "insn", "path",
+//                 a peripheral) the mutation is announced to in EG2 periph runs; each must report an
+//                 `EG2_SB <target> EXPECTED mismatch (injected by eg2_mutate <name>`, which the grader
+//                 takes as CAUGHT; a target that reports nothing logs `MISSED injection`
+//   caught_by     regular expressions naming the bench check meant to catch it (a scoreboard
+//                 message, an assertion, the alert agent, the status module's sweep where the spec
+//                 names it as the requirement's check); a failed run whose log matches one is
+//                 CAUGHT. Empty where the bench has no check of the requirement yet
+//   test_checks   optional: the test's own messages expected to fail it; a match is CAUGHT-OTHER
+//                 (the run measures the test, not the bench)
 //   must_not_log  optional: regular expressions that must not appear for a CAUGHT (the check
 //                 fires before that line would be printed)
+//
+// The four framework smoke tests are chip_sw_eg2_{status,dif}_smoketest[_cheriot].
 {
   mutations: [
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // The mode switch
+    //////////////////////////////////////////////////////////////////////////////////////////////
     {
       name: cheriot_ena_core_stuck_false
       requirements: ["REQ_SOC_05"]
@@ -29,11 +45,40 @@
       mechanism: "rv_core_ibex.cheriot_enable_ibex forced Off: core, shadow core and TRVK stay in RISC-V mode while cheriot_mem_sys sees CHERIoT"
       activation: "cheriot_ena_o is MuBi4True"
       tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
-      // The start-up code's mode check fails before the console is up: it writes the failure
-      // word in RISC-V mode and prints nothing, so the run's only trace is the failed status
-      // without the line "EG2 test, CHERIoT mode".
-      caught_by: ["SW TEST FAILED"]
+      // The requirement's check is the SVA Eg2ModeConsistent_A (spec "Top-Level Assertions",
+      // not written yet). The start-up code's mode check fails before the console is up: it
+      // writes the failure word in RISC-V mode and prints nothing, so the run's only trace is the
+      // failed status without the line "EG2 test, CHERIoT mode".
+      caught_by: ["Eg2ModeConsistent_A"]
+      test_checks: ["SW TEST FAILED"]
       must_not_log: ["EG2 test, CHERIoT mode"]
+    }
+    {
+      name: cheriot_ena_tag_filter_stuck_false
+      requirements: ["REQ_SOC_05"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "cheriot_mem_sys.u_cheriot_tag_filter.require_lookup forced 0: the core's tag filter behaves as in RISC-V mode (no tag lookup, no tag write) while the core is in CHERIoT mode"
+      activation: "CHERIoT on and a core access to tagged memory the filter would look up: a write, or an aligned read with the capability hint"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // Every CLC returns tag 0: CHERIoT-Sail loads the tag from its own memory.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch", "Eg2ModeConsistent_A"]
+      test_checks: ["CTRAP 0000001c"]
+    }
+    {
+      name: cheriot_ena_trvk_check_stuck_false
+      requirements: ["REQ_SOC_05"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "cheriot_mem_sys.u_cheriot_access_check_trvk.allow_forward forced 0: the access check of the core's bitmap port behaves as in RISC-V mode and answers every bitmap read with an error"
+      activation: "CHERIoT on and a bitmap request from the core's TRVK"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // The TRVK treats the error as revoked (tag cleared) and raises alert_major_bus, so the
+      // core's fatal alert may stop the run first: that is CAUGHT-OTHER.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch", "Eg2ModeConsistent_A"]
+      test_checks: ["CTRAP 0000001c"]
     }
     {
       name: cheriot_lock_ignored
@@ -43,9 +88,29 @@
       mechanism: "u_cheriot_switch's next state forced so a locked switch takes a second lock: CHERIOT_ENA stays writable after CHERIOT_LOCK"
       activation: "a lock request while the switch is already locked"
       tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
-      // The status module's second lock attempt (eg2_status.c, check_core).
-      caught_by: ["STATUS mode switch not locked"]
+      // The core returns to RISC-V mode after the status module's second lock (eg2_status.c,
+      // check_core) while CHERIoT-Sail keeps executing CHERIoT.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+      test_checks: ["STATUS mode switch not locked"]
     }
+    {
+      name: reg_tag_not_cleared_at_switch
+      requirements: ["REQ_SOC_07"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "at the switch to CHERIoT mode, the capability half of x4 (register file g_rf_shared_flops[4]) is set to the tagged memory root, as if the zero-extension of x20 had not cleared its tag; it stays until x4 is written"
+      activation: "x4 read as a source register in CHERIoT mode before its first write"
+      tests: ["chip_sw_cheriot_handover"]
+      // The start-up code writes every register it reads; only a test that reads the handover
+      // state (CGetTag of every register) activates it.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // Core to cheriot_mem_sys: TL-UL, the tag sideband, corerevbm_tl
+    //////////////////////////////////////////////////////////////////////////////////////////////
     {
       name: load_tag_dropped
       requirements: ["REQ_CMS_10"]
@@ -54,7 +119,20 @@
       mechanism: "rv_core_ibex.main_core_data_tag_d2h forced 0: every load returns tag 0 to both cores"
       activation: "a response from cheriot_mem_sys carries tag 1 (cored_tag_d2h_i)"
       tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
-      caught_by: ["CTRAP 0000001c"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+      test_checks: ["CTRAP 0000001c"]
+    }
+    {
+      name: load_tag_set
+      requirements: ["REQ_CMS_10", "REQ_CMS_18"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "rv_core_ibex.main_core_data_tag_d2h forced 1: every load returns tag 1 to both cores, so a capability load of untagged memory forges a capability"
+      activation: "a capability load (read with the tag hint) answered with tag 0 by cheriot_mem_sys"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot", "chip_sw_cheriot_tag_roundtrip"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
     }
     {
       name: store_tag_dropped
@@ -64,8 +142,105 @@
       mechanism: "cheriot_tag_filter.tag_m_o keeps only the TBRE's tag: a capability store writes tag 0 to the meta SRAM"
       activation: "a core write with tag 1 reaches the tag filter"
       tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
-      caught_by: ["CTRAP 0000001c"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+      test_checks: ["CTRAP 0000001c"]
     }
+    {
+      name: cheriot_store_lane_flip
+      requirements: ["REQ_CIB_06"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "the load/store unit's aligned write data (wdata_int) of both cores has bit 0 of its lowest enabled byte lane flipped in CHERIoT mode: an integer store's bus data differs from the instruction's, RVFI keeps the instruction's"
+      activation: "an integer store request in CHERIoT mode"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // Review R18, 2026-10-26: each claimed bus store's bytes against CHERIoT-Sail's
+      // (check_bus_stores). No targets: a later load of the byte also mismatches, which alone
+      // grades CAUGHT-OTHER.
+      caught_by: ["EG2_SB insn mismatch at .*bus store bytes differ"]
+    }
+    {
+      name: revbm_rsp_ignored
+      requirements: ["REQ_CMS_11"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "the TRVK's revbm_revoked forced 0: the bitmap response (bit, error, integrity error) is ignored and a revoked capability keeps its tag"
+      activation: "a bitmap response whose selected bit or error marks the capability revoked"
+      tests: ["chip_sw_cheriot_revocation"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: revbm_index_off_by_one
+      requirements: ["REQ_CMS_11"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "the TRVK's revbm_bit_select forced to the next granule's bit: the revocation of a capability is read one granule off"
+      activation: "a bitmap response whose bit for the capability's granule differs from the next granule's"
+      tests: ["chip_sw_cheriot_revocation"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: tl_cored_bad_opcode
+      requirements: ["REQ_TL_02"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "rv_core_ibex.tl_d_fifo2gate.a_opcode forced to an undefined opcode for one core data request (after 20000 cycles out of reset; +eg2_mutate_cycle)"
+      activation: "the core data request that carried the undefined opcode"
+      tests: ["chip_sw_eg2_status_smoketest"]
+      // 2026-10-25: rv_core_ibex_bind is a sim_top of the chip build (chip_sim_cfg.hjson), so the
+      // check is active: the host-side tlul_assert it puts on cored_tl (instance
+      // tlul_assert_host_data, EndpointType Host). The forced opcode leaves the fifo before the
+      // life-cycle gate and reaches cored_tl_h_o unchanged. The device's command integrity check
+      // may fail the run as well. No EG2_SB check is aimed at it, so no targets.
+      targets: []
+      // prim_assert.sv ASSERT_ERROR reports `[ASSERT FAILED] <name>` under UVM, without the
+      // instance; the _A suffix is the host side's (a device-side tlul_assert has no legalAOpcode).
+      caught_by: ["\\[ASSERT FAILED\\] legalAOpcode_A"]
+    }
+    {
+      name: tl_revbm_rsp_without_req
+      requirements: ["REQ_TL_02"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "cheriot_mem_sys.u_cheriot_access_check_trvk.tl_h_o.d_valid (behind corerevbm_tl_o) forced 1 for one cycle with no bitmap request outstanding (after 20000 cycles out of reset; +eg2_mutate_cycle)"
+      activation: "the cycle the unsolicited response was presented"
+      tests: ["chip_sw_eg2_status_smoketest"]
+      // The TRVK's own RevbmRspOnlyWhenOutstanding_A may fire too; the run is CAUGHT only through
+      // the bound protocol checker: the host-side tlul_assert rv_core_ibex_bind puts on
+      // corerevbm_tl (instance tlul_assert_host_revbm; on the host side the response checks are
+      // assume properties, which simulation checks like assertions). Active since 2026-10-25
+      // (rv_core_ibex_bind a sim_top of the chip build). No EG2_SB check is aimed at it, so no
+      // targets.
+      targets: []
+      // `[ASSERT FAILED] <name>` (no instance under UVM); _M is the host side's (respMustHaveReq_A
+      // the device side's).
+      caught_by: ["\\[ASSERT FAILED\\] respMustHaveReq_M"]
+    }
+    {
+      name: tl_meta_two_pending
+      requirements: ["REQ_TL_02"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "cheriot_mem_sys.u_tlul_socket_m1.tl_d_o.a_source (behind meta_sram_tl_o) forced to the source of a pending meta SRAM request, for one new request"
+      activation: "a meta SRAM request accepted on a source still pending"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // 2026-10-25: cheriot_mem_sys_bind is in the chip build and a sim_top (chip_sim.core,
+      // chip_sim_cfg.hjson). The check is the host-side tlul_assert it puts on meta_sram_tl
+      // (instance tlul_assert_host_meta_sram, EndpointType Host; u_tlul_socket_m1.tl_d_o is
+      // meta_sram_tl_o). sram_ctrl_bind's device-side pendingReqPerSrc_M would see it too, but
+      // sram_ctrl_bind is not a sim_top and the requirement names the host side. No EG2_SB check
+      // is aimed at it, so no targets.
+      targets: []
+      // `[ASSERT FAILED] <name>` (no instance under UVM); _A is the host side's (pendingReqPerSrc_M
+      // the device side's).
+      caught_by: ["\\[ASSERT FAILED\\] pendingReqPerSrc_A"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // The on-chip network: xbar_main, xbar_peri
+    //////////////////////////////////////////////////////////////////////////////////////////////
     {
       name: xbar_peri_uart1_to_uart2
       requirements: ["REQ_PER_01"]
@@ -74,19 +249,439 @@
       mechanism: "xbar_peri socket u_s1n_25 routes UART1's device select to UART2"
       activation: "a request to UART1 enters xbar_peri"
       tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest", "chip_sw_eg2_dif_smoketest_cheriot"]
-      caught_by: ["STATUS (missing|unexpected) (interrupt|alert)", "step FAILED: UART1 loopback"]
+      // The path check of the EG2 periph runs (eg2_periph_path_check.sv): the core's accesses to UART1
+      // (RVFI) never arrive at UART1's port, and accesses nobody made to it arrive at UART2's.
+      targets: ["path"]
+      caught_by: ["EG2_SB path EXPECTED mismatch \\(injected by eg2_mutate xbar_peri_uart1_to_uart2"]
+      test_checks: ["STATUS (missing|unexpected) (interrupt|alert)", "step FAILED: UART1 loopback"]
     }
     {
       name: xbar_peri_unmapped_no_error
-      requirements: ["REQ_PER_02"]
+      requirements: ["REQ_TL_03"]
       kind: rtl
       interface: noc
-      mechanism: "xbar_peri's error responder answers an unmapped address without d_error"
+      mechanism: "xbar_peri's error responder (u_s1n_25.gen_err_resp.err_resp.tl_h_o_int.d_error, before its response integrity is generated) answers an unmapped address without d_error"
       activation: "the error responder answers a request"
+      tests: ["chip_tl_errors", "chip_sw_eg2_tl_errors"]
+      caught_by: ["unexpected error response for addr"]
+      test_checks: ["unmapped"]
+    }
+    {
+      name: xbar_main_unmapped_no_error
+      requirements: ["REQ_TL_03"]
+      kind: rtl
+      interface: noc
+      mechanism: "xbar_main's error responder on the core data socket (u_s1n_41.gen_err_resp.err_resp.tl_h_o_int.d_error) answers an unmapped address without d_error"
+      activation: "the error responder answers a request"
+      tests: ["chip_tl_errors", "chip_sw_eg2_tl_errors"]
+      caught_by: ["unexpected error response for addr"]
+    }
+    {
+      name: xbar_main_unmapped_to_rom
+      requirements: ["REQ_TL_03"]
+      kind: rtl
+      interface: noc
+      mechanism: "xbar_main's core data socket u_s1n_41 decodes an unmapped address to the ROM (device 0) instead of its error responder (device 31)"
+      activation: "a request to an unmapped address enters u_s1n_41"
+      tests: ["chip_tl_errors", "chip_sw_eg2_tl_errors"]
+      caught_by: ["unexpected error response for addr"]
+    }
+    {
+      name: xbar_main_tbre_rsp_to_core
+      requirements: ["REQ_CMS_09"]
+      kind: rtl
+      interface: noc
+      mechanism: "xbar_main's sram_ctrl_main socket u_sm1_38 (tl_d_i.d_source) routes a response for the TBRE (host 2) to the core's data host (host 1)"
+      activation: "sram_ctrl_main answers a TBRE read"
+      tests: ["chip_sw_cheriot_tbre_sweep_irq"]
+      // The core's data host gets a response it never asked for: the host-side protocol checker
+      // on cored_tl (cheriot_mem_sys_bind, tlul_assert_host_cored; in the chip build and a
+      // sim_top since 2026-10-25). xbar_main_bind's device-side checker on the same port would
+      // report it as respMustHaveReq_A.
+      caught_by: ["respMustHaveReq_M"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // sram_ctrl main, sec, ret and meta
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: sram_main_rdata_flip_cheriot
+      requirements: ["REQ_CMS_10"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_main.sram_rdata (the adapter's read data) has bit 0 flipped and its integrity re-encoded to match, in CHERIoT mode"
+      activation: "a main SRAM read returns data in CHERIoT mode"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // Integer loads are events to the model; a capability load is checked against
+      // CHERIoT-Sail's own memory.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: sram_main_rdata_flip_riscv
+      requirements: ["REQ_CMS_10"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_main.sram_rdata (the adapter's read data) has bit 0 flipped and its integrity re-encoded to match, in RISC-V mode"
+      activation: "a main SRAM read returns data in RISC-V mode"
+      tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_dif_smoketest"]
+      // The main SRAM holds data only here (code runs from ROM and RRAM), so only loads see the
+      // flip. Until 2026-10-25 (review R6) every load's value was given to Spike from the chip;
+      // now a load from memory Spike holds is compared with Spike's own copy. That it passed
+      // before is not shown (review R19, 2026-10-26: the software probably failed on the flipped
+      // data anyway): a must-fail, not evidence the old bench missed it.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: sram_ret_otp_key_not_taken
+      requirements: ["REQ_OTP_02"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_ret's key_d and nonce_d forced to its current key and nonce: a key renewal is acknowledged but the new OTP key is not taken"
+      activation: "a key renewal of sram_ctrl_ret is acknowledged (key_ack)"
+      tests: ["chip_sw_sram_ctrl_scrambled_access", "chip_sw_sram_ctrl_scrambled_access_cheriot", "chip_sw_sram_ctrl_meta"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: meta_init_not_zeroing
+      requirements: ["REQ_CMS_15"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_meta's init_data forced to all ones (its integrity encoded from it): INIT sets every tag and every revocation bit"
+      activation: "sram_ctrl_meta initialises a word (init_req)"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: sram_main_exec_enable_ignored
+      requirements: ["REQ_SRAM_01"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_main's adapter instr_error forced 0: a fetch is answered although the execution enable refuses it"
+      activation: "a fetch reaches sram_ctrl_main while its execution enable is false"
+      tests: ["chip_sw_sram_ctrl_execution_main", "chip_sw_sram_ctrl_execution_main_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: meta_intg_not_escalated
+      requirements: ["REQ_CMS_13"]
+      kind: rtl
+      interface: sram
+      mechanism: "cheriot_mem_sys's fatal_fault sender (u_prim_alert_sender_fatal_fault.alert_req_i) ignores the meta SRAM integrity errors (meta_sram_intg, meta_sram_data_intg)"
+      activation: "the RMW filter reports a meta SRAM response or data integrity error"
+      tests: ["chip_sw_cheriot_meta_intg_escalation"]
+      caught_by: ["STATUS missing alert cheriot_mem_sys_fatal_fault"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // rram_ctrl host and controller
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: rram_host_rdata_flip
+      requirements: ["REQ_RRAM_01"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl.host_rd_data (the host adapter's read data) has bit 0 flipped and its integrity re-encoded to match"
+      activation: "a host read returns data"
       tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest", "chip_sw_eg2_dif_smoketest_cheriot"]
-      // No test reaches an unmapped peripheral address yet: expected MISSED until the
-      // capability-fault random test (REQ_PBF_13) does.
-      caught_by: ["unmapped"]
+      // The first corrupted fetch: Spike fetches from its own copy of the image.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: rram_exec_ignored
+      requirements: ["REQ_RRAM_02"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl's host adapter instr_error forced 0: a fetch is answered although EXEC (or the RRAM disable) refuses it"
+      activation: "a fetch reaches the host port while its execution enable is false"
+      tests: ["chip_sw_rram_exec_en"]
+      // Spike fetches from any address, so the instruction check cannot see a missing fault.
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: rram_host_write_accepted
+      requirements: ["REQ_RRAM_03"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl's host adapter wr_vld_error forced 0: a host write is answered without d_error"
+      activation: "a write request reaches the host port"
+      // chip_tl_errors activates it only if the chip RAL maps the RRAM host window as a memory.
+      tests: ["chip_tl_errors", "chip_sw_rram_host_wr_reject"]
+      caught_by: ["unexpected error response for addr"]
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: rram_rd_buf_stale
+      requirements: ["REQ_RRAM_05"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_phy_rd's buf_invalidate forced 0: a controller write leaves the read buffers of its page valid"
+      activation: "a controller write to a page a valid read buffer holds"
+      tests: ["chip_sw_rram_write_then_fetch"]
+      // The co-simulation does not see controller writes (Spike fetches its own image): the
+      // test's own check, until the model follows rram_ctrl programming.
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: rram_uncorr_err_not_raised
+      requirements: ["REQ_RRAM_10"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl.phy_relbl_err forced 0: an uncorrectable ECC error never sets FAULT_STATUS.PHY_RELBL_ERR nor fatal_err"
+      activation: "the read path sees an uncorrectable ECC error"
+      tests: ["chip_sw_rram_uncorr_fetch"]
+      caught_by: ["STATUS missing alert rram_ctrl_fatal_err"]
+    }
+    {
+      name: rram_wr_data_flip
+      requirements: ["REQ_RRAM_05", "REQ_RRAM_13"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl.wr_data (rram_ctrl_wr's word to the PHY) has bit 0 flipped and its integrity re-encoded while software operations are selected: a controller Write programs a word the core never sent"
+      activation: "the PHY's write path accepts a word of a software Write (sw_sel and ack_o)"
+      tests: ["chip_sw_rram_write_then_fetch", "chip_sw_rram_write_then_fetch_cheriot"]
+      // Review R15, 2026-10-26: the ISS wrapper compares the PHY's word with the word the core's
+      // store sent (resolve_rram_programmed). No targets: the later fetch of the corrupted code
+      // also fails, which alone would grade CAUGHT-OTHER.
+      caught_by: ["EG2_ISS rram_ctrl programmed [0-9a-f]{8} with"]
+    }
+    {
+      name: rram_rewrite_data_flip
+      requirements: ["REQ_RRAM_09"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl.wr_data has bit 0 flipped and its integrity re-encoded while the Rewrite loopback is selected: a Rewrite writes back a wrong word with fresh ECC"
+      activation: "the PHY's write path accepts a word of a Rewrite (hw_loopback_sel and ack_o)"
+      tests: ["chip_sw_rram_ecc_corr_rewrite"]
+      // Review R15, 2026-10-26: the Rewrite's word is compared with the model's own (corrected)
+      // word; before, the wrapper adopted the PHY's word and only the software's read-back saw it.
+      caught_by: ["EG2_ISS rram_ctrl's Rewrite programmed"]
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: rram_host_otp_page_reachable
+      requirements: ["REQ_RRAM_16"]
+      kind: rtl
+      interface: rram
+      mechanism: "rram_ctrl.host_region_cfgs[0], the hardwired OTP exclusion, forced to allow reads: the OTP pages are readable from the host"
+      activation: "a host read of an OTP page"
+      tests: ["chip_sw_rram_otp_isolation"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // otp_ctrl
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: otp_dai_rdata_words_swapped
+      requirements: ["REQ_OTP_01"]
+      kind: rtl
+      interface: otp
+      mechanism: "otp_ctrl_dai.dai_rdata_o forced to the working register with its two 32-bit words swapped: DIRECT_ACCESS_RDATA_0 returns the neighbouring word"
+      activation: "a direct-access read command is accepted"
+      tests: ["chip_sw_otp_ctrl_dai_lock", "chip_sw_otp_ctrl_dai_lock_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: otp_dai_lock_ignored
+      requirements: ["REQ_OTP_01"]
+      kind: rtl
+      interface: otp
+      mechanism: "otp_ctrl_dai.part_access_i forced to every partition unlocked: the DAI ignores read and write locks"
+      activation: "a direct-access command to a partition that is read- or write-locked"
+      tests: ["chip_sw_otp_ctrl_dai_lock", "chip_sw_otp_ctrl_dai_lock_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: otp_dai_ecc_error_suppressed
+      requirements: ["REQ_OTP_01"]
+      kind: rtl
+      interface: otp
+      mechanism: "otp_ctrl_dai's otp_err forced to NoError: an ECC error on a direct-access read is not reported"
+      activation: "the OTP macro answers a DAI read with an ECC error"
+      tests: ["chip_sw_otp_ctrl_dai_ecc_error"]
+      caught_by: []
+    }
+    {
+      name: otp_sram_key_ack_misrouted
+      requirements: ["REQ_OTP_02"]
+      kind: rtl
+      interface: otp
+      mechanism: "otp_ctrl_kdi's acknowledgement for sram_ctrl_meta's key (slot 3) delivered to sram_ctrl_main (slot 0): main takes the meta key, meta never gets one"
+      activation: "the key derivation grants sram_ctrl_meta's request"
+      // The CHERIoT start-up code renews the meta SRAM key: main SRAM (the stack) is re-keyed
+      // under the software and the meta init never completes.
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot", "chip_sw_sram_ctrl_meta"]
+      caught_by: []
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // rv_dm
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: rv_dm_lc_gate_open
+      requirements: ["REQ_CDM_05"]
+      kind: rtl
+      interface: rv_dm
+      mechanism: "rv_dm's synchronised pinmux_hw_debug_en (gen_jtag_gating.pinmux_hw_debug_en) forced On: the TAP and DMI work in a life-cycle state that disables debug"
+      activation: "a JTAG TCK edge while pinmux_hw_debug_en_i is not On"
+      tests: ["chip_rv_dm_lc_disabled", "chip_rv_dm_lc_disabled_cheriot"]
+      caught_by: ["RV_DM sbaddress0 read back check failed"]
+    }
+    {
+      name: rv_dm_sba_write_to_sec_sram
+      requirements: ["REQ_CDM_06"]
+      kind: rtl
+      interface: rv_dm
+      mechanism: "xbar_main's SBA socket u_s1n_75 decodes an SBA write to sram_ctrl_main.ram (device 4) to sram_ctrl_sec.ram (device 5)"
+      activation: "an SBA write to the main SRAM enters u_s1n_75"
+      tests: ["chip_jtag_mem_access", "chip_sw_rv_dm_sba_cheriot_mode"]
+      caught_by: ["read back check for offset"]
+    }
+    {
+      name: rv_dm_sba_rdata_flipped
+      requirements: ["REQ_CDM_06"]
+      kind: rtl
+      interface: rv_dm
+      mechanism: "rv_dm.host_r_rdata (the SBA adapter's read data) has bit 0 flipped after the adapter's integrity check"
+      activation: "an SBA read response"
+      tests: ["chip_jtag_mem_access", "chip_sw_rv_dm_sba_cheriot_mode"]
+      caught_by: ["read back check for offset"]
+    }
+    {
+      name: rv_dm_sba_error_suppressed
+      requirements: ["REQ_TL_03"]
+      kind: rtl
+      interface: rv_dm
+      mechanism: "rv_dm.host_r_err forced 0: an SBA access answered with d_error does not set sberror"
+      activation: "an SBA response with d_error"
+      tests: ["chip_rv_dm_sba_tl_errors"]
+      caught_by: []
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // rv_plic
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: rv_plic_claim_id_neighbour
+      requirements: ["REQ_PER_03"]
+      kind: rtl
+      interface: rv_plic
+      mechanism: "rv_plic's CC0 read value (u_reg.hw2reg.cc0.d) is the claimed ID with bit 0 inverted: a source is delivered under its neighbour's ID"
+      activation: "a claim (CC0 read) of a non-zero ID"
+      tests: ["chip_sw_rv_plic_smoketest", "chip_plic_all_irqs_0", "chip_plic_all_irqs_0_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+    {
+      name: rv_plic_masked_irq_let_through
+      requirements: ["REQ_PER_03"]
+      kind: rtl
+      interface: rv_plic
+      mechanism: "rv_plic's target 0 (gen_target[0].u_target.ie_i) sees every source enabled: a disabled source interrupts the core"
+      activation: "a pending source that is disabled and above the threshold"
+      tests: ["chip_plic_all_irqs_0", "chip_plic_all_irqs_0_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // Alerts and escalation
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: alert_rram_recov_err_dropped
+      requirements: ["REQ_SEC_19", "REQ_RRAM_22"]
+      kind: rtl
+      interface: alerts
+      mechanism: "the alert handler's classifier input for alert 35 (rram_ctrl_recov_err, u_class.alert_trig_i[35]) forced 0: the alert's handshake completes but it never sets its cause"
+      activation: "rram_ctrl_recov_err's receiver reports the alert"
+      // eg2_status_smoketest raises the alert its parameter names: pinned to this one.
+      run_opts: ["+eg2_param_alert=35"]
+      tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot", "chip_sw_alert_test"]
+      caught_by: ["STATUS missing alert rram_ctrl_recov_err"]
+      test_checks: ["step FAILED: alert arrived", "CHECK-fail"]
+    }
+    {
+      name: escalation_to_core_dropped
+      requirements: ["REQ_SEC_19"]
+      kind: rtl
+      interface: alerts
+      mechanism: "rv_core_ibex.esc_irq_nm (the escalation receiver's request) forced 0: escalation phase 0 never reaches the core's NMI"
+      activation: "the core's escalation receiver requests escalation"
+      tests: ["chip_sw_alert_handler_escalation", "chip_sw_alert_handler_escalation_cheriot"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // End-to-end bus integrity
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: core_bus_intg_check_disabled
+      requirements: ["REQ_CMS_18", "REQ_RRAM_12"]
+      kind: rtl
+      interface: bus_integrity
+      mechanism: "rv_core_ibex.alert_major_bus forced 0: the cores' data and fetch integrity checks (and the TRVK's bitmap checks) raise nothing"
+      activation: "the core, the shadow core or the TRVK reports an integrity error"
+      tests: ["chip_sw_data_integrity_escalation", "chip_sw_cheriot_bus_intg", "chip_sw_rram_host_intg"]
+      caught_by: []
+      test_checks: ["CHECK-fail"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // Lockstep
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: lockstep_shadow_output_glitch
+      requirements: ["REQ_CIB_03"]
+      kind: rtl
+      interface: lockstep
+      // The hardware must detect this one: the lockstep comparator raises alert_major_internal,
+      // rv_core_ibex sends fatal_hw_err and stops fetching, so the run fails; the alert agent's
+      // report of the alert is the check.
+      mechanism: "the shadow core's core_busy_o inverted for 3 cycles (20000 cycles after the lockstep comparison is enabled; +eg2_mutate_cycle)"
+      activation: "a cycle in which the shadow output was inverted with the comparison enabled"
+      tests: ["chip_sw_eg2_status_smoketest", "chip_sw_eg2_status_smoketest_cheriot"]
+      caught_by: ["EG2_ALERT rv_core_ibex_fatal_hw_err"]
+    }
+    {
+      name: lockstep_comparator_disabled
+      requirements: ["REQ_CIB_03"]
+      kind: rtl
+      interface: lockstep
+      mechanism: "ibex_lockstep.outputs_mismatch forced 0: a divergence of the shadow core goes unreported"
+      activation: "the comparison is enabled and the shadow core's outputs differ from the main core's"
+      tests: ["chip_sw_rv_core_ibex_lockstep_glitch", "chip_sw_rv_core_ibex_lockstep_glitch_cheriot"]
+      // The glitch sequence's own check of the lockstep's alert_major_internal_o.
+      caught_by: ["Major alert did not match expectation"]
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // Peripherals in CHERIoT mode
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    {
+      name: aes_data_out_byte_swap_cheriot
+      requirements: ["REQ_PER_04", "REQ_PBF_10"]
+      kind: rtl
+      interface: peripherals
+      mechanism: "aes's DATA_OUT_0 read value (u_reg.hw2reg.data_out[0].d) byte-swapped in CHERIoT mode"
+      activation: "software reads DATA_OUT_0 in CHERIoT mode"
+      tests: ["chip_sw_aes_enc_cheriot"]
+      // The co-simulation build takes register reads as events: only the SystemC model's load
+      // prediction (en_eg2_model) makes this an instruction-check catch.
+      targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+      test_checks: ["CHECK-fail"]
     }
   ]
 }

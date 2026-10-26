@@ -18,8 +18,8 @@
  * Please see the description of log_fields_t in log.h for more details.
  */
 #ifndef __CHERIOT__
-// In a CHERIoT build the pointers are 8-byte capabilities and the DV bypass is
-// not used (log.h).
+// In a CHERIoT build the pointers are 8-byte capabilities; its DV bypass uses
+// log_fields_dv_t (log.h).
 static_assert(sizeof(log_fields_t) == 20,
               "log_fields_t must always be 20 bytes.");
 #endif
@@ -98,3 +98,58 @@ void base_log_internal_dv(const log_fields_t *log, uint32_t nargs, ...) {
   }
   va_end(args);
 }
+
+#ifdef __CHERIOT__
+// The CHERIoT (purecap) `LOG` (log.h): no pointer is kept in a global.
+
+static_assert(sizeof(log_fields_dv_t) == 20,
+              "log_fields_dv_t must be 20 bytes, as log_fields_t.");
+
+void base_log_internal_dv_cheriot(uint32_t log_fields_addr) {
+  // `_dv_log_offset` is an absolute symbol of the linker script: its value as
+  // an integer, so no capability is formed to it.
+  uint32_t dv_log_offset;
+  asm("lui %0, %%hi(_dv_log_offset)\n"
+      "addi %0, %0, %%lo(_dv_log_offset)"
+      : "=r"(dv_log_offset));
+  mmio_region_t log_device =
+      mmio_region_from_addr(device_log_bypass_uart_address());
+  mmio_region_write32(log_device, 0x0, log_fields_addr + dv_log_offset);
+}
+
+void base_log_internal_dv_word_cheriot(uint32_t word) {
+  mmio_region_t log_device =
+      mmio_region_from_addr(device_log_bypass_uart_address());
+  mmio_region_write32(log_device, 0x0, word);
+}
+
+void base_log_internal_cheriot(log_severity_t severity, const char *file_name,
+                               uint32_t line, const char *format, ...) {
+  // Byte by byte, not memchr(file_name, '\0', PTRDIFF_MAX): memchr reads whole words, and the last
+  // one runs past the bounds of the string's capability (a bounds fault in every LOG through the
+  // console, regr-vlt 2026-10-25: eg2_ottf_smoke_cheriot hung on its first LOG).
+  size_t file_name_len = 0;
+  while (file_name[file_name_len] != '\0') {
+    ++file_name_len;
+  }
+  const char *base_name = memrchr(file_name, '/', file_name_len);
+  if (base_name == NULL) {
+    base_name = file_name;
+  } else {
+    ++base_name;  // Remove the final '/'.
+  }
+
+  static uint16_t global_log_counter = 0;
+
+  base_printf("%s%05d %s:%d] ", stringify_severity(severity),
+              global_log_counter, base_name, line);
+  ++global_log_counter;
+
+  va_list args;
+  va_start(args, format);
+  base_vprintf(format, args);
+  va_end(args);
+
+  base_printf("\r\n");
+}
+#endif  // __CHERIOT__

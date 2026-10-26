@@ -368,6 +368,21 @@
       local:   "false"
       expose:  "true"
     },
+    // 2026-10-25 (EG2 F38): the TRVK's window from the bitmap's real size, not its width rounded
+    // up to a power of two.
+    { name:    "CheriotRevBitmapSizeBytes"
+      type:    "int unsigned"
+      default: "0"
+      desc:    '''
+               Size of the TRVK revocation bitmap in bytes, at most 2^CheriotRevBitmapAddrWidth.
+               0 means the whole 2^CheriotRevBitmapAddrWidth bytes, so a top that sets only the
+               width keeps the window that width addresses.
+               Capabilities based at or above the heap base plus 64 times this size are not
+               looked up and never revoked.
+               '''
+      local:   "false"
+      expose:  "true"
+    },
     { name:    "CheriotTrvkHeapBaseAddr"
       type:    "int unsigned"
       default: "0"

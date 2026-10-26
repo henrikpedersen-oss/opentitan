@@ -77,6 +77,10 @@ package chip_env_pkg;
   typedef virtual ast_supply_if        ast_supply_vif;
   typedef virtual ast_ext_clk_if       ast_ext_clk_vif;
   typedef virtual usb20_if             usb20_vif;
+  typedef virtual eg2_rvfi_if          eg2_rvfi_vif;
+
+  // Width of a register-format CHERIoT capability (ibex_cheriot_pkg::cap_t), bit 32 the tag.
+  localparam uint EG2_CAP_W = 35;
 
   // Types of memories in the chip.
   //
@@ -173,10 +177,36 @@ package chip_env_pkg;
   } spi_flash_cmd_e;
 
   // package sources
+  // EG2, every build: the stub CPU's TL sequences hold their requests (F26).
+  `include "eg2_tl_hold_custom_seq.sv"
+`ifdef EG2_PERIPH_SB
+  // EG2 per-peripheral scoreboards (build mode en_eg2_periph): the injection registry, the logs
+  // and the items, used by the classes below them too.
+  `include "eg2_inject_registry.sv"
+  `include "eg2_sb_log.sv"
+  `include "eg2_periph_items.sv"
+  `include "eg2_periph_cov.sv"
+`endif
   `include "chip_env_cfg.sv"
   `include "chip_env_cov.sv"
   `include "chip_virtual_sequencer.sv"
   `include "chip_scoreboard.sv"
+  `include "eg2_rvfi_item.sv"
+  `include "eg2_rvfi_agent.sv"
+`ifdef EG2_SYSMODEL
+  `include "eg2_sysmodel.sv"
+`endif
+  `include "eg2_iss_wrapper.sv"
+  `include "eg2_scoreboard.sv"
+`ifdef EG2_PERIPH_SB
+  `include "eg2_periph_monitors.sv"
+  `include "eg2_device_monitors.sv"
+  `include "eg2_sysmon_monitors.sv"
+  `include "eg2_periph_sb_base.sv"
+  `include "eg2_periph_sbs.sv"
+  `include "eg2_periph_path_check.sv"
+  `include "eg2_periph_env.sv"
+`endif
   `include "chip_env.sv"
   `include "chip_vseq_list.sv"
 

@@ -96,6 +96,7 @@ Instantiation Template
       .PMPRstAddr                   ( ibex_pkg::PmpAddrRst             ),
       .PMPRstMsecCfg                ( ibex_pkg::PmpMseccfgRst          ),
       .CheriotRevBitmapAddrWidth    ( 32'd11                           ),
+      .CheriotRevBitmapSizeBytes    ( 32'd1 << 11                      ),
       .CheriotRevBitmapBaseAddr     ( 32'h0                            ),
       .RV32E                        ( 1'b0                             ),
       .RV32M                        ( ibex_pkg::RV32MFast              ),
@@ -299,6 +300,9 @@ Parameters
 +----------------------------------+---------------------+-------------------------+----------------------------------------------------------------------------------------------+
 | ``CheriotRevBitmapAddrWidth``    | int unsigned        | 11                      | Log2 of the revocation bitmap memory size in bytes. Only relevant                            |
 |                                  |                     |                         | when ``BaseIsa == BaseIsaRV32IorCHERIoT``. See :ref:`cheriot`.                               |
++----------------------------------+---------------------+-------------------------+----------------------------------------------------------------------------------------------+
+| ``CheriotRevBitmapSizeBytes``    | int unsigned        | 2^AddrWidth             | Revocation bitmap size in bytes (multiple of 4, at most 2^AddrWidth). Only                   |
+|                                  |                     |                         | relevant when ``BaseIsa == BaseIsaRV32IorCHERIoT``. See :ref:`cheriot`.                      |
 +----------------------------------+---------------------+-------------------------+----------------------------------------------------------------------------------------------+
 | ``CheriotRevBitmapBaseAddr``     | int unsigned        | 0x0                     | Base byte address of the revocation bitmap memory. Only relevant                             |
 |                                  |                     |                         | when ``BaseIsa == BaseIsaRV32IorCHERIoT``. See :ref:`cheriot`.                               |

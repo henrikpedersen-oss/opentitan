@@ -68,6 +68,9 @@ module ibex_wb_stage import ibex_cheriot_pkg::*; #(
 
   input logic                      lsu_resp_valid_i,
   input logic                      lsu_resp_err_i,
+  // A CHERIoT load/store fault of the instruction in WB (ibex_cheriot_ex cheriot_wb_err_o): a trap,
+  // so not counted in minstret, as LSU bus errors are not.
+  input logic                      cheriot_wb_err_i,
 
   output logic                     instr_done_wb_o
 );
@@ -208,7 +211,8 @@ module ibex_wb_stage import ibex_cheriot_pkg::*; #(
     assign perf_instr_ret_compressed_wb_spec_o = perf_instr_ret_wb_spec_o & wb_compressed_q;
     assign perf_instr_ret_wb_o                 = instr_done_wb_o & wb_count_q &
                                                  ~dummy_instr_wb_o &
-                                                 ~(lsu_resp_valid_i & lsu_resp_err_i);
+                                                 ~(lsu_resp_valid_i & lsu_resp_err_i) &
+                                                 ~cheriot_wb_err_i;
     assign perf_instr_ret_compressed_wb_o      = perf_instr_ret_wb_o & wb_compressed_q;
 
     // Forward data that will be written to the RF back to ID to resolve data hazards. The flopped
@@ -266,7 +270,8 @@ module ibex_wb_stage import ibex_cheriot_pkg::*; #(
     // Dummy instructions do not count as retired.
     assign perf_instr_ret_wb_o                 = instr_perf_count_id_i & en_wb_i &
                                                  ~dummy_instr_wb_o &
-                                                 ~(lsu_resp_valid_i & lsu_resp_err_i);
+                                                 ~(lsu_resp_valid_i & lsu_resp_err_i) &
+                                                 ~cheriot_wb_err_i;
     assign perf_instr_ret_compressed_wb_o      = perf_instr_ret_wb_o & instr_is_compressed_id_i;
 
     // ready needs to be constant 1 without writeback stage (otherwise ID/EX stage will stall)

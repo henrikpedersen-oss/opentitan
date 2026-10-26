@@ -37,7 +37,13 @@ module ibex_counter #(
     counter_load[31:0]  = counter_val_i;
     if (counterh_we_i) begin
       counter_load[63:32] = counter_val_i;
-      counter_load[31:0]  = counter[31:0];
+      // The lower half is not written, so it keeps counting: an increment in the same cycle (e.g.
+      // an older instruction retiring in WB for minstret, every cycle for mcycle) was dropped, as
+      // the write took priority over it (counter_high_half_write 7488, 2026-10-09: minstret one
+      // short of the ISS after a minstreth write). A carry out of the lower half in that cycle is
+      // lost to the written upper half, as the write takes precedence.
+      // 32-bit increment, not counter_upd: that is CounterWidth bits wide, which may be under 32.
+      counter_load[31:0]  = counter_inc_i ? counter[31:0] + 32'd1 : counter[31:0];
     end
 
     // Next value logic

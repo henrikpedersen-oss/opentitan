@@ -759,18 +759,22 @@ package ibex_cheriot_pkg;
   localparam int unsigned RSVD_LO   = CPERMS_LO + CPERMS_W; // 31
 
   // Decode a memory-format capability metadata word and address to cap_t, applying CLC permission
-  // clearing.
+  // clearing. revoked: the metadata word's tag (cap_mw[32]) was cleared by revocation (TRVK). The
+  // permissions are attenuated if the capability was tagged before that, as CHERIoT-Sail's
+  // LoadCapImm does (attenuation, then the revocation check); the result is untagged either way.
   function automatic cap_t cheriot_mem_to_cap(logic [32:0] cap_mw, logic [32:0] addr33,
-                                              cap_clrperm_t clrperm);
+                                              cap_clrperm_t clrperm, logic revoked);
     cap_t    cap;
     exp_t    exp5;
     cperms_t cperms_mem;
     cbound_t addrmi9;
     logic    sealed;
     logic    valid_in;
+    logic    valid_unrevoked;
 
-    valid_in   = cap_mw[32] & addr33[32];
-    cap.valid  = valid_in & ~clrperm.CTAG;
+    valid_in        = cap_mw[32] & addr33[32];
+    valid_unrevoked = (cap_mw[32] | revoked) & addr33[32] & ~clrperm.CTAG;
+    cap.valid       = valid_in & ~clrperm.CTAG;
 
     cap.base   = cap_mw[BASE_LO+:CBOUND_W];
     cap.top    = cap_mw[TOP_LO+:CBOUND_W];
@@ -779,7 +783,7 @@ package ibex_cheriot_pkg;
 
     sealed       = (cap.otype != OTYPE_UNSEALED);
     cperms_mem   = cap_mw[CPERMS_LO+:CPERMS_W];
-    cap.cperms   = cheriot_mask_loaded_cperms(cperms_mem, clrperm, cap.valid, sealed);
+    cap.cperms   = cheriot_mask_loaded_cperms(cperms_mem, clrperm, valid_unrevoked, sealed);
     exp5         = cheriot_expand_exp(cap.cexp);
     addrmi9      = cbound_t'(addr33[31:0] >> exp5);
     cap.cap_cor  = cheriot_compute_corrections(cap.top, cap.base, addrmi9);
@@ -860,18 +864,19 @@ package ibex_cheriot_pkg;
     logic CAND_PERM;        // CAndPerm
     logic CUNSEAL;          // CUnseal
     logic CSEAL;            // CSeal
-    logic CGET_FIELD;       // CGetPerm/Type/Base/Len/Tag/Addr/High/Top
+    logic CGET_FIELD;       // CGetPerm/Type/Base/Len/Tag/Addr/High/Top/Offset
   } cheriot_op_t;
 
-  typedef enum logic [2:0] {
-    CFIELD_PERM = 3'h0,
-    CFIELD_TYPE = 3'h1,
-    CFIELD_BASE = 3'h2,
-    CFIELD_LEN  = 3'h3,
-    CFIELD_TAG  = 3'h4,
-    CFIELD_ADDR = 3'h5,
-    CFIELD_HIGH = 3'h6,
-    CFIELD_TOP  = 3'h7
+  typedef enum logic [3:0] {
+    CFIELD_PERM   = 4'h0,
+    CFIELD_TYPE   = 4'h1,
+    CFIELD_BASE   = 4'h2,
+    CFIELD_LEN    = 4'h3,
+    CFIELD_TAG    = 4'h4,
+    CFIELD_ADDR   = 4'h5,
+    CFIELD_HIGH   = 4'h6,
+    CFIELD_TOP    = 4'h7,
+    CFIELD_OFFSET = 4'h8  // CGetOffset: address - base (CHERI-RISC-V rs2=6)
   } cheriot_cap_field_e;
 
   typedef enum logic [2:0] {

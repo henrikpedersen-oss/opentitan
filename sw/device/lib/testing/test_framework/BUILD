@@ -163,10 +163,14 @@ alias(
     }),
 )
 
+# In a CHERIoT build (`//toolchain:isa_cheriot`) the RV32 trap entry `ottf_isrs.S` is replaced by
+# the purecap one in `cheriot/`; the RISC-V build is unchanged.
 cc_library(
     name = "ottf_isrs",
-    srcs = [
-        "ottf_isrs.S",
+    srcs = select({
+        "//toolchain:isa_cheriot": [],
+        "//conditions:default": ["ottf_isrs.S"],
+    }) + [
         "ottf_isrs.c",
         "ottf_macros.h",
     ],
@@ -194,7 +198,10 @@ cc_library(
             ":ottf_alerts",
             "//sw/device/lib/dif:alert_handler",
         ],
-    ),
+    ) + select({
+        "//toolchain:isa_cheriot": ["//sw/device/lib/testing/test_framework/cheriot:ottf_isrs_cheriot"],
+        "//conditions:default": [],
+    }),
 )
 
 # This target provides start files without providing the full OTTF, and can be
@@ -206,30 +213,45 @@ cc_library(
 #
 # The binary target must provide a `noreturn void _ottf_main(void)` function
 # that this library will call.
+#
+# In a CHERIoT build (`//toolchain:isa_cheriot`) the start-up code is the EG2 framework's CHERIoT
+# one (cheriot/BUILD, `ottf_start_cheriot`): it switches and locks CHERIoT mode, then calls
+# `_ottf_main`. The RISC-V build is unchanged.
 cc_library(
     name = "ottf_start",
-    srcs = [
-        "ottf_macros.h",
-        "ottf_start.S",
-    ],
+    srcs = select({
+        "//toolchain:isa_cheriot": [],
+        "//conditions:default": [
+            "ottf_macros.h",
+            "ottf_start.S",
+        ],
+    }),
     target_compatible_with = [OPENTITAN_CPU],
-    deps = [
-        ":check",
-        ":ottf_isrs",
-        ":test_framework_manifest_def",
-        "//hw/top:top_lib",
-        "//sw/device/lib/base:csr",
-        "//sw/device/lib/base:macros",
-        "//sw/device/lib/coverage:api_asm",
-        "//sw/device/lib/coverage:ottf_runtime",
-        "//sw/device/lib/crt",
-        "//sw/device/lib/dif:rstmgr",
-        "//sw/device/lib/dif:rv_plic",
-        "//sw/device/lib/runtime:hart",
-        "//sw/device/lib/runtime:ibex",
-        "//sw/device/lib/runtime:log",
-        "//sw/device/silicon_creator/lib/base:static_critical",
-    ],
+    deps = select({
+        "//toolchain:isa_cheriot": [
+            ":check",
+            ":ottf_isrs",
+            ":test_framework_manifest_def",
+            "//sw/device/lib/testing/test_framework/cheriot:ottf_start_cheriot",
+        ],
+        "//conditions:default": [
+            ":check",
+            ":ottf_isrs",
+            ":test_framework_manifest_def",
+            "//hw/top:top_lib",
+            "//sw/device/lib/base:csr",
+            "//sw/device/lib/base:macros",
+            "//sw/device/lib/coverage:api_asm",
+            "//sw/device/lib/coverage:ottf_runtime",
+            "//sw/device/lib/crt",
+            "//sw/device/lib/dif:rstmgr",
+            "//sw/device/lib/dif:rv_plic",
+            "//sw/device/lib/runtime:hart",
+            "//sw/device/lib/runtime:ibex",
+            "//sw/device/lib/runtime:log",
+            "//sw/device/silicon_creator/lib/base:static_critical",
+        ],
+    }),
 )
 
 cc_library(
@@ -286,9 +308,21 @@ cc_library(
         [],
     ),
     target_compatible_with = [OPENTITAN_CPU],
+    # FreeRTOS (`enable_concurrency`) is not built in CHERIoT mode: its port is RV32 assembly. Its
+    # port library's other dependencies stay, as tests include their headers through it. The order
+    # of the RISC-V deps is unchanged.
     deps = [
         ":check",
-        ":freertos_port",
+    ] + select({
+        "//toolchain:isa_cheriot": [
+            ":freertos_config",
+            "//hw/top/dt",
+            "//sw/device/lib/dif:rv_timer",
+            "//sw/device/lib/runtime:hart",
+            "//sw/device/lib/runtime:irq",
+        ],
+        "//conditions:default": [":freertos_port"],
+    }) + [
         ":ottf_console",
         ":ottf_start",
         ":status",
@@ -301,7 +335,10 @@ cc_library(
         "//sw/device/lib/dif:rv_core_ibex",
         "//sw/device/lib/runtime:log",
         "//sw/device/lib/testing:rand_testutils",
-        "//third_party/freertos",
+    ] + select({
+        "//toolchain:isa_cheriot": [],
+        "//conditions:default": ["//third_party/freertos"],
+    }) + [
         "@manufacturer_test_hooks//:test_hooks",
     ] + opentitan_select_top(
         {

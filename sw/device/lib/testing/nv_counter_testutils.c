@@ -55,6 +55,28 @@ static uint32_t *const kNvCounters[] = {
     nv_counter_3,
 };
 
+#ifdef __CHERIOT__
+// In a CHERIoT (purecap) build code reaches a global through CGP, which covers
+// the globals in RAM only, so the compiler's direct references to these
+// counters in NVM would land in RAM. Each counter is reached through a
+// capability to the NVM window (`OT_MMIO_ADDR_TO_PTR`) from its address,
+// a 32-bit constant in read-only data (volatile, so the compiler does not fold
+// it back into a direct reference).
+static const volatile uint32_t kNvCounterAddrs[] = {
+    (uint32_t)(uintptr_t)nv_counter_0,
+    (uint32_t)(uintptr_t)nv_counter_1,
+    (uint32_t)(uintptr_t)nv_counter_2,
+    (uint32_t)(uintptr_t)nv_counter_3,
+};
+static uint32_t *nv_counter_cheriot(size_t counter) {
+  return (uint32_t *)OT_MMIO_ADDR_TO_PTR(kNvCounterAddrs[counter]);
+}
+#define NV_COUNTER_(counter) nv_counter_cheriot(counter)
+#else
+#define NV_COUNTER_(counter) kNvCounters[counter]
+#endif  // __CHERIOT__
+
+#line 58  // Keeps the original line numbers.
 static status_t nv_counter_rram_init(dif_rram_ctrl_state_t *rram) {
   TRY(dif_rram_ctrl_init_state(
       rram, mmio_region_from_addr(TOP_EARLGREY_RRAM_CTRL_CORE_BASE_ADDR)));
@@ -69,8 +91,8 @@ status_t nv_counter_testutils_counter_get(size_t counter, uint32_t *value) {
   TRY_CHECK(counter < ARRAYSIZE(kNvCounters));
 
   *value = 0;
-  if (kNvCounters[counter][1] == kNvCounterValid) {
-    *value = kNvCounters[counter][0];
+  if (NV_COUNTER_(counter)[1] == kNvCounterValid) {
+    *value = NV_COUNTER_(counter)[0];
   }
   return OK_STATUS();
 }
@@ -85,7 +107,7 @@ status_t nv_counter_testutils_counter_increment(size_t counter) {
   // unused is simpler than a read-modify-write.
   uint32_t new_val[kNvRramCounterWords] = {before + 1, kNvCounterValid, 0, 0};
   TRY(rram_ctrl_testutils_write(&rram,
-                                (uint32_t)&kNvCounters[counter][0] -
+                                (uint32_t)&NV_COUNTER_(counter)[0] -
                                     TOP_EARLGREY_RRAM_CTRL_HOST_BASE_ADDR,
                                 new_val, kDifRramCtrlPartitionTypeData,
                                 kNvRramCounterWords));

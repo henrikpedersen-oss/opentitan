@@ -1128,6 +1128,10 @@
                    PMPRstMsecCfg: "ibex_pmp_reset_pkg::PmpMseccfgRst",
                    CheriotRevBitmapAddrWidth: "$clog2(tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM)",
                    CheriotRevBitmapBaseAddr: "tl_main_pkg::ADDR_SPACE_CHERIOT_MEM_SYS__REVBM",
+                   // 2026-10-25 (F38): the bitmap is 0xC00 bytes, not a power of two; the width
+                   // above rounds it up to 4 KiB, so the TRVK needs its size to stop at the end of
+                   // the revocable SRAM (main + sec, 0x1000_0000-0x1003_0000).
+                   CheriotRevBitmapSizeBytes: "tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM",
                    CheriotTrvkHeapBaseAddr: "tl_main_pkg::ADDR_SPACE_SRAM_CTRL_MAIN__RAM",
                    RV32E: "0",
                    RV32M: "ibex_pkg::RV32MSingleCycle",

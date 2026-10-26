@@ -64,12 +64,14 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       name: chip_sw_eg2_status_smoketest_cheriot
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       // Must FAIL, with `STATUS unexpected alert uart1_fatal_fault` (REQ_STE_03). In no
@@ -78,12 +80,14 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       name: chip_sw_eg2_status_smoketest_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       // OpenTitan's DIFs and abs_mmio, unchanged, in both modes (EG2 framework step 3).
@@ -91,12 +95,14 @@
       uvm_test_seq: chip_sw_eg2_base_vseq
       sw_images: ["//sw/device/tests:eg2_dif_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       name: chip_sw_eg2_dif_smoketest_cheriot
       uvm_test_seq: chip_sw_eg2_base_vseq
       sw_images: ["//sw/device/tests:eg2_dif_smoketest_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       // Must FAIL, with `step FAILED: UART1 loopback` (REQ_STE_03). In no regression list.
@@ -104,12 +110,14 @@
       uvm_test_seq: chip_sw_eg2_base_vseq
       sw_images: ["//sw/device/tests:eg2_dif_smoketest_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       name: chip_sw_eg2_dif_smoketest_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_base_vseq
       sw_images: ["//sw/device/tests:eg2_dif_smoketest_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       // The status smoke test behind the full secure-boot chain: the ROM (mask ROM, fake keys)
@@ -119,6 +127,7 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:rom_ext"]
       en_run_modes: ["sw_test_mode_mask_rom"]
+      build_mode: "en_eg2_cosim"
     }
     {
       // The same, the owner image switching to CHERIoT mode after ROM_EXT.
@@ -126,6 +135,301 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:rom_ext"]
       en_run_modes: ["sw_test_mode_mask_rom"]
+      build_mode: "en_eg2_cosim"
+    }
+    {
+      // Must FAIL with `EG2_SB rvfi: RVFI is built but no instruction retired`: the scoreboard's
+      // count check shown to fail (REQ_STE_03). In no regression list.
+      name: chip_sw_eg2_status_smoketest_sb_corrupt_rvfi
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sb_corrupt=rvfi.count"]
+    }
+    {
+      // Must FAIL with `EG2_SB insn mismatch`: one register result corrupted before Spike checks
+      // it, the instruction comparator shown to fail (REQ_STE_03). In no regression list.
+      name: chip_sw_eg2_status_smoketest_sb_corrupt_insn
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sb_corrupt=insn.rd"]
+    }
+    {
+      // Must FAIL with `EG2_SB insn mismatch`: one CHERIoT-mode register result corrupted before
+      // CHERIoT-Sail checks it (REQ_STE_03). In no regression list.
+      name: chip_sw_eg2_status_smoketest_cheriot_sb_corrupt_insn
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sb_corrupt=insn.cheriot_rd"]
+    }
+    {
+      // Must FAIL with `EG2_SB uart0: the test uses it but its monitor saw nothing`.
+      name: chip_sw_eg2_status_smoketest_sb_corrupt_uart0
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sb_corrupt=uart0.count"]
+    }
+    {
+      // The framework tests with the EG2 SystemC model in the bench (build mode en_eg2_model,
+      // eg2_sysmodel.sv): loads predicted by the model, the UARTs' items compared with its items.
+      // libeg2sysmodel.so first: eg2_top_verification's `make eg2sysmodel`.
+      name: chip_sw_eg2_status_smoketest_model
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_model"
+    }
+    {
+      name: chip_sw_eg2_dif_smoketest_model
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_model"
+    }
+    {
+      // Must FAIL with `EG2_SB insn mismatch ... model: load`: the 100th predicted load's chip
+      // value inverted before the model's prediction is compared (REQ_STE_03). In no regression
+      // list.
+      name: chip_sw_eg2_status_smoketest_model_corrupt_load
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_model"
+      run_opts: ["+eg2_model_corrupt=load"]
+    }
+    {
+      // Must FAIL with `EG2_SB uart0 item 10`: one chip UART item corrupted before it is compared
+      // with the model's (REQ_STE_03). In no regression list.
+      name: chip_sw_eg2_status_smoketest_model_corrupt_uart0
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_model"
+      run_opts: ["+eg2_model_corrupt=uart0"]
+    }
+    {
+      // The CHERIoT test suite (EG2 verification spec "CHERIoT Test Suite"; images in
+      // //sw/device/tests/eg2_cheriot). Each run is 0.5 to 16 million instructions of software,
+      // its seed and knobs drawn from the run's seed (kEg2Seed). CHERIoT mode only.
+      name: chip_sw_eg2_rand_cap_ops
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_cap_ops_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      // Capability bounds edges for every access kind (CHERIoT); ePMP region edges (RISC-V).
+      name: chip_sw_eg2_rand_mem
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_mem:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_mem_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_mem_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      // PCC bounds edges, sentries, SR, illegal encodings, interrupts (CHERIoT); ePMP execute
+      // edges, U mode, illegal encodings, interrupts (RISC-V).
+      name: chip_sw_eg2_rand_traps
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_traps:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_traps_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_traps_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      // Must FAIL: each breaks one expected value (REQ_STE_03): cap_ops expects CSetBoundsExact
+      // of 1001 bytes to keep its tag, rand_mem a trapping access not to trap, rand_traps a fetch
+      // past PCC's top to arrive. In no regression list.
+      name: chip_sw_eg2_rand_cap_ops_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_cap_ops_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_mem_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_mem_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_mem_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_mem_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_traps_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_traps_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_rand_traps_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_rand_traps_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      // Every register of every register window (EG2 verification spec "Registers and
+      // memories"; images in //sw/device/tests/eg2_regmem), in both modes. The tables are
+      // generated from the IPs' hjson (eg2_top_verification scripts/gen_eg2_regmem_tables.py).
+      name: chip_sw_eg2_rand_regs
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rand_regs_cheriot
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      // Memory-test algorithms over every memory the core reaches, in both modes.
+      name: chip_sw_eg2_mem_test
+      uvm_test_seq: chip_sw_eg2_mem_test_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_mem_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_mem_test_cheriot
+      uvm_test_seq: chip_sw_eg2_mem_test_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_mem_test_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      // Every block present and connected (registers, interrupts at rv_plic, alerts at the alert
+      // handler, the connections between blocks without pins), in both modes.
+      name: chip_sw_eg2_connectivity
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_connectivity_cheriot
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL (REQ_STE_03): rand_regs with `REG FAIL` and mem_test with `MEM FAIL` (the first
+      // compared value expected with one bit flipped), connectivity with
+      // `CONN <block> FAIL interrupt` (the first interrupt expected at the wrong source ID). In no
+      // regression list.
+      name: chip_sw_eg2_rand_regs_inject_fail
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_rand_regs_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_mem_test_inject_fail
+      uvm_test_seq: chip_sw_eg2_mem_test_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_mem_test_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_mem_test_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_mem_test_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_mem_test_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=1_000_000_000"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_eg2_connectivity_inject_fail
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_connectivity_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_clkmgr_smoketest
@@ -227,11 +531,268 @@
       sw_images: ["//sw/device/tests:uart_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
+    {
+      // NIST CAVP vectors on the engines, both modes (EG2 spec NIST CAVP Test Suite, REQ_PBF_23).
+      // Each passes in eg2sim before it runs here (REQ_STE_11); the _inject_fail builds must fail.
+      name: chip_sw_eg2_nist_aes
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_gcm
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_gcm:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_gcm_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_gcm_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_gcm_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_gcm_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_aes_gcm_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_aes_gcm_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha2
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha2:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha2_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha2_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha2_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha2_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha2_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha2_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_hmac
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_hmac:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_hmac_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_hmac_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_hmac_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_hmac_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_hmac_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_hmac_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha3
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha3:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha3_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha3_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha3_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha3_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_sha3_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_sha3_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_drbg
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_drbg:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_drbg_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_drbg_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_drbg_cheriot
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_drbg_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_nist_drbg_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests/eg2_nist:eg2_nist_drbg_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_timeout_mins: 480
+    }
   ]
   regressions: [
     {
+      // The NIST CAVP tests (the `_inject_fail` builds are run on their own, and must fail).
+      name: eg2_nist
+      tests: ["chip_sw_eg2_nist_aes", "chip_sw_eg2_nist_aes_cheriot",
+              "chip_sw_eg2_nist_aes_gcm", "chip_sw_eg2_nist_aes_gcm_cheriot",
+              "chip_sw_eg2_nist_sha2", "chip_sw_eg2_nist_sha2_cheriot",
+              "chip_sw_eg2_nist_hmac", "chip_sw_eg2_nist_hmac_cheriot",
+              "chip_sw_eg2_nist_sha3", "chip_sw_eg2_nist_sha3_cheriot",
+              "chip_sw_eg2_nist_drbg", "chip_sw_eg2_nist_drbg_cheriot",
+            ]
+    }
+    {
       name: smoke
       tests: ["chip_sw_pwrmgr_smoketest"]
+    }
+    {
+      // The CHERIoT test suite's runs (the `_inject_fail` builds are run on their own).
+      name: eg2_cheriot_suite
+      tests: ["chip_sw_eg2_rand_cap_ops",
+              "chip_sw_eg2_rand_mem",
+              "chip_sw_eg2_rand_mem_cheriot",
+              "chip_sw_eg2_rand_traps",
+              "chip_sw_eg2_rand_traps_cheriot",
+            ]
+    }
+    {
+      // The register, memory and connectivity tests (the `_inject_fail` builds are run on their
+      // own). Each passes in eg2sim in both modes before it runs here (EG2 spec REQ_STE_11).
+      name: eg2_regmem
+      tests: ["chip_sw_eg2_connectivity",
+              "chip_sw_eg2_connectivity_cheriot",
+              "chip_sw_eg2_mem_test",
+              "chip_sw_eg2_mem_test_cheriot",
+            ]
+    }
+    {
+      // The register tests on their own: 4-12 windows per run, so several seeds
+      // (scripts/regr_xlm.sh stage regmem-regs, RESEED=6). 2026-10-26.
+      name: eg2_regmem_regs
+      tests: ["chip_sw_eg2_rand_regs",
+              "chip_sw_eg2_rand_regs_cheriot",
+            ]
     }
     {
       name: dif

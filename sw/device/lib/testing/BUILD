@@ -96,6 +96,13 @@ cc_library(
     name = "clkmgr_testutils",
     srcs = ["clkmgr_testutils.c"],
     hdrs = ["clkmgr_testutils.h"],
+    # CHERIoT (purecap) only: without jump tables `measure_clock_name`'s switch is not turned into
+    # a table of string pointers, which would be capabilities among the globals (and a CGP-relative
+    # object with no symbol, which `make check-cheriot` cannot tell from a misplaced one).
+    copts = select({
+        "//toolchain:isa_cheriot": ["-fno-jump-tables"],
+        "//conditions:default": [],
+    }),
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
         "//sw/device/lib/dif:clkmgr",

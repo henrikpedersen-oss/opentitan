@@ -19,6 +19,8 @@ package chip_common_pkg;
 
   parameter bit [top_pkg::TL_AW-1:0] SW_DV_TEST_STATUS_ADDR = SW_DV_START_ADDR + 0;
   parameter bit [top_pkg::TL_AW-1:0] SW_DV_LOG_ADDR         = SW_DV_START_ADDR + 4;
+  // The EG2 console's DV channel (eg2_result.c, eg2_dv_console_if.sv): one character per write.
+  parameter bit [top_pkg::TL_AW-1:0] SW_DV_EG2_CONSOLE_ADDR = SW_DV_START_ADDR + 8;
 
   parameter uint ROM_CONSOLE_UART = 0;
 

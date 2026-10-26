@@ -57,10 +57,19 @@ static_assert(offsetof(retention_sram_t, owner) <= kOffsetOfTestutils,
 testing_utilities_t *testing_utilities = NULL;
 
 void ret_sram_testutils_init(void) {
+#ifdef __CHERIOT__
+  // In a CHERIoT (purecap) build an integer cast to a pointer has no tag: the
+  // area is derived from the retention SRAM's capability.
+  testing_utilities =
+      (testing_utilities_t *)((char *)retention_sram_get() + kOffsetOfTestutils);
+#else
+#line 60  // Keeps the original line numbers.
   testing_utilities =
       (testing_utilities_t *)(dt_sram_ctrl_memory_base(kDtSramCtrlRet,
                                                        kDtSramCtrlMemoryRam) +
                               kOffsetOfTestutils);
+#endif  // __CHERIOT__
+#line 64  // Keeps the original line numbers.
 }
 
 status_t ret_sram_testutils_counter_clear(size_t counter) {

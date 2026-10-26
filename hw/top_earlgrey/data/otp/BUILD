@@ -210,7 +210,11 @@ otp_json(
         otp_partition(
             name = "HW_CFG0",
             items = {
-                "DEVICE_ID": "<random>",
+                # A well-formed device identifier (identities and root keys, "Device Identifier"):
+                # Silicon Creator ID 0x0001, Product ID 0x0010 (HLS), a unique ID, the CRC-32 of
+                # bytes 0-11, the SKU half. "<random>" never carries a valid CRC, so
+                # chip_sw_eg2_sec_device_id (REQ_SEC_12) could not pass on any image.
+                "DEVICE_ID": "0xce8a46027935e1ac68243f7b1a9e0c5d416cc30bf6409bd2715e3c8a00100001",
             },
             lock = True,
         ),

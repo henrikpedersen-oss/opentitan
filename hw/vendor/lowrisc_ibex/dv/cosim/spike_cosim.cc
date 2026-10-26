@@ -115,10 +115,13 @@ bool SpikeCosim::mmio_load(reg_t addr, size_t len, uint8_t *bytes) {
 }
 
 bool SpikeCosim::mmio_store(reg_t addr, size_t len, const uint8_t *bytes) {
-  bool bus_error = !bus.store(addr, len, bytes);
   // If the RTL produced a bus error for the access, or the checking failed
   // produce a memory fault in spike.
   bool dut_error = (check_mem_access(true, addr, len, bytes) != kCheckMemOk);
+  // Checked before the store: a store the DUT's memory refused does not change Spike's memory
+  // either (ported from ibex_cheriot_verification's spike_cosim.cc, where storing first left
+  // Spike's memory holding a faulted store's data: riscv_mem_error_traps_test, 2026-10-25).
+  bool bus_error = !dut_error && !bus.store(addr, len, bytes);
 
   return !(bus_error || dut_error);
 }
@@ -141,6 +144,26 @@ bool SpikeCosim::backdoor_write_mem(uint32_t addr, size_t len,
 bool SpikeCosim::backdoor_read_mem(uint32_t addr, size_t len,
                                    uint8_t *data_out) {
   return bus.load(addr, len, data_out);
+}
+
+// Spike's wfi() moves the pc on and throws wait_for_interrupt_t. Only with commit logging on (a
+// trace log) does it record last_inst_pc for it, so without a trace log a completed WFI would read
+// as a trap: the pc moved on by 4 with last_inst_pc still PC_INVALID. Recognise it by the pc and
+// the instruction (WFI has no compressed form), and record it as retired.
+void SpikeCosim::recognise_completed_wfi(uint32_t initial_pc) {
+  if (processor->get_state()->last_inst_pc != PC_INVALID ||
+      (processor->get_state()->pc & 0xffffffff) != ((initial_pc + 4) & 0xffffffff)) {
+    return;
+  }
+  uint8_t insn[4];
+  if (!bus.load(initial_pc, 4, insn)) {
+    return;
+  }
+  uint32_t word = uint32_t(insn[0]) | uint32_t(insn[1]) << 8 | uint32_t(insn[2]) << 16 |
+                  uint32_t(insn[3]) << 24;
+  if (word == 0x10500073) {
+    processor->get_state()->last_inst_pc = initial_pc;
+  }
 }
 
 // When we call processor->step(), spike advances to the next pc IFF a trap does
@@ -222,6 +245,7 @@ bool SpikeCosim::step(uint32_t write_reg, uint32_t write_reg_data, uint32_t pc,
   // the cpuctrlsts update depends on the mode the trap was taken in.
   bool initial_spike_debug_mode = processor->get_state()->debug_mode;
   processor->step(1);
+  recognise_completed_wfi(initial_spike_pc);
 
   // ISS
   // - If encountered an async trap,
@@ -573,6 +597,14 @@ void SpikeCosim::initial_proc_setup(uint32_t start_pc, uint32_t start_mtvec,
                                     bool rv32b_enabled) {
   processor->get_state()->pc = start_pc;
   processor->get_state()->mtvec->write(start_mtvec);
+
+  // Ibex resets mstatus to 0x0000_0080, MPIE = 1 (doc/03_reference/cs_registers.rst); Spike's
+  // mstatus starts at 0. A program that reads mstatus before its first trap or MRET saw the
+  // difference. Ported from ibex_cheriot_verification's spike_cosim.cc (there since the
+  // debug_dm_pmp failure); here chip_sw_eg2_connectivity's `csrrci x28, mstatus, 8` read 0x80
+  // on the chip and 0 in Spike (2026-10-25).
+  processor->get_state()->mstatus->write(processor->get_state()->mstatus->read() |
+                                         MSTATUS_MPIE);
 
   processor->get_state()->csrmap[CSR_MARCHID] =
       std::make_shared<const_csr_t>(processor.get(), CSR_MARCHID, IBEX_MARCHID);

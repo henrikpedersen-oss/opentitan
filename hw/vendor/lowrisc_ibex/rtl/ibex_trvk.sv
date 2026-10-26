@@ -11,6 +11,13 @@ module ibex_trvk #(
   parameter int unsigned NumOutstanding     = 32'd4,
   // The width of the meta memory byte address space used to store the revocation bits
   parameter int unsigned RevBitmapAddrWidth = 32'd11,
+  // The size of the revocation bitmap in bytes, at most 2^RevBitmapAddrWidth and a multiple of 4.
+  // One bit per 8-byte granule: capabilities based in [heap base, heap base + 64 * size) are
+  // looked up, all others are never revoked. 2026-10-25 (EG2 F38): a bitmap that is not a power
+  // of two (Earl Grey 2: 3 KiB, a 192 KiB window) needs this bound; the width alone rounds the
+  // window up (to 256 KiB) and the lookups past the bitmap get a bus error, a revocation and a
+  // fatal alert. The default keeps the window the width gives.
+  parameter int unsigned RevBitmapSizeBytes = 32'd1 << RevBitmapAddrWidth,
   // The base byte address of the meta SRAM holding the revocation bitmap
   parameter int unsigned RevBitmapBaseAddr  = 32'h0000_0000,
   // Enable ECC checking on the revocation bitmap memory port
@@ -36,6 +43,8 @@ module ibex_trvk #(
   output logic        upstream_err_o,
   input  logic        upstream_tag_i,
   output logic        upstream_tag_o,
+  // With upstream_rvalid_o: upstream_tag_o is 0 because this response was revoked (its tag was set)
+  output logic        upstream_tag_revoked_o,
 
   // Downstream port
   output logic        downstream_req_o,
@@ -73,6 +82,9 @@ module ibex_trvk #(
   ///////////
 
   localparam int unsigned RevBitmapWordAddrWidth = RevBitmapAddrWidth - 32'd2;
+  // Number of bits in the revocation bitmap (one per 8-byte granule); at most 2^28 * 8 = 2^31
+  // (RevBitmapWordAddrWidthRange_A, RevBitmapSizeRange_A), so it fits 32 bits.
+  localparam logic [31:0] RevBitmapSizeBits     = 32'(RevBitmapSizeBytes) << 3;
 
   // Revocation bitmap word address type
   typedef logic [RevBitmapWordAddrWidth-1:0] revbm_addr_t;
@@ -193,6 +205,10 @@ module ibex_trvk #(
 
   // Tag handling; always return tag except if we do a revocation bitmap lookup
   assign upstream_tag_o = (revbm_rvalid_i ? !revbm_revoked : 1'b1) & downstream_rsp_out.tag;
+  // The core needs the tag from before revocation as well: a CLC attenuates the loaded permissions
+  // (GL/LG, SD/LM) when the capability is tagged before the revocation check (CHERIoT-Sail
+  // LoadCapImm), and only then does revocation clear the tag (#958).
+  assign upstream_tag_revoked_o = revbm_rvalid_i & revbm_revoked & downstream_rsp_out.tag;
 
   // 64-bit alignment store
   prim_fifo_sync #(
@@ -336,8 +352,12 @@ module ibex_trvk #(
   // Bit select
   assign revbm_bit_select = revbm_bit_addr[$clog2(32)-1:0];
 
-  // Capability base is outside of the bitmap range
-  assign revbm_out_of_range = |(revbm_bit_addr[31:RevBitmapWordAddrWidth+$clog2(32)]);
+  // Capability base is outside of the bitmap range: its bit is at or past the end of the bitmap.
+  // 2026-10-25 (EG2 F38): compared with the bitmap's size, not only its address width, so a
+  // bitmap that is not a power of two is never read past its end. With the default size this is
+  // |revbm_bit_addr[31:RevBitmapWordAddrWidth+5], as before. Bases below the heap base wrap to
+  // large offsets and are out of range too.
+  assign revbm_out_of_range = revbm_bit_addr >= RevBitmapSizeBits;
 
 
   //////////////////////
@@ -415,6 +435,16 @@ module ibex_trvk #(
   `ASSERT(RevbmReqStable_A, revbm_req_o && !revbm_gnt_i |=> revbm_req_o && $stable(revbm_addr_o))
   `ASSERT_INIT(RevBitmapWordAddrWidthRange_A, RevBitmapWordAddrWidth inside {[1:26]})
   `ASSERT_INIT(RevBitmapBaseAddrAligned_A, RevBitmapBaseAddr[1:0] == 2'b00)
+  // 2026-10-25 (EG2 F38): whole words, and every word address fits RevBitmapWordAddrWidth.
+  `ASSERT_INIT(RevBitmapSizeRange_A, RevBitmapSizeBytes >= 32'd4 &&
+                                     RevBitmapSizeBytes % 32'd4 == 32'd0 &&
+                                     RevBitmapSizeBytes <= (32'd1 << RevBitmapAddrWidth))
   `ASSERT(HeapBaseAligned_A, heap_base_addr_i[2:0] == 3'b0)
+  // The revocable window (64 * RevBitmapSizeBytes bytes from the heap base: one bit per 8-byte
+  // granule; 2^(RevBitmapAddrWidth+6) with the default size) does not wrap past 2^32. The
+  // in-window check is (base - heap base) mod 2^32, so a wrapping window would revoke bases below
+  // the heap base, which CHERIoT-Sail never does. 2026-10-25 (EG2 F38): the window from the size.
+  `ASSERT(HeapWindowNoWrap_A, ({32'h0, heap_base_addr_i} +
+                               (64'(RevBitmapSizeBytes) << 6)) <= 64'h1_0000_0000)
 
 endmodule

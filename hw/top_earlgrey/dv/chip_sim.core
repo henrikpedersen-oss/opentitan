@@ -25,6 +25,9 @@ filesets:
       - lowrisc:earlgrey_dv:pwrmgr_sva
       - lowrisc:earlgrey_dv:rstmgr_sva
       - lowrisc:earlgrey_dv:rv_core_ibex_sva
+      # EG2 2026-10-25 (REQ_TL_01): cheriot_mem_sys_bind, the tlul_assert on meta_sram_tl (and
+      # cheriot_mem_sys's other ports); a sim_top in chip_sim_cfg.hjson.
+      - lowrisc:dv:cheriot_mem_sys_sva
       - lowrisc:dv:top_earlgrey_sva
       - lowrisc:dv:top_earlgrey_xbar_main_bind
       - lowrisc:dv:top_earlgrey_xbar_peri_bind
@@ -47,6 +50,10 @@ filesets:
     files:
       - tb/chip_hier_macros.svh: {is_include_file: true}
       - tb/eg2_mutate.svh: {is_include_file: true}
+      - tb/eg2_periph_tl.svh: {is_include_file: true}
+      - tb/eg2_rng_src.svh: {is_include_file: true}
+      - tb/eg2_cap_halves.svh: {is_include_file: true}
+      - tb/eg2_cap_halves_chk.sv
       - autogen/tb__xbar_connect.sv: {is_include_file: true}
       - autogen/xbar_env_pkg__params.sv: {is_include_file: true}
       - autogen/tb__alert_handler_connect.sv: {is_include_file: true}

@@ -41,12 +41,31 @@ filesets:
     files:
       - chip_common_pkg.sv
       - chip_if.sv
+      - eg2_rvfi_if.sv
+      - eg2_pads_if.sv
       - chip_env_pkg.sv
       - chip_env_cfg.sv: {is_include_file: true}
       - chip_env_cov.sv: {is_include_file: true}
       - chip_env.sv: {is_include_file: true}
       - chip_virtual_sequencer.sv: {is_include_file: true}
       - chip_scoreboard.sv: {is_include_file: true}
+      - eg2_rvfi_item.sv: {is_include_file: true}
+      - eg2_rvfi_agent.sv: {is_include_file: true}
+      - eg2_sysmodel.sv: {is_include_file: true}
+      - eg2_iss_wrapper.sv: {is_include_file: true}
+      - eg2_scoreboard.sv: {is_include_file: true}
+      - eg2_tl_hold_custom_seq.sv: {is_include_file: true}
+      - eg2_inject_registry.sv: {is_include_file: true}
+      - eg2_sb_log.sv: {is_include_file: true}
+      - eg2_periph_items.sv: {is_include_file: true}
+      - eg2_periph_cov.sv: {is_include_file: true}
+      - eg2_periph_monitors.sv: {is_include_file: true}
+      - eg2_device_monitors.sv: {is_include_file: true}
+      - eg2_sysmon_monitors.sv: {is_include_file: true}
+      - eg2_periph_sb_base.sv: {is_include_file: true}
+      - eg2_periph_sbs.sv: {is_include_file: true}
+      - eg2_periph_path_check.sv: {is_include_file: true}
+      - eg2_periph_env.sv: {is_include_file: true}
       - seq_lib/chip_vseq_list.sv: {is_include_file: true}
       - seq_lib/chip_base_vseq.sv: {is_include_file: true}
       - seq_lib/chip_stub_cpu_base_vseq.sv: {is_include_file: true}
@@ -57,6 +76,105 @@ filesets:
       - seq_lib/chip_sw_base_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_base_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_status_smoketest_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rand_regs_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_test_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_connectivity_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_periph_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_periph_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_mem_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_chk_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_sram_ctrl_meta_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_otp_ctrl_dai_ecc_error_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_keymgr_dpe_sideload_kmac_error_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_usb_suspend_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_knobs_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_sram_execution_main_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_sram_ctrl_meta_lc_escalation_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_mem_sram_scrambled_access_cheriot_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rram_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rram_jtag_lc_gate_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_crash_alert_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_ctrl_clock_freqs_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_ctrl_ops_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_ecc_corr_rewrite_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_exec_en_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_fetch_during_write_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_fetch_perf_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_host_exec_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_host_intg_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_host_wr_reject_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_idle_low_power_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_init_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_mem_protection_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_otp_isolation_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_otp_layout_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_otp_rsw_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_prim_tl_access_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_scramble_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_uncorr_fetch_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_write_then_fetch_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rram_sec_cm_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_debug_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_jtag_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_dtm_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_control_status_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_sba_tl_errors_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_sba_cheriot_mode_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_lc_disabled_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_corners_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_halt_corners_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_abstract_errors_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_reset_corners_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_lc_drop_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_sba_corners_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_step_corners_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_counters_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_triggers_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_cap_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_cap_bypass_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_halt_revocation_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_priv_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_tl_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_tl_errors_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_tl_intg_links_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_cib_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_illegal_sweep_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_fetch_intg_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_boot_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_boot_sec_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_boot_outcome_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_boot_handover_protection_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_sec_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_sec_vseqs.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_sec_rom_ext_e2e_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_pbf_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_memory_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_sym_crypto_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_otbn_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_entropy_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_keymgr_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_lc_otp_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_alert_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_power_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_sensor_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_meta_zeroed_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_rom_ext_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_pbf_cheriot_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_nist_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_nist_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rng_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rng_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_cheriot_vseq_list.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_rand_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_cheriot_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_cheriot_memsys_vseqs.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_cheriot_core_vseqs.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_cheriot_revocation_vseqs.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_trvk_fault_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_revocation_corners_vseqs.sv: {is_include_file: true}
+      - seq_lib/chip_sw_eg2_revbm_errors_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_uart_tx_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_lc_base_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_uart_smoke_vseq.sv: {is_include_file: true}
@@ -155,6 +273,7 @@ filesets:
       - alerts_if.sv
       - ast_ext_clk_if.sv
       - ast_supply_if.sv
+      - eg2_dv_console_if.sv
       - pwrmgr_low_power_if.sv
       - rstmgr_cnsty_fault_if.sv
       - tb_dpi_if.sv

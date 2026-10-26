@@ -152,6 +152,8 @@ module top_earlgrey #(
       $clog2(tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM),
   parameter int unsigned RvCoreIbexCheriotRevBitmapBaseAddr =
       tl_main_pkg::ADDR_SPACE_CHERIOT_MEM_SYS__REVBM,
+  parameter int unsigned RvCoreIbexCheriotRevBitmapSizeBytes =
+      tl_main_pkg::ADDR_SIZE_CHERIOT_MEM_SYS__REVBM,
   parameter int unsigned RvCoreIbexCheriotTrvkHeapBaseAddr =
       tl_main_pkg::ADDR_SPACE_SRAM_CTRL_MAIN__RAM,
   parameter bit RvCoreIbexRV32E = 0,
@@ -529,6 +531,7 @@ module top_earlgrey #(
   .RvCoreIbexPMPRstMsecCfg(RvCoreIbexPMPRstMsecCfg),
   .RvCoreIbexCheriotRevBitmapAddrWidth(RvCoreIbexCheriotRevBitmapAddrWidth),
   .RvCoreIbexCheriotRevBitmapBaseAddr(RvCoreIbexCheriotRevBitmapBaseAddr),
+  .RvCoreIbexCheriotRevBitmapSizeBytes(RvCoreIbexCheriotRevBitmapSizeBytes),
   .RvCoreIbexCheriotTrvkHeapBaseAddr(RvCoreIbexCheriotTrvkHeapBaseAddr),
   .RvCoreIbexRV32E(RvCoreIbexRV32E),
   .RvCoreIbexRV32M(RvCoreIbexRV32M),

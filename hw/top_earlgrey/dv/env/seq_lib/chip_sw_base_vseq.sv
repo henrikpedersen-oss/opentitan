@@ -186,6 +186,9 @@ class chip_sw_base_vseq extends chip_base_vseq;
       bit [sram_scrambler_pkg::SRAM_KEY_WIDTH-1:0]   key = RndCnstSramCtrlMainSramKey,
       bit [sram_scrambler_pkg::SRAM_BLOCK_WIDTH-1:0] nonce = RndCnstSramCtrlMainSramNonce);
     _sram_bkdr_write32(addr, data, 1, key, nonce, '0);
+    // The instruction-set model reads its own memory since review R6 (2026-10-25).
+    eg2_iss_wrapper::backdoor_write32(top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR +
+                                      32'(addr), data);
   endfunction
 
   virtual function void main_sram_inject_ecc_error(
@@ -201,6 +204,9 @@ class chip_sw_base_vseq extends chip_base_vseq;
       bit [sram_scrambler_pkg::SRAM_KEY_WIDTH-1:0]   key = RndCnstSramCtrlRetSramKey,
       bit [sram_scrambler_pkg::SRAM_BLOCK_WIDTH-1:0] nonce = RndCnstSramCtrlRetSramNonce);
     _sram_bkdr_write32(addr, data, 0, key, nonce, '0);
+    // The instruction-set model reads its own memory since review R6 (2026-10-25).
+    eg2_iss_wrapper::backdoor_write32(top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR +
+                                      32'(addr), data);
   endfunction
 
   virtual function void ret_sram_inject_ecc_error(
@@ -752,6 +758,14 @@ class chip_sw_base_vseq extends chip_base_vseq;
                                "abs addr = 0x%0h, mem addr = 0x%0h, size = %0d, ",
                                "addr_mask = 0x%0h"},
                               symbol, mem.name, addr, mem_addr, size, addr_mask), UVM_LOW)
+`ifdef EG2_SYSMODEL
+      // The EG2 SystemC model's memory gets the same bytes (build mode en_eg2_model).
+      eg2_sysmodel::backdoor_write(addr, data);
+`endif
+      // So does the instruction-set model (eg2_iss_wrapper, en_eg2_cosim), which reads its own
+      // copy of the memories since review R6 (2026-10-25): kEg2Param_*, kEg2Seed and the console
+      // symbols are written this way before boot and during the run.
+      eg2_iss_wrapper::backdoor_write(addr, data);
       for (int i = 0; i < size; i++) begin
         if (mem == RramData) begin
           logic [7:0] xor_addr_byte;

@@ -80,7 +80,17 @@ status_t status_create(absl_status_t code, uint32_t module_id, const char *file,
                                                 (uint32_t)arg))};
 }
 
+#ifdef __CHERIOT__
+// In a CHERIoT (purecap) build a table of string pointers is a table of
+// capabilities in the image's globals (which must stay small, and which the
+// CHERIoT linker reaches wrongly past 2 KiB from CGP); the strings are kept in
+// the table itself instead, in read-only data.
+const char status_codes[][19] = {
+#else
+#line 83  // Keeps the original line numbers.
 const char *status_codes[] = {
+#endif  // __CHERIOT__
+#line 84  // Keeps the original line numbers.
     "Ok",
     "Cancelled",
     "Unknown",

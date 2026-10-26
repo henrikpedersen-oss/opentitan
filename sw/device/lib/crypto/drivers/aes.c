@@ -17,6 +17,16 @@
 
 #include "hw/top/aes_regs.h"  // Generated.
 
+#ifdef __CHERIOT__
+// In a CHERIoT (purecap) build an integer cast to a pointer has no tag: the
+// registers are reached through the capability to the AES window
+// (sw/device/lib/base/cheriot_mmio.h).
+#define AES_REG_PTR_(addr) ((uint32_t *)OT_MMIO_ADDR_TO_PTR(addr))
+#else
+#define AES_REG_PTR_(addr) ((uint32_t *)(addr))
+#endif  // __CHERIOT__
+#line 19  // Keeps the original line numbers.
+
 // Module ID for status codes.
 #define MODULE_ID MAKE_MODULE_ID('d', 'a', 'e')
 
@@ -75,10 +85,10 @@ static status_t aes_write_key(aes_key_t key) {
   // corresponding parts too close together, which could risk power
   // side-channel leakage in the ALU. Before writing the key shares, initialize
   // the registers with random data.
-  hardened_memshred((uint32_t *)share0, kAesKeyWordLenMax);
-  hardened_memcpy((uint32_t *)share0, key.key_shares[0], key.key_len);
-  hardened_memshred((uint32_t *)share1, kAesKeyWordLenMax);
-  hardened_memcpy((uint32_t *)share1, key.key_shares[1], key.key_len);
+  hardened_memshred(AES_REG_PTR_(share0), kAesKeyWordLenMax);
+  hardened_memcpy(AES_REG_PTR_(share0), key.key_shares[0], key.key_len);
+  hardened_memshred(AES_REG_PTR_(share1), kAesKeyWordLenMax);
+  hardened_memcpy(AES_REG_PTR_(share1), key.key_shares[1], key.key_len);
 
   // Check the integrity of the key written to the AES core.
   HARDENED_CHECK_EQ(aes_key_integrity_checksum_check(&key), kHardenedBoolTrue);
@@ -315,7 +325,7 @@ status_t aes_update(aes_block_t *dest, const aes_block_t *src) {
     HARDENED_TRY(spin_until(AES_STATUS_OUTPUT_VALID_BIT));
 
     uint32_t offset = aes_base() + AES_DATA_OUT_0_REG_OFFSET;
-    HARDENED_TRY(hardened_memcpy(dest->data, (const uint32_t *)offset,
+    HARDENED_TRY(hardened_memcpy(dest->data, (const uint32_t *)AES_REG_PTR_(offset),
                                  ARRAYSIZE(dest->data)));
   }
 
@@ -324,7 +334,7 @@ status_t aes_update(aes_block_t *dest, const aes_block_t *src) {
 
     uint32_t offset = aes_base() + AES_DATA_IN_0_REG_OFFSET;
     HARDENED_TRY(
-        hardened_memcpy((uint32_t *)offset, src->data, ARRAYSIZE(src->data)));
+        hardened_memcpy(AES_REG_PTR_(offset), src->data, ARRAYSIZE(src->data)));
   }
 
   return OTCRYPTO_OK;

@@ -106,15 +106,22 @@ Because this port is strictly used for bitmap lookups, it only implements the re
 | ``trvk_revbm_err_i``       | in  | Bus error on the revocation bitmap read            |
 +----------------------------+-----+----------------------------------------------------+
 
-The address space of the revocation bitmap is configured by two top-level parameters:
+The address space of the revocation bitmap is configured by three top-level parameters:
 
 ``CheriotRevBitmapBaseAddr``
   Base byte address of the memory holding the revocation bitmap (must be 4-byte aligned).
   Defaults to ``0x0``.
 
 ``CheriotRevBitmapAddrWidth``
-  Log\ :sub:`2` of the bitmap size in bytes.
+  Log\ :sub:`2` of the bitmap's address space in bytes (the size rounded up to a power of two).
   Defaults to 11 (2 KiB), covering a 128 KiB heap.
+
+``CheriotRevBitmapSizeBytes``
+  Size of the bitmap in bytes, a multiple of 4 and at most 2\ :sup:`CheriotRevBitmapAddrWidth`.
+  Defaults to 2\ :sup:`CheriotRevBitmapAddrWidth`.
+  Only capabilities based below the heap base plus 64 times this size are looked up; a
+  bitmap that is not a power of two (for example 3 KiB, covering a 192 KiB heap) must set it,
+  or capabilities based past its end are looked up beyond the bitmap.
 
 ``trvk_heap_base_addr_i``
   Base address of the heap region (must be 8-byte aligned).

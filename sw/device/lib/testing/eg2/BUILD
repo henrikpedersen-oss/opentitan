@@ -47,6 +47,7 @@ cc_library(
         "//hw/top:rv_core_ibex_c_regs",
         "//hw/top:uart_c_regs",
         "//sw/device/lib/arch:device",
+        "//sw/device/lib/base:macros",
         "//sw/device/lib/base:multibits",
     ],
 )
@@ -92,6 +93,7 @@ cc_library(
     ] + select({
         "//toolchain:isa_cheriot": [":cheriot_crt"],
         "//conditions:default": [
+            "//sw/device/lib/arch:device",
             "//sw/device/lib/testing/test_framework:ottf_main",
             "//sw/device/lib/testing/test_framework:ottf_test_config",
         ],

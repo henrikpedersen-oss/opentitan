@@ -37,6 +37,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter int unsigned            TagSizeECC                  = IC_TAG_SIZE,
   parameter int unsigned            LineSizeECC                 = IC_LINE_SIZE,
   parameter bit                     BranchPredictor             = 1'b0,
+  parameter bit                     FetchOutputReg              = 1'b0,
   parameter bit                     DbgTriggerEn                = 1'b0,
   parameter int unsigned            DbgHwBreakNum               = 1,
   parameter bit                     ResetAll                    = 1'b0,
@@ -85,6 +86,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   output logic                         data_tag_o,
   input  logic [MemDataWidth-1:0]      data_rdata_i,
   input  logic                         data_tag_i,
+  input  logic                         data_tag_revoked_i,  // data_tag_i cleared by revocation (TRVK)
   input  logic                         data_err_i,
 
   // Register file interface
@@ -232,6 +234,9 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   logic        pc_mismatch_alert;
   logic        csr_shadow_err;
   logic        cheriot_enable_mubi_err;
+  logic        cheriot_disable_err;
+  ibex_mubi_t  cheriot_enable_ex;      // cheriot_enable_i as ID/EX, the LSU and the PMP D gate see it
+  logic        lsu_cheriot_req_busy;
 
   logic        instr_first_cycle_id;
   logic        instr_valid_clear;
@@ -541,6 +546,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .RndCnstLfsrSeed      (RndCnstLfsrSeed),
     .RndCnstLfsrPerm      (RndCnstLfsrPerm),
     .BranchPredictor      (BranchPredictor),
+    .FetchOutputReg       (FetchOutputReg),
     .MemECC               (MemECC),
     .MemDataWidth         (MemDataWidth),
     .BaseIsa              (BaseIsa)
@@ -604,7 +610,12 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .nt_branch_mispredict_i(nt_branch_mispredict),
     .exc_pc_mux_i          (exc_pc_mux_id),
     .exc_cause             (exc_cause),
-    .dummy_instr_en_i      (dummy_instr_en),
+    // No dummy instruction while dcsr.step is set: the controller takes any valid instruction in
+    // ID as the stepped one (ibex_controller.sv do_single_step_d), so a dummy inserted ahead of the
+    // instruction at dpc consumed the step and the core re-entered debug (cause step, dpc
+    // unchanged) without executing an instruction (riscv_debug_single_step_test 7495/7502,
+    // 2026-10-09).
+    .dummy_instr_en_i      (dummy_instr_en & ~debug_single_step),
     .dummy_instr_mask_i    (dummy_instr_mask),
     .dummy_instr_seed_en_i (dummy_instr_seed_en),
     .dummy_instr_seed_i    (dummy_instr_seed),
@@ -674,7 +685,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .clk_i (clk_i),
     .rst_ni(rst_ni),
 
-    .cheriot_enable_i     (cheriot_enable_i),
+    .cheriot_enable_i     (cheriot_enable_ex),
 
     // Processor Enable
     .ctrl_busy_o   (ctrl_busy),
@@ -914,7 +925,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     ) u_ibex_cheriot_ex (
       .clk_i                   (clk_i),
       .rst_ni                  (rst_ni),
-      .cheriot_enable_i        (cheriot_enable_i),
+      .cheriot_enable_i        (cheriot_enable_ex),
       .debug_mode_i            (debug_mode),
       .fwd_we_i                (rf_write_wb),
       .fwd_waddr_i             (rf_waddr_wb),
@@ -1061,6 +1072,18 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   assign data_req_o   = data_req_out & ~pmp_req_err[PMP_D];
   assign lsu_resp_err = lsu_load_err | lsu_store_err;
 
+  // REQ_BCK_06: cheriot_enable_i may only go Off -> On (REQ_BCK_05). If it leaves On anyway, an
+  // access issued in CHERIoT mode still completes in CHERIoT mode: while it has requests left
+  // (lsu_cheriot_req_busy: after the issue cycle, until the LSU is back in IDLE) the ID/EX stage,
+  // the LSU and the data-side PMP gate keep seeing On. So a raised data_req_o stays raised, with
+  // stable attributes, until granted (OBI), and the CLC/CSC in ID retires instead of turning illegal
+  // under its own requests. The new mode applies from the next instruction; alert_major_internal_o
+  // reports the change (cheriot_disable_err). The IF stage and the CSRs see the pin directly: they
+  // serve the instructions after this one. So does the register file (ibex_top), which then returns
+  // no capability; the LSU keeps a CSC's capability from its issue cycle for that reason. Forcing
+  // On is the fail-safe direction.
+  assign cheriot_enable_ex = lsu_cheriot_req_busy ? IbexMuBiOn : cheriot_enable_i;
+
   ibex_load_store_unit #(
     .MemECC(MemECC),
     .MemDataWidth(MemDataWidth),
@@ -1069,7 +1092,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .clk_i (clk_i),
     .rst_ni(rst_ni),
 
-    .cheriot_enable_i (cheriot_enable_i),
+    .cheriot_enable_i (cheriot_enable_ex),
     // data interface
     .data_req_o    (data_req_out),
     .data_gnt_i    (data_gnt_i),
@@ -1084,6 +1107,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .data_tag_o       (data_tag_o),
     .data_rdata_i     (data_rdata_i),
     .data_tag_i       (data_tag_i),
+    .data_tag_revoked_i (data_tag_revoked_i),
 
     // signals to/from ID/EX stage
     .lsu_we_i      (lsu_we),
@@ -1115,6 +1139,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .lsu_err_is_cheriot_o (lsu_err_is_cheriot),
 
     .busy_o(lsu_busy),
+    .cheriot_req_busy_o(lsu_cheriot_req_busy),
 
     .perf_load_o (perf_load),
     .perf_store_o(perf_store)
@@ -1172,6 +1197,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
 
     .lsu_resp_valid_i(lsu_resp_valid),
     .lsu_resp_err_i  (lsu_resp_err),
+    .cheriot_wb_err_i(cheriot_wb_err),
 
     .instr_done_wb_o(instr_done_wb)
   );
@@ -1343,13 +1369,32 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     // Once CHERIoT mode is enabled it must stay enabled until reset.
     `ASSERT(CheriotEnableOneWaySwitch,
             (cheriot_enable_i == IbexMuBiOn) |=> (cheriot_enable_i == IbexMuBiOn), clk_i, !rst_ni)
+
+    // REQ_BCK_06: if the pin leaves On anyway (to Off or to an invalid encoding), do not switch
+    // the capability checks off silently: raise alert_major_internal_o from the next cycle,
+    // latched until reset. clk_i is the gated core clock, so a change while the core sleeps is
+    // seen when it wakes.
+    logic cheriot_enable_on_q, cheriot_disable_err_q;
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        cheriot_enable_on_q   <= 1'b0;
+        cheriot_disable_err_q <= 1'b0;
+      end else begin
+        cheriot_enable_on_q <= (cheriot_enable_i == IbexMuBiOn);
+        if (cheriot_enable_on_q && (cheriot_enable_i != IbexMuBiOn)) begin
+          cheriot_disable_err_q <= 1'b1;
+        end
+      end
+    end
+    assign cheriot_disable_err = cheriot_disable_err_q;
   end else begin : gen_no_cheriot_enable_check
     assign cheriot_enable_mubi_err = 1'b0;
+    assign cheriot_disable_err     = 1'b0;
   end
 
   // Major internal alert - core is unrecoverable
   assign alert_major_internal_o = rf_ecc_err_comb | pc_mismatch_alert | csr_shadow_err |
-                                  cheriot_fatal_err | cheriot_enable_mubi_err;
+                                  cheriot_fatal_err | cheriot_enable_mubi_err | cheriot_disable_err;
   // Major bus alert
   assign alert_major_bus_o = lsu_load_resp_intg_err | lsu_store_resp_intg_err | instr_intg_err;
 
@@ -1597,7 +1642,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     if (BaseIsa == BaseIsaRV32IorCHERIoT) begin : g_pmp_addr_gate
       assign pmp_req_addr[PMP_I]  = (cheriot_enable_i == IbexMuBiOn) ? '0 : {2'b00, pc_if};
       assign pmp_req_addr[PMP_I2] = (cheriot_enable_i == IbexMuBiOn) ? '0 : {2'b00, pc_if_inc};
-      assign pmp_req_addr[PMP_D]  = (cheriot_enable_i == IbexMuBiOn)
+      assign pmp_req_addr[PMP_D]  = (cheriot_enable_ex == IbexMuBiOn)
                                   ? '0 : {2'b00, data_addr_o[31:0]};
     end else begin : g_pmp_addr_no_gate
       assign pmp_req_addr[PMP_I]  = {2'b00, pc_if};
@@ -1635,7 +1680,7 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       assign pmp_req_err[PMP_I]  = (cheriot_enable_i == IbexMuBiOn) ? 1'b0 : pmp_req_err_raw[PMP_I];
       assign pmp_req_err[PMP_I2] = (cheriot_enable_i == IbexMuBiOn)
                                  ? 1'b0 : pmp_req_err_raw[PMP_I2];
-      assign pmp_req_err[PMP_D]  = (cheriot_enable_i == IbexMuBiOn) ? 1'b0 : pmp_req_err_raw[PMP_D];
+      assign pmp_req_err[PMP_D]  = (cheriot_enable_ex == IbexMuBiOn) ? 1'b0 : pmp_req_err_raw[PMP_D];
     end else begin : g_pmp_no_cheriot_gate
       assign pmp_req_err[PMP_I]  = pmp_req_err_raw[PMP_I];
       assign pmp_req_err[PMP_I2] = pmp_req_err_raw[PMP_I2];
@@ -1755,6 +1800,9 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   logic            captured_nmi_int;
   logic            captured_debug_req;
   logic            captured_valid;
+  logic            captured_taken;
+  logic            trap_commit;
+  logic            use_capture;
 
   // RVFI extension for co-simulation support
   // debug_req and MIP captured at IF -> ID transition so one extra stage
@@ -1939,15 +1987,44 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   assign new_irq = irq_pending_o & (csr_mstatus_mie || (priv_mode_id == PRIV_LVL_U)) & ~nmi_mode &
                    ~debug_mode;
 
+  // The capture above is taken when the decision to trap is made in DECODE, but the controller can
+  // still abandon it: IRQ_TAKEN only enters the handler if handle_irq is still set, and a
+  // level-sensitive interrupt or NMI may drop in between (legal, the lines are level-sensitive).
+  // The next instruction then enters ID on the same edge as the abandon, and used to carry the
+  // captured request, so the cosim took a trap the core never took (riscv_nmi_at_exc_test 24865,
+  // 2026-10-06: a 2-cycle NMI pulse). captured_taken records that the controller committed to the
+  // trap (the handler's first instruction reaches ID at least one cycle later); until then the
+  // stage-0 values below fall back to the raw inputs, as without a capture.
+  assign trap_commit =
+      ((id_stage_i.controller_i.ctrl_fsm_cs == IRQ_TAKEN) & id_stage_i.controller_i.handle_irq) |
+      (id_stage_i.controller_i.ctrl_fsm_cs == DBG_TAKEN_IF);
+
+  // A dummy instruction (ibex_dummy_instr) never retires on RVFI, so it must neither take nor
+  // clear the captured trap state: that belongs to the first instruction that retires. A dummy
+  // inserted right after a debug entry used to take the captured debug request into its own item,
+  // and the handler's first real instruction then carried the raw debug_req_i, already dropped, so
+  // the cosim never entered debug (riscv_debug_basic_test 17271, 2026-10-14: "DUT retired
+  // 80000000, ISS retired 80003b18"; also seeds 26236, 27562, 21931). rvfi_dummy_id_d: the
+  // instruction ID holds next cycle is a dummy.
+  logic rvfi_dummy_id_d;
+  assign rvfi_dummy_id_d = if_stage_i.instr_new_id_d ? if_stage_i.stall_dummy_instr : dummy_instr_id;
+  assign use_capture = (~instr_valid_id | dummy_instr_id) & captured_valid &
+                       (captured_taken | rvfi_irq_valid);
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       captured_valid     <= 1'b0;
+      captured_taken     <= 1'b0;
       captured_mip       <= '0;
       captured_nmi       <= 1'b0;
       captured_nmi_int   <= 1'b0;
       captured_debug_req <= 1'b0;
       rvfi_irq_valid     <= 1'b0;
     end else  begin
+      if (trap_commit) begin
+        captured_taken <= 1'b1;
+      end
+
       // Capture when ID stage has emptied out and something occurs that will cause a trap and we
       // haven't yet captured
       //
@@ -1959,27 +2036,56 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
            (new_debug_req & ~captured_debug_req) |
            (new_nmi & ~captured_nmi & ~captured_debug_req))) begin
         captured_valid     <= 1'b1;
+        // A (re)capture waits for its own commit (overrides a commit in the same cycle), unless that
+        // commit is the debug entry for the request being captured: after an exception FLUSH goes
+        // straight to DBG_TAKEN_IF, and ID first empties in that same cycle, so no later commit
+        // follows (pmp_fault_hazard 3105, 2026-10-09: the handler's first instruction lost its
+        // debug request and the cosim entered the exception handler instead).
+        captured_taken     <= (id_stage_i.controller_i.ctrl_fsm_cs == DBG_TAKEN_IF) & debug_req_i;
         captured_nmi       <= irq_nm_i;
         captured_nmi_int   <= id_stage_i.controller_i.irq_nm_int;
         captured_mip       <= cs_registers_i.mip;
         captured_debug_req <= debug_req_i;
       end
 
-      // When the pipeline has emptied in preparation for handling a new interrupt send
-      // a notification up the RVFI pipeline. This is used by the cosim to deal with cases where an
+      // When the controller commits to a new interrupt with the pipeline emptied, send a
+      // notification up the RVFI pipeline. This is used by the cosim to deal with cases where an
       // interrupt occurs before another interrupt or debug request but both occur before the first
       // instruction of the handler is executed and retired (where the cosim will see all the
       // interrupts and debug requests at once with no way to determine which occurred first).
-      if (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb &
-          ~captured_valid) begin
+      // Sent on the commit (IRQ_TAKEN with handle_irq still set), not when the request is first
+      // captured: a level-sensitive interrupt or NMI may drop in between and IRQ_TAKEN then abandons
+      // it, but the notification had already told the cosim to take it (pmp_fault_hazard 163 and
+      // 7489-7491, 2026-10-09: a two-cycle NMI pulse, the model took the NMI and the core went on
+      // with the handler it was in). The captured state is still valid here: captured_valid only
+      // clears when the handler's first instruction reaches ID, at least a cycle later.
+      // No ~new_debug_req term: IRQ_TAKEN commits the trap whatever debug_req does in that cycle,
+      // so a debug request then must not suppress the notification -- an NMI taken in that cycle
+      // was otherwise lost, as set_nmi() ignores it once halt_request is set
+      // (riscv_mem_error_traps_test 28610 analysis, 2026-10-09).
+      if ((id_stage_i.controller_i.ctrl_fsm_cs == IRQ_TAKEN) & id_stage_i.controller_i.handle_irq &
+          ~instr_valid_id & ready_wb & ~captured_taken) begin
         rvfi_irq_valid <= 1'b1;
+        // The pending bits the notification carries are those of this cycle: IRQ_TAKEN picks the
+        // interrupt from the lines now, which can differ from those captured when ID emptied if they
+        // changed in between. With the earlier capture the cosim took another interrupt than the
+        // core (riscv_mem_error_traps_test 6458, 2026-10-25: tb "IRQ_TAKEN and IRQs have just
+        // changed"; the core entered the handler at mtvec + 0x64, Spike at mtvec + 0x0c). This
+        // assignment comes after the capture above, so it wins in a cycle that does both.
+        // The NMI flags likewise: irq_nm_i is level-sensitive, and an NMI that dropped before
+        // IRQ_TAKEN, which then took a pending regular interrupt, made the cosim take an NMI the
+        // core did not (found by review 2026-10-25). The internal NMI stays until taken.
+        captured_mip     <= cs_registers_i.mip;
+        captured_nmi     <= irq_nm_i;
+        captured_nmi_int <= id_stage_i.controller_i.irq_nm_int;
       end else begin
         rvfi_irq_valid <= 1'b0;
       end
 
-      // Capture cleared out as soon as a new instruction appears in ID
-      if (if_stage_i.instr_valid_id_d) begin
+      // Capture cleared out as soon as a new instruction appears in ID (not a dummy, see above)
+      if (if_stage_i.instr_valid_id_d & ~rvfi_dummy_id_d) begin
         captured_valid <= 1'b0;
+        captured_taken <= 1'b0;
       end
     end
   end
@@ -1997,16 +2103,15 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       rvfi_ext_stage_nmi_int[0]   <= '0;
       rvfi_ext_stage_debug_req[0] <= '0;
       rvfi_ext_stage_irq_valid[0] <= '0;
-    end else if ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid) begin
-      rvfi_ext_stage_pre_mip[0]   <= instr_valid_id | ~captured_valid ? cs_registers_i.mip :
-                                                                        captured_mip;
-      rvfi_ext_stage_nmi[0]       <= instr_valid_id | ~captured_valid ? irq_nm_i :
-                                                                        captured_nmi;
+    end else if ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d &
+                  ~if_stage_i.stall_dummy_instr) | rvfi_irq_valid) begin
+      // The captured state goes into the rvfi_irq_valid notification as before, and into an
+      // instruction's item only once the controller committed to the trap (captured_taken).
+      rvfi_ext_stage_pre_mip[0]   <= ~use_capture ? cs_registers_i.mip : captured_mip;
+      rvfi_ext_stage_nmi[0]       <= ~use_capture ? irq_nm_i           : captured_nmi;
       rvfi_ext_stage_nmi_int[0]   <=
-        instr_valid_id | ~captured_valid ? id_stage_i.controller_i.irq_nm_int :
-                                           captured_nmi_int;
-      rvfi_ext_stage_debug_req[0] <= instr_valid_id | ~captured_valid ? debug_req_i        :
-                                                                        captured_debug_req;
+        ~use_capture ? id_stage_i.controller_i.irq_nm_int : captured_nmi_int;
+      rvfi_ext_stage_debug_req[0] <= ~use_capture ? debug_req_i        : captured_debug_req;
       rvfi_ext_stage_irq_valid[0] <= rvfi_irq_valid;
     end
   end
@@ -2526,12 +2631,16 @@ module ibex_core import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       `DV_FCOV_SIGNAL(logic, pmp_region_dchan_access,
           g_pmp.pmp_i.region_match_all[PMP_D][i_region] & data_req_out)
       // pmp_cfg[5:6] is reserved and because of that the width of it inside cs_registers module
-      // is 6-bit.
+      // is 6-bit. The written value legalised (WARL): the stored pmp_cfg_t is {L, A, X, W, R}, so
+      // the raw byte compares as {wdata[7], wdata[4:0]}, and only on a write to this region's own
+      // pmpcfg (pmp_cfg_we). Was {wdata[4:0], wdata[7]} -- the same bits rotated, unequal for
+      // almost any value -- qualified by any CSR write, so the bin counted nearly every CSR write
+      // and never measured legalisation (also in upstream lowRISC/ibex, f21b6545).
       `DV_FCOV_SIGNAL(logic, warl_check_pmpcfg,
-          fcov_csr_write &&
+          cs_registers_i.g_pmp_registers.pmp_cfg_we[i_region] &&
           (cs_registers_i.g_pmp_registers.g_pmp_csrs[i_region].u_pmp_cfg_csr.wr_data_i !=
-          {cs_registers_i.csr_wdata_int[(i_region%4)*PMP_CFG_W+:5],
-           cs_registers_i.csr_wdata_int[(i_region%4)*PMP_CFG_W+7]}))
+          {cs_registers_i.csr_wdata_int[(i_region%4)*PMP_CFG_W+7],
+           cs_registers_i.csr_wdata_int[(i_region%4)*PMP_CFG_W+:5]}))
 
       if (i_region > 0) begin : g_region_priority
         assign fcov_pmp_region_ichan_priority[i_region] =

@@ -71,6 +71,7 @@ load(
     "EXT_EXEC_ENV_SILICON_ROM_EXT",
 )
 load("//rules/opentitan:providers.bzl", "OpenTitanTestInfo")
+load("//rules/opentitan:cheriot_both.bzl", "cheriot_twin_kwargs")
 
 # The following definition is used to clear the key set in the signing
 # configuration for execution environments (exec_env) and opentitan_test
@@ -307,7 +308,23 @@ def opentitan_binary(name, exec_env, kind = None, **kwargs):
 #
 # See exec_env_to_top_map() for constraints on the exec_env for this work.
 
-def opentitan_test(
+def opentitan_test(name, **kwargs):
+    """Instantiate a test per execution environment (`opentitan_test_per_env`).
+
+    A test listed in `//sw/device/tests/cheriot_both:tests.bzl` also gets its CHERIoT twin,
+    `<name>_cheriot` (rules/opentitan/cheriot_both.bzl); the test's own targets are the same
+    either way.
+
+    Args:
+      name: The base name of the test.
+      **kwargs: The arguments of `opentitan_test_per_env`.
+    """
+    opentitan_test_per_env(name = name, **kwargs)
+    twin = cheriot_twin_kwargs(name, kwargs)
+    if twin != None:
+        opentitan_test_per_env(**twin)
+
+def opentitan_test_per_env(
         name,
         srcs = [],
         kind = None,

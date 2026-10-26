@@ -19,6 +19,15 @@ class chip_env extends cip_base_env #(
   // spi host agent that transmits transactions to dut spi device
   spi_agent              m_spi_host_agent;
 
+  // EG2: the RVFI agent (passive) and the EG2 scoreboard.
+  eg2_rvfi_agent         m_eg2_rvfi_agent;
+  eg2_iss_wrapper        m_eg2_iss;
+  eg2_scoreboard         m_eg2_scoreboard;
+`ifdef EG2_PERIPH_SB
+  // EG2 per-peripheral scoreboards (build mode en_eg2_periph, +eg2_periph_sb=1 only).
+  eg2_periph_env         m_eg2_periph;
+`endif
+
   // A passive environment that monitors the rom_ctrl block
   rom_ctrl_env_pkg::rom_ctrl_env m_rom_ctrl_env;
 
@@ -26,6 +35,16 @@ class chip_env extends cip_base_env #(
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+    // EG2, every build: the stub CPU's TL sequences hold their requests like the core (F26).
+    tl_host_custom_seq #(cip_tl_seq_item)::type_id::set_type_override(
+        eg2_tl_hold_custom_seq::get_type());
+    tl_host_protocol_err_seq #(cip_tl_seq_item)::type_id::set_type_override(
+        eg2_tl_hold_protocol_err_seq::get_type());
+    cip_tl_host_single_seq::type_id::set_type_override(eg2_tl_hold_cip_single_seq::get_type());
+`ifdef EG2_PERIPH_SB
+    // The extended agent monitors replace OpenTitan's before the agents are built.
+    if (eg2_periph_env::enabled()) eg2_periph_env::set_overrides();
+`endif
     // configure the cpu d tl agent
     // get the vifs from config db
     if (!uvm_config_db#(virtual chip_if)::get(this, "", "chip_vif", cfg.chip_vif)) begin
@@ -56,6 +75,11 @@ class chip_env extends cip_base_env #(
     // get the handle to the sw log monitor for available sw_images.
     if (!uvm_config_db#(sw_logger_vif)::get(this, "", "sw_logger_vif", cfg.sw_logger_vif)) begin
       `uvm_fatal(`gfn, "failed to get sw_logger_vif from uvm_config_db")
+    end
+
+    if (!uvm_config_db#(virtual eg2_dv_console_if)::get(this, "", "eg2_console_vif",
+                                                       cfg.eg2_console_vif)) begin
+      `uvm_fatal(`gfn, "failed to get eg2_console_vif from uvm_config_db")
     end
 
     if (!uvm_config_db#(virtual sw_test_status_if)::get(
@@ -124,6 +148,21 @@ class chip_env extends cip_base_env #(
     m_spi_host_agent = spi_agent::type_id::create("m_spi_host_agent", this);
     uvm_config_db#(spi_agent_cfg)::set(this, "m_spi_host_agent*", "cfg", cfg.m_spi_host_agent_cfg);
 
+    m_eg2_rvfi_agent = eg2_rvfi_agent::type_id::create("m_eg2_rvfi_agent", this);
+    if (cfg.en_eg2_scb) begin
+      m_eg2_scoreboard = eg2_scoreboard::type_id::create("m_eg2_scoreboard", this);
+      m_eg2_scoreboard.cfg = cfg;
+      m_eg2_iss = eg2_iss_wrapper::type_id::create("m_eg2_iss", this);
+      m_eg2_iss.cfg = cfg;
+    end
+
+`ifdef EG2_PERIPH_SB
+    if (eg2_periph_env::enabled()) begin
+      m_eg2_periph = eg2_periph_env::type_id::create("m_eg2_periph", this);
+      m_eg2_periph.cfg = cfg;
+    end
+`endif
+
     // disable alert_agent's driver and only use its monitor
     foreach (LIST_OF_ALERTS[i]) begin
       cfg.m_alert_agent_cfgs[LIST_OF_ALERTS[i]].is_active = 0;
@@ -132,9 +171,36 @@ class chip_env extends cip_base_env #(
 
   function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
+    if (cfg.en_eg2_scb) begin
+      m_eg2_scoreboard.rvfi_enabled = m_eg2_rvfi_agent.enabled();
+      m_eg2_rvfi_agent.monitor.analysis_port.connect(m_eg2_scoreboard.rvfi_fifo.analysis_export);
+      // The reference model's ISS steps with the same RVFI items; its verdicts are the expected
+      // side. Off without the co-simulation build and in secure-boot (assembled image) runs.
+      m_eg2_iss.enabled = m_eg2_rvfi_agent.enabled() && eg2_iss_wrapper::compiled();
+      m_eg2_scoreboard.insn_enabled = m_eg2_iss.enabled && !cfg.rom_ext_assembled;
+      m_eg2_rvfi_agent.monitor.analysis_port.connect(m_eg2_iss.rvfi_fifo.analysis_export);
+      m_eg2_iss.exp_port.connect(m_eg2_scoreboard.rvfi_exp_fifo.analysis_export);
+      foreach (m_uart_agents[i]) begin
+        m_uart_agents[i].monitor.tx_analysis_port.connect(
+            m_eg2_scoreboard.uart_fifo[i].analysis_export);
+`ifdef EG2_SYSMODEL
+        // What the chip received goes into the SystemC model (eg2_sysmodel.sv).
+        m_uart_agents[i].monitor.rx_analysis_port.connect(
+            m_eg2_scoreboard.uart_rx_fifo[i].analysis_export);
+`endif
+      end
+    end
     if (cfg.en_scb) begin
       m_jtag_riscv_agent.monitor.analysis_port.connect(scoreboard.jtag_fifo.analysis_export);
     end
+`ifdef EG2_PERIPH_SB
+    if (m_eg2_periph != null) begin
+      // The UARTs move from eg2_scoreboard to their own scoreboards.
+      if (m_eg2_scoreboard != null) m_eg2_scoreboard.periph_mode = 1'b1;
+      m_eg2_periph.connect_env(m_uart_agents, m_spi_device_agents, m_spi_host_agent, m_i2c_agents,
+                               m_jtag_riscv_agent, m_eg2_rvfi_agent);
+    end
+`endif
     foreach (m_uart_agents[i]) begin
       if (cfg.is_active && cfg.m_uart_agent_cfgs[i].is_active) begin
         virtual_sequencer.uart_sequencer_hs[i] = m_uart_agents[i].sequencer;

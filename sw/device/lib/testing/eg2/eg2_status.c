@@ -275,7 +275,10 @@ void eg2_status_expect_intr(eg2_dev_id_t dev, uint32_t mask) { expected_intrs[de
 
 void eg2_status_raise_alert(size_t alert) {
   const eg2_alert_t *a = &kAlerts[alert];
-  eg2_dev_write32(a->dev, a->test_offset, 1u << a->bit);
+  // ALERT_TEST's top bit is its in-register write enable (reggen: rw0c, reset 1): a write with it
+  // 0 raises the alert and also locks ALERT_TEST until reset, so a second alert of the same block
+  // would never be raised. Keep it 1.
+  eg2_dev_write32(a->dev, a->test_offset, (1u << a->bit) | (1u << 31));
 }
 
 void eg2_status_raise_intr(eg2_dev_id_t dev, uint32_t mask) {

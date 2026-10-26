@@ -59,6 +59,10 @@ module rv_core_ibex
   parameter logic [31:0]                    CsrMimpId                   = 32'b0,
   parameter int unsigned                    CheriotRevBitmapAddrWidth   = 32'd11,
   parameter int unsigned                    CheriotRevBitmapBaseAddr    = 32'h0,
+  // 2026-10-25 (EG2 F38): the bitmap's size in bytes bounds the TRVK's revocable window. 0 (the
+  // default) is the whole 2^CheriotRevBitmapAddrWidth bytes, so a top that sets only the width
+  // keeps the window that width addresses rather than a fixed default size.
+  parameter int unsigned                    CheriotRevBitmapSizeBytes   = 32'd0,
   parameter int unsigned                    CheriotTrvkHeapBaseAddr     = 32'h0
 ) (
   // Clock and Reset
@@ -159,6 +163,10 @@ module rv_core_ibex
   localparam int unsigned FifoDepth = PipeLine ? 2 : 0;
   // ICache creates more outstanding transactions
   localparam int NumOutstandingReqs = ICache ? 8 : 2;
+  // The TRVK bitmap's size: CheriotRevBitmapSizeBytes, or 2^CheriotRevBitmapAddrWidth when it is 0.
+  localparam int unsigned RevBitmapSizeBytes = CheriotRevBitmapSizeBytes != 32'd0 ?
+                                               CheriotRevBitmapSizeBytes :
+                                               32'd1 << CheriotRevBitmapAddrWidth;
 
   // Main core instruction interface (internal)
   logic        main_core_instr_req, main_core_instr_req_q;
@@ -489,6 +497,7 @@ module rv_core_ibex
     .PMPRstMsecCfg               ( PMPRstMsecCfg            ),
     .CheriotRevBitmapAddrWidth   ( CheriotRevBitmapAddrWidth),
     .CheriotRevBitmapBaseAddr    ( CheriotRevBitmapBaseAddr ),
+    .CheriotRevBitmapSizeBytes   ( RevBitmapSizeBytes       ),
     .RV32E                       ( RV32E                    ),
     .RV32M                       ( RV32M                    ),
     .RV32B                       ( RV32B                    ),

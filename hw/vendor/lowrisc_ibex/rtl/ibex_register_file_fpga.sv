@@ -141,11 +141,45 @@ module ibex_register_file_fpga import ibex_pkg::*; #(
     assign rdata_b_o = (raddr_b_i[4] && !cheriot_enabled) ?
       DataWidth'(rf_shared[raddr_b_i[3:0]]) : rf_data[raddr_b_i[3:0]];
 
+    // Which entries hold a capability written in CHERIoT mode (see ibex_register_file_ff.sv, where
+    // this was found: x16-x31's RISC-V data read as a capability failed the capability integrity
+    // check after the switch into CHERIoT mode, a fatal alert). An entry's bit is 0 while the pin is
+    // Off and is set by a write in CHERIoT mode; a capability read of an entry whose bit is 0
+    // returns CapWordZeroVal. Flops, so it also covers storage without a reset.
+    logic [15:0] cap_written_q, cap_written_d;
+    always_comb begin
+      cap_written_d = cap_written_q;
+      if (!cheriot_enabled) begin
+        cap_written_d = '0;
+      end else begin
+        for (int unsigned i = 1; i < 16; i++) begin
+          if (we_a_i && !waddr_a_i[4] && (waddr_a_i[3:0] == 4'(i))) begin
+            cap_written_d[i] = 1'b1;
+          end
+        end
+        // x0: only a dummy instruction writes it
+        if (we_a_i && !waddr_a_i[4] && (waddr_a_i[3:0] == 4'd0) && dummy_instr_wb_i) begin
+          cap_written_d[0] = 1'b1;
+        end
+      end
+    end
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        cap_written_q <= '0;
+      end else begin
+        cap_written_q <= cap_written_d;
+      end
+    end
+    logic [CapWidth-1:0] rcap_shared [16];
+    for (genvar i = 0; i < 16; i++) begin : g_rcap_shared
+      assign rcap_shared[i] = cap_written_q[i] ? rf_shared[i] : CapWordZeroVal;
+    end
+
     // Cap: gated to CapWordZeroVal in non-CHERIoT mode; x0 always returns CapWordZeroVal.
     assign rcap_a_o = cheriot_enabled ?
-      ((raddr_a_i[3:0] == '0) ? CapWordZeroVal : rf_shared[raddr_a_i[3:0]]) : CapWordZeroVal;
+      ((raddr_a_i[3:0] == '0) ? CapWordZeroVal : rcap_shared[raddr_a_i[3:0]]) : CapWordZeroVal;
     assign rcap_b_o = cheriot_enabled ?
-      ((raddr_b_i[3:0] == '0) ? CapWordZeroVal : rf_shared[raddr_b_i[3:0]]) : CapWordZeroVal;
+      ((raddr_b_i[3:0] == '0) ? CapWordZeroVal : rcap_shared[raddr_b_i[3:0]]) : CapWordZeroVal;
 
     // Reset not used in this register file version
     logic unused_rst_ni;

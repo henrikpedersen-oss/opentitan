@@ -24,6 +24,10 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter ibex_pkg::pmp_mseccfg_t PMPRstMsecCfg                = ibex_pkg::PmpMseccfgRst,
   parameter int unsigned            CheriotRevBitmapAddrWidth    = 32'd11,
   parameter int unsigned            CheriotRevBitmapBaseAddr     = 32'h0,
+  // Revocation bitmap size in bytes (ibex_trvk RevBitmapSizeBytes); 2026-10-25 (EG2 F38): bounds
+  // the revocable window when the bitmap is not a power of two. Default: 2^AddrWidth, as before.
+  parameter int unsigned            CheriotRevBitmapSizeBytes    =
+                                        32'd1 << CheriotRevBitmapAddrWidth,
   parameter bit                     RV32E                        = 1'b0,
   parameter rv32m_e                 RV32M                        = RV32MFast,
   parameter rv32b_e                 RV32B                        = RV32BNone,
@@ -34,6 +38,8 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   parameter bit                     ICache                       = 1'b0,
   parameter bit                     ICacheECC                    = 1'b0,
   parameter bit                     BranchPredictor              = 1'b0,
+  parameter bit                     FetchOutputReg               = 1'b0,
+  parameter bit                     DataIfReg                    = 1'b0,
   parameter bit                     DbgTriggerEn                 = 1'b0,
   parameter int unsigned            DbgHwBreakNum                = 1,
   parameter bit                     SecureIbex                   = 1'b0,
@@ -267,9 +273,32 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
   logic [31:0] trvk_rdata;
   logic [6:0]  trvk_rdata_intg;
   logic        trvk_rtag;
+  logic        trvk_rtag_revoked;
   logic        trvk_err;
   logic        trvk_revbm_data_intg_error;
   logic        trvk_revbm_device_error;
+
+  // TRVK <-> data and revocation bitmap ports: through ibex_mem_if_reg when DataIfReg is set
+  logic        dif_req;
+  logic        dif_gnt;
+  logic        dif_rvalid;
+  logic        dif_we;
+  logic [3:0]  dif_be;
+  logic [31:0] dif_addr;
+  logic [31:0] dif_wdata;
+  logic [6:0]  dif_wdata_intg;
+  logic        dif_wtag;
+  logic [31:0] dif_rdata;
+  logic [6:0]  dif_rdata_intg;
+  logic        dif_rtag;
+  logic        dif_err;
+  logic        rbm_req;
+  logic        rbm_gnt;
+  logic        rbm_rvalid;
+  logic [31:0] rbm_addr;
+  logic [31:0] rbm_rdata;
+  logic [6:0]  rbm_rdata_intg;
+  logic        rbm_err;
 
   // Core <-> RAMs signals
   logic [IC_NUM_WAYS-1:0]      ic_tag_req;
@@ -387,6 +416,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .TagSizeECC           (TagSizeECC),
     .LineSizeECC          (LineSizeECC),
     .BranchPredictor      (BranchPredictor),
+    .FetchOutputReg       (FetchOutputReg),
     .DbgTriggerEn         (DbgTriggerEn),
     .DbgHwBreakNum        (DbgHwBreakNum),
     .WritebackStage       (WritebackStage),
@@ -432,6 +462,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     .data_tag_o   (trvk_wtag),
     .data_rdata_i (data_rdata_core),
     .data_tag_i   (trvk_rtag),
+    .data_tag_revoked_i(trvk_rtag_revoked),
     .data_err_i   (trvk_err),
 
     .dummy_instr_id_o (dummy_instr_id),
@@ -834,8 +865,12 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
           .cfg_o       (ram_cfg_icache_data_o[way])
         );
 
-        assign icache_tag_alert  = '{default:'b0};
-        assign icache_data_alert = '{default:'b0};
+        // Was `icache_tag_alert = '{default:'b0}` -- assigning the whole IC_NUM_WAYS vector from
+        // inside the per-way genvar loop, so every way drove every bit (*E,MULDRN). Latent: only
+        // reachable with ICacheECC=0, and every config in this repo builds ICacheECC=1. Found via
+        // the Sonata migration 2026-09-22, which builds ICacheECC=0.
+        assign icache_tag_alert[way]  = 1'b0;
+        assign icache_data_alert[way] = 1'b0;
       end
     end
 
@@ -896,6 +931,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       trvk_wtag,
       data_rdata_core,
       trvk_rtag,
+      trvk_rtag_revoked,
       trvk_err,
       rf_rdata_a,
       rf_rdata_b,
@@ -949,6 +985,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
     logic                         data_tag_local;
     logic [MemDataWidth-1:0]      data_rdata_local;
     logic                         data_rdata_tag_local;
+    logic                         data_rdata_tag_revoked_local;
     logic                         data_err_local;
 
     logic [RegFileDataWidth-1:0]  rf_rdata_a_local;
@@ -1005,6 +1042,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       trvk_wtag,
       data_rdata_core,
       trvk_rtag,
+      trvk_rtag_revoked,
       trvk_err,
       rf_rdata_a,
       rf_rdata_b,
@@ -1055,6 +1093,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       data_tag_local,
       data_rdata_local,
       data_rdata_tag_local,
+      data_rdata_tag_revoked_local,
       data_err_local,
       rf_rdata_a_local,
       rf_rdata_b_local,
@@ -1133,6 +1172,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .TagSizeECC           (TagSizeECC),
       .LineSizeECC          (LineSizeECC),
       .BranchPredictor      (BranchPredictor),
+      .FetchOutputReg       (FetchOutputReg),
       .DbgTriggerEn         (DbgTriggerEn),
       .DbgHwBreakNum        (DbgHwBreakNum),
       .WritebackStage       (WritebackStage),
@@ -1180,6 +1220,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .data_tag_i               (data_tag_local),
       .data_rdata_i             (data_rdata_local),
       .data_rdata_tag_i         (data_rdata_tag_local),
+      .data_rdata_tag_revoked_i (data_rdata_tag_revoked_local),
       .data_err_i               (data_err_local),
 
       .rf_rdata_a_i             (rf_rdata_a_local),
@@ -1277,6 +1318,7 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .NumOutstanding(MaxOutstandingDSideAccesses),
       .MemECC(MemECC),
       .RevBitmapAddrWidth(CheriotRevBitmapAddrWidth),
+      .RevBitmapSizeBytes(CheriotRevBitmapSizeBytes),
       .RevBitmapBaseAddr(CheriotRevBitmapBaseAddr)
     ) i_ibex_trvk (
       .clk_i                  (clk),
@@ -1295,26 +1337,27 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .upstream_err_o         (trvk_err),
       .upstream_tag_i         (trvk_wtag),
       .upstream_tag_o         (trvk_rtag),
-      .downstream_req_o       (data_req_o),
-      .downstream_gnt_i       (data_gnt_i),
-      .downstream_rvalid_i    (data_rvalid_i),
-      .downstream_we_o        (data_we_o),
-      .downstream_be_o        (data_be_o),
-      .downstream_addr_o      (data_addr_o),
-      .downstream_wdata_o     (data_wdata_o),
-      .downstream_wdata_intg_o(data_wdata_intg_o),
-      .downstream_rdata_i     (data_rdata_i),
-      .downstream_rdata_intg_i(data_rdata_intg_i),
-      .downstream_err_i       (data_err_i),
-      .downstream_tag_o       (data_tag_o),
-      .downstream_tag_i       (data_tag_i),
-      .revbm_req_o            (trvk_revbm_req_o),
-      .revbm_gnt_i            (trvk_revbm_gnt_i),
-      .revbm_rvalid_i         (trvk_revbm_rvalid_i),
-      .revbm_addr_o           (trvk_revbm_addr_o),
-      .revbm_rdata_i          (trvk_revbm_rdata_i),
-      .revbm_rdata_intg_i     (trvk_revbm_rdata_intg_i),
-      .revbm_err_i            (trvk_revbm_err_i),
+      .upstream_tag_revoked_o (trvk_rtag_revoked),
+      .downstream_req_o       (dif_req),
+      .downstream_gnt_i       (dif_gnt),
+      .downstream_rvalid_i    (dif_rvalid),
+      .downstream_we_o        (dif_we),
+      .downstream_be_o        (dif_be),
+      .downstream_addr_o      (dif_addr),
+      .downstream_wdata_o     (dif_wdata),
+      .downstream_wdata_intg_o(dif_wdata_intg),
+      .downstream_rdata_i     (dif_rdata),
+      .downstream_rdata_intg_i(dif_rdata_intg),
+      .downstream_err_i       (dif_err),
+      .downstream_tag_o       (dif_wtag),
+      .downstream_tag_i       (dif_rtag),
+      .revbm_req_o            (rbm_req),
+      .revbm_gnt_i            (rbm_gnt),
+      .revbm_rvalid_i         (rbm_rvalid),
+      .revbm_addr_o           (rbm_addr),
+      .revbm_rdata_i          (rbm_rdata),
+      .revbm_rdata_intg_i     (rbm_rdata_intg),
+      .revbm_err_i            (rbm_err),
       .revbm_data_intg_error_o(trvk_revbm_data_intg_error),
       .revbm_device_error_o   (trvk_revbm_device_error)
     );
@@ -1322,35 +1365,110 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
 
     logic unused_trvk;
 
-    assign trvk_revbm_req_o           = '0;
-    assign trvk_revbm_addr_o          = '0;
+    assign rbm_req                    = 1'b0;
+    assign rbm_addr                   = '0;
     assign trvk_rtag                  = 1'b0;
-    assign data_tag_o                 = 1'b0;
+    assign trvk_rtag_revoked          = 1'b0;
+    assign dif_wtag                   = 1'b0;
     assign trvk_revbm_data_intg_error = 1'b0;
     assign trvk_revbm_device_error    = 1'b0;
     assign unused_trvk = ^{
       trvk_heap_base_addr_i,
-      trvk_revbm_gnt_i,
-      trvk_revbm_rvalid_i,
-      trvk_revbm_rdata_i,
-      trvk_revbm_rdata_intg_i,
-      trvk_revbm_err_i,
+      rbm_gnt,
+      rbm_rvalid,
+      rbm_rdata,
+      rbm_rdata_intg,
+      rbm_err,
       trvk_wtag,
-      data_tag_i
+      dif_rtag
     };
 
     // Through-connect TRVK
-    assign data_req_o        = trvk_req;
-    assign trvk_gnt          = data_gnt_i;
-    assign trvk_rvalid       = data_rvalid_i;
-    assign data_we_o         = trvk_we;
-    assign data_be_o         = trvk_be;
-    assign data_addr_o       = trvk_addr;
-    assign data_wdata_o      = trvk_wdata;
-    assign data_wdata_intg_o = trvk_wdata_intg;
-    assign trvk_rdata        = data_rdata_i;
-    assign trvk_rdata_intg   = data_rdata_intg_i;
-    assign trvk_err          = data_err_i;
+    assign dif_req         = trvk_req;
+    assign trvk_gnt        = dif_gnt;
+    assign trvk_rvalid     = dif_rvalid;
+    assign dif_we          = trvk_we;
+    assign dif_be          = trvk_be;
+    assign dif_addr        = trvk_addr;
+    assign dif_wdata       = trvk_wdata;
+    assign dif_wdata_intg  = trvk_wdata_intg;
+    assign trvk_rdata      = dif_rdata;
+    assign trvk_rdata_intg = dif_rdata_intg;
+    assign trvk_err        = dif_err;
+  end
+
+  ////////////////////////////////////////
+  // Data and revocation bitmap ports   //
+  ////////////////////////////////////////
+
+  // DataIfReg: the data port's and the revocation bitmap port's requests come from flops and their
+  // responses are registered (ibex_mem_if_reg), so no data-side input reaches an output in the
+  // same cycle and the responses reach TRVK and the core from flops. Without it the data response
+  // is combinational to the next data request (LSU, a load's response lets the next access issue),
+  // to the bitmap lookup (TRVK) and to the prefetch buffer (the load's completion unstalls ID),
+  // paths the I/O budget cannot fit (Genus, cheriot-min, 150 MHz slow corner, 2026-10-18). Costs a
+  // cycle on each side of every data access and bitmap lookup. FetchOutputReg is the instruction
+  // side's counterpart. Both slices run on the core clock, as TRVK does: the core sleeps (wfi) only
+  // once its last data response has arrived, and by then both slices are empty.
+  if (DataIfReg) begin : gen_data_if_reg
+    ibex_mem_if_reg #(
+      .ReqWidth(1 + 4 + 32 + 32 + 7 + 1),
+      .RspWidth(32 + 7 + 1 + 1)
+    ) u_data_if_reg (
+      .clk_i        (clk),
+      .rst_ni       (rst_ni),
+      .up_req_i     (dif_req),
+      .up_gnt_o     (dif_gnt),
+      .up_req_data_i({dif_we, dif_be, dif_addr, dif_wdata, dif_wdata_intg, dif_wtag}),
+      .up_rvalid_o  (dif_rvalid),
+      .up_rsp_data_o({dif_rdata, dif_rdata_intg, dif_rtag, dif_err}),
+      .dn_req_o     (data_req_o),
+      .dn_gnt_i     (data_gnt_i),
+      .dn_req_data_o({data_we_o, data_be_o, data_addr_o, data_wdata_o, data_wdata_intg_o,
+                      data_tag_o}),
+      .dn_rvalid_i  (data_rvalid_i),
+      .dn_rsp_data_i({data_rdata_i, data_rdata_intg_i, data_tag_i, data_err_i})
+    );
+
+    ibex_mem_if_reg #(
+      .ReqWidth(32),
+      .RspWidth(32 + 7 + 1)
+    ) u_revbm_if_reg (
+      .clk_i        (clk),
+      .rst_ni       (rst_ni),
+      .up_req_i     (rbm_req),
+      .up_gnt_o     (rbm_gnt),
+      .up_req_data_i(rbm_addr),
+      .up_rvalid_o  (rbm_rvalid),
+      .up_rsp_data_o({rbm_rdata, rbm_rdata_intg, rbm_err}),
+      .dn_req_o     (trvk_revbm_req_o),
+      .dn_gnt_i     (trvk_revbm_gnt_i),
+      .dn_req_data_o(trvk_revbm_addr_o),
+      .dn_rvalid_i  (trvk_revbm_rvalid_i),
+      .dn_rsp_data_i({trvk_revbm_rdata_i, trvk_revbm_rdata_intg_i, trvk_revbm_err_i})
+    );
+  end else begin : gen_no_data_if_reg
+    assign data_req_o        = dif_req;
+    assign dif_gnt           = data_gnt_i;
+    assign dif_rvalid        = data_rvalid_i;
+    assign data_we_o         = dif_we;
+    assign data_be_o         = dif_be;
+    assign data_addr_o       = dif_addr;
+    assign data_wdata_o      = dif_wdata;
+    assign data_wdata_intg_o = dif_wdata_intg;
+    assign data_tag_o        = dif_wtag;
+    assign dif_rdata         = data_rdata_i;
+    assign dif_rdata_intg    = data_rdata_intg_i;
+    assign dif_rtag          = data_tag_i;
+    assign dif_err           = data_err_i;
+
+    assign trvk_revbm_req_o  = rbm_req;
+    assign rbm_gnt           = trvk_revbm_gnt_i;
+    assign rbm_rvalid        = trvk_revbm_rvalid_i;
+    assign trvk_revbm_addr_o = rbm_addr;
+    assign rbm_rdata         = trvk_revbm_rdata_i;
+    assign rbm_rdata_intg    = trvk_revbm_rdata_intg_i;
+    assign rbm_err           = trvk_revbm_err_i;
   end
 
 

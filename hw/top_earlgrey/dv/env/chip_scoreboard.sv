@@ -43,6 +43,18 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
     join_none
   endtask
 
+`ifdef EG2_PERIPH_SB
+  // EG2 (build mode en_eg2_periph, +eg2_periph_sb=1 only): every alert the alert agents see is
+  // logged, so a run shows which alerts fired (REQ_SEC_19) and a mutation the hardware must detect
+  // (lockstep_shadow_output_glitch) can be graded on it. Other runs keep OpenTitan's behaviour.
+  virtual function void on_alert(string alert_name, alert_agent_pkg::alert_seq_item item);
+    super.on_alert(alert_name, item);
+    if (eg2_inject_registry::active()) begin
+      `uvm_info(`gfn, $sformatf("EG2_ALERT %0s received", alert_name), UVM_LOW)
+    end
+  endfunction
+`endif
+
   virtual task process_alerts_for_cov();
     int alert_cg_size = 0;
     forever @cfg.chip_vif.alerts_if.alerts_cb.alerts begin

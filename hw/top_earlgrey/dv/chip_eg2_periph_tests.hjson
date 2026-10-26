@@ -1,0 +1,945 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  // The EG2 peripheral area (eg2_top_verification spec REQ_PBF_13, "Chip-Level Scoreboard"):
+  // the tests of //sw/device/tests/eg2_periph, the framework smoke tests and the legacy peripheral
+  // tests, all in build mode en_eg2_periph (one scoreboard per peripheral, the path check, the
+  // injection registry; chip_sim_cfg.hjson). Imported by chip_sim_cfg.hjson; its vseqs are in
+  // env/seq_lib/chip_eg2_periph_vseq_list.sv.
+  tests: [
+    {
+      // The EG2 peripheral tests (EG2 spec REQ_PBF_13; software in //sw/device/tests/eg2_periph, vseqs
+      // chip_sw_eg2_pbf_periph_vseq.sv) in build mode en_eg2_periph: every peripheral has its own
+      // scoreboard (expected items from its TL-UL port, actual from its agent; <instance>.chip.log).
+      // Each passed in eg2sim, both modes, and its _inject_fail failed there (REQ_STE_11).
+      // chip_sw_eg2_pbf_periph_sb: UART1-3, SPI host, I2C0-2 and GPIO traffic behind secure boot
+      // (ROM, ROM_EXT, the test as a signed owner image: the knobs keep the image's defaults).
+      name: chip_sw_eg2_pbf_periph_sb
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_cheriot
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb_cheriot:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      // The same test in direct boot (the test ROM), where the bench draws the knobs and the
+      // instruction check runs.
+      name: chip_sw_eg2_pbf_periph_sb_direct
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_cheriot_direct
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      // A transfer on UART1, spi_host0 or I2C0 reset in its middle (the IP's own reset or rstmgr's).
+      name: chip_sw_eg2_pbf_periph_fault
+      uvm_test_seq: chip_sw_eg2_pbf_periph_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_fault:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_fault:REQ_PBF_13"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_fault_cheriot
+      uvm_test_seq: chip_sw_eg2_pbf_periph_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_fault_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_fault:REQ_PBF_13"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `PERIPH FAIL` (REQ_STE_03): the first data check expects bit 0 flipped. In no
+      // regression list.
+      name: chip_sw_eg2_pbf_periph_sb_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_fault_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_periph_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_fault_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_fault:REQ_PBF_13"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_fault_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_periph_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_fault_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_fault:REQ_PBF_13"]
+      run_timeout_mins: 480
+    }
+    {
+      // The framework smoke tests with the per-peripheral scoreboards and the path check.
+      name: chip_sw_eg2_status_smoketest_eg2sb
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_10"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_cheriot_eg2sb
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest_cheriot:REQ_STE_10"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_eg2_dif_smoketest_eg2sb
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_dif_smoketest:REQ_STE_10"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_eg2_dif_smoketest_cheriot_eg2sb
+      uvm_test_seq: chip_sw_eg2_base_vseq
+      sw_images: ["//sw/device/tests:eg2_dif_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_dif_smoketest_cheriot:REQ_STE_10"]
+      run_timeout_mins: 240
+    }
+    {
+      // Must DETECT (REQ_STE_03): +sb_corrupt corrupts one value of one check, announced in the
+      // injection registry; the run passes only if that check reports it as `EG2_SB <check>
+      // EXPECTED mismatch (injected by sb_corrupt ...)`, and fails with `MISSED injection` if not.
+      // Run by `make must-detect`; in no regression list.
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_uart0_count
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=uart0.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_uart0_item
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=uart0.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_rvfi_count
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=rvfi.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_insn_rd
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=insn.rd"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_path_data
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=path.data"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_status_smoketest_cheriot_eg2sb_sb_corrupt_insn_cheriot_rd
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=insn.cheriot_rd"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart1_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart1.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart1_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart1.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart2_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart2.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart2_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart2.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart3_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart3.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_uart3_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=1", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=uart3.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_spi_host0_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=2", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=spi_host0.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_spi_host0_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=2", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=spi_host0.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_spi_host1_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=2", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=spi_host1.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_spi_host1_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=2", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=spi_host1.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c0_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c0.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c0_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c0.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c1_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c1.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c1_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c1.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c2_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c2.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_i2c2_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=4", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=i2c2.item"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_gpio_count
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=8", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=gpio.count"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_periph_sb_direct_sb_corrupt_gpio_item
+      uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15", "+eg2_param_devices=8", "+eg2_param_len_class=0", "+eg2_param_rx_bench=0", "+sb_corrupt=gpio.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // The legacy peripheral tests with the per-peripheral scoreboards (build mode en_eg2_periph):
+      // `<test>_eg2sb` is `<test>` unchanged (vseq, image, run options) plus the build mode, the
+      // testpoint and requirements for the logs' header (+eg2_closes) and, where the test certainly
+      // drives it, the instance it uses (+eg2_sb_required). The original entries are untouched.
+      name: chip_sw_uart_tx_rx_eg2sb
+      uvm_test_seq: chip_sw_uart_tx_rx_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_tx_rx:REQ_PER_10,REQ_PBF_13", "+eg2_sb_required=uart0"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_tx_rx_idx1_eg2sb
+      uvm_test_seq: chip_sw_uart_tx_rx_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=1", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_tx_rx_idx1:REQ_PER_10,REQ_PBF_13", "+eg2_sb_required=uart1"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_tx_rx_idx2_eg2sb
+      uvm_test_seq: chip_sw_uart_tx_rx_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=2", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_tx_rx_idx2:REQ_PER_10,REQ_PBF_13", "+eg2_sb_required=uart2"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_tx_rx_idx3_eg2sb
+      uvm_test_seq: chip_sw_uart_tx_rx_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=3", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_tx_rx_idx3:REQ_PER_10,REQ_PBF_13", "+eg2_sb_required=uart3"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_rand_baudrate_eg2sb
+      uvm_test_seq: chip_sw_uart_rand_baudrate_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=80_000_000", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_rand_baudrate:REQ_PER_10,REQ_PBF_13"]
+      run_timeout_mins: 120
+      reseed: 20
+    }
+    {
+      name: chip_sw_uart_tx_rx_alt_clk_freq_eg2sb
+      uvm_test_seq: chip_sw_uart_rand_baudrate_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=80_000_000", "+chip_clock_source=ChipClockSourceExternal96Mhz", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_uart_tx_rx_alt_clk_freq:REQ_PER_10,REQ_PBF_13"]
+      run_timeout_mins: 120
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_tx_rx_alt_clk_freq_low_speed_eg2sb
+      uvm_test_seq: chip_sw_uart_rand_baudrate_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=80_000_000", "+calibrate_usb_clk=1", "+chip_clock_source=ChipClockSourceExternal48Mhz", "+eg2_closes=chip_sw_uart_tx_rx_alt_clk_freq_low_speed:REQ_PER_10,REQ_PBF_13"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_uart_smoketest_eg2sb
+      uvm_test_seq: chip_sw_uart_smoke_vseq
+      sw_images: ["//sw/device/tests:uart_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_uart_smoketest:REQ_PER_10,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_spi_host_tx_rx_eg2sb
+      uvm_test_seq: chip_sw_spi_host_tx_rx_vseq
+      sw_images: ["//sw/device/tests/sim_dv:spi_host_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_host_tx_rx:REQ_PER_11,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_spi_device_tpm_eg2sb
+      uvm_test_seq: chip_sw_spi_device_tpm_vseq
+      sw_images: ["//sw/device/tests:spi_device_tpm_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_tpm:REQ_PER_12,REQ_PBF_13", "+eg2_sb_required=spi_device"]
+    }
+    {
+      name: chip_sw_spi_device_pass_through_eg2sb
+      uvm_test_seq: chip_sw_spi_passthrough_vseq
+      sw_images: ["//sw/device/tests/sim_dv:spi_passthrough_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_pass_through:REQ_PER_12,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_spi_device_pass_through_collision_eg2sb
+      uvm_test_seq: chip_sw_spi_passthrough_collision_vseq
+      sw_images: ["//sw/device/tests/sim_dv:spi_passthrough_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_pass_through_collision:REQ_PER_12,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_spi_device_pinmux_sleep_retention_eg2sb
+      uvm_test_seq: chip_sw_spi_device_pinmux_sleep_retention_vseq
+      sw_images: ["//sw/device/tests:spi_device_sleep_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_pinmux_sleep_retention:REQ_PER_12,REQ_PER_17,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_i2c_host_tx_rx_eg2sb
+      uvm_test_seq: chip_sw_i2c_host_tx_rx_vseq
+      sw_images: ["//sw/device/tests/sim_dv:i2c_host_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+i2c_idx=0", "+eg2_closes=chip_sw_i2c_host_tx_rx:REQ_PER_13,REQ_PBF_13", "+eg2_sb_required=i2c0"]
+    }
+    {
+      name: chip_sw_i2c_host_tx_rx_idx1_eg2sb
+      uvm_test_seq: chip_sw_i2c_host_tx_rx_vseq
+      sw_images: ["//sw/device/tests/sim_dv:i2c_host_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+i2c_idx=1", "+eg2_closes=chip_sw_i2c_host_tx_rx_idx1:REQ_PER_13,REQ_PBF_13", "+eg2_sb_required=i2c1"]
+    }
+    {
+      name: chip_sw_i2c_host_tx_rx_idx2_eg2sb
+      uvm_test_seq: chip_sw_i2c_host_tx_rx_vseq
+      sw_images: ["//sw/device/tests/sim_dv:i2c_host_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+i2c_idx=2", "+eg2_closes=chip_sw_i2c_host_tx_rx_idx2:REQ_PER_13,REQ_PBF_13", "+eg2_sb_required=i2c2"]
+    }
+    {
+      name: chip_sw_i2c_device_tx_rx_eg2sb
+      uvm_test_seq: chip_sw_i2c_device_tx_rx_vseq
+      sw_images: ["//sw/device/tests/sim_dv:i2c_device_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_i2c_device_tx_rx:REQ_PER_13,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_gpio_eg2sb
+      uvm_test_seq: chip_sw_gpio_vseq
+      sw_images: ["//sw/device/tests/sim_dv:gpio_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_gpio:REQ_PER_15,REQ_PBF_13", "+eg2_sb_required=gpio"]
+    }
+    {
+      name: chip_sw_gpio_smoketest_eg2sb
+      uvm_test_seq: chip_sw_gpio_smoke_vseq
+      sw_images: ["//sw/device/tests:gpio_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_gpio_smoketest:REQ_PER_15,REQ_PBF_13", "+eg2_sb_required=gpio"]
+    }
+    {
+      name: chip_sw_usbdev_dpi_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+sw_test_timeout_ns=30_000_000", "+eg2_closes=chip_sw_usbdev_dpi:REQ_PER_16,REQ_PBF_13", "+eg2_sb_required=usbdev"]
+      run_timeout_mins: 120
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_stream_eg2sb
+      uvm_test_seq: chip_sw_usbdev_stream_vseq
+      sw_images: ["//sw/device/tests:usbdev_stream_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+sw_test_timeout_ns=60_000_000", "+eg2_closes=chip_sw_usbdev_stream:REQ_PER_16,REQ_PBF_13", "+eg2_sb_required=usbdev"]
+      run_timeout_mins: 120
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_pullup_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_pullup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_pullup:REQ_PER_16,REQ_PBF_13"]
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_setuprx_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_setuprx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_setuprx:REQ_PER_16,REQ_PBF_13", "+eg2_sb_required=usbdev"]
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_config_host_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_config_host_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_config_host:REQ_PER_16,REQ_PBF_13", "+eg2_sb_required=usbdev"]
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_vbus_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_vbus_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_vbus:REQ_PER_16,REQ_PBF_13", "+eg2_sb_required=usbdev"]
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_pincfg_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_pincfg_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+sw_test_timeout_ns=100_000_000", "+eg2_closes=chip_sw_usbdev_pincfg:REQ_PER_16,REQ_PBF_13"]
+      run_timeout_mins: 300
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_toggle_restore_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_toggle_restore_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_toggle_restore:REQ_PER_16,REQ_PBF_13"]
+      reseed: 1
+    }
+    {
+      name: chip_sw_usbdev_aon_pullup_eg2sb
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_aon_pullup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+eg2_closes=chip_sw_usbdev_aon_pullup:REQ_PER_16,REQ_PBF_13"]
+      reseed: 1
+    }
+    {
+      // Must DETECT: the TL-UL error prediction of uart0's first access flipped and announced
+      // (+sb_corrupt=uart0.tl_err): uart0's scoreboard must report the MISSING_ERR (or
+      // UNEXPECTED_ERR) as `EG2_SB uart0 EXPECTED mismatch (injected by sb_corrupt uart0.tl_err`.
+      name: chip_sw_eg2_status_smoketest_eg2sb_sb_corrupt_uart0_tl_err
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=uart0.tl_err"]
+      run_timeout_mins: 240
+    }
+    {
+      // Must FAIL with `EG2_SB uart0 TL MISSING_ERR` (or UNEXPECTED_ERR): the same flip without
+      // the announcement (+eg2_tl_err_flip=uart0), so the TL error check is shown to fail.
+      name: chip_sw_eg2_status_smoketest_eg2sb_tl_err_flip_uart0
+      uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
+      sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+eg2_tl_err_flip=uart0"]
+      run_timeout_mins: 240
+    }
+    {
+      // The system monitor (status/decisions.md 19): the legacy tests of sysrst_ctrl, adc_ctrl,
+      // sensor_ctrl and the wake-up pads with one scoreboard per block (sysrst_ctrl, adc_ctrl,
+      // sensor_ctrl, wkup; eg2_sysmon_monitors.sv), as `<test>_eg2sb`.
+      name: chip_sw_sysrst_ctrl_inputs_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_inputs_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_inputs_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_inputs:REQ_PER_21,REQ_PBF_13", "+eg2_sb_required=sysrst_ctrl"]
+    }
+    {
+      name: chip_sw_sysrst_ctrl_in_irq_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_in_irq_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_in_irq_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_in_irq:REQ_PER_21,REQ_PBF_13", "+eg2_sb_required=sysrst_ctrl"]
+    }
+    {
+      name: chip_sw_sysrst_ctrl_ulp_z3_wakeup_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_ulp_z3_wakeup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_ulp_z3_wakeup:REQ_PER_21,REQ_PBF_13,REQ_PBF_18", "+eg2_sb_required=sysrst_ctrl"]
+    }
+    {
+      name: chip_sw_sysrst_ctrl_reset_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_reset_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_reset_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=36_000_000", "+eg2_closes=chip_sw_sysrst_ctrl_reset:REQ_PER_21,REQ_PBF_13,REQ_PBF_18", "+eg2_sb_required=sysrst_ctrl"]
+    }
+    {
+      name: chip_sw_sysrst_ctrl_outputs_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_outputs_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_outputs_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_outputs:REQ_PER_21,REQ_PBF_13", "+eg2_sb_required=sysrst_ctrl"]
+    }
+    {
+      name: chip_sw_sysrst_ctrl_ec_rst_l_eg2sb
+      uvm_test_seq: chip_sw_sysrst_ctrl_ec_rst_l_vseq
+      sw_images: ["//sw/device/tests/sim_dv:sysrst_ctrl_ec_rst_l_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_ec_rst_l:REQ_PER_21,REQ_PBF_13", "+eg2_sb_required=sysrst_ctrl"]
+      run_timeout_mins: 180
+    }
+    {
+      name: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_eg2sb
+      uvm_test_seq: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_vseq
+      sw_images: ["//sw/device/tests/sim_dv:adc_ctrl_sleep_debug_cable_wakeup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=18_000_000", "+eg2_closes=chip_sw_adc_ctrl_sleep_debug_cable_wakeup:REQ_PER_20,REQ_PBF_13,REQ_PBF_18", "+eg2_sb_required=adc_ctrl"]
+    }
+    {
+      name: chip_sw_sensor_ctrl_alert_eg2sb
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:sensor_ctrl_alert_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=40_000_000", "+eg2_closes=chip_sw_sensor_ctrl_alert:REQ_PER_22,REQ_PBF_13,REQ_PBF_17", "+eg2_sb_required=sensor_ctrl"]
+      reseed: 5
+    }
+    {
+      name: chip_sw_sensor_ctrl_status_eg2sb
+      uvm_test_seq: chip_sw_sensor_ctrl_status_intr_vseq
+      sw_images: ["//sw/device/tests/sim_dv:sensor_ctrl_status_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=40_000_000", "+eg2_closes=chip_sw_sensor_ctrl_status:REQ_PER_22,REQ_PBF_13"]
+    }
+    {
+      name: chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup_eg2sb
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:sensor_ctrl_wakeup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=8_000_000", "+eg2_closes=chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup:REQ_PER_22,REQ_PBF_13,REQ_PBF_18"]
+    }
+    {
+      name: chip_sw_sleep_pin_wake_eg2sb
+      uvm_test_seq: chip_sw_sleep_pin_wake_vseq
+      sw_images: ["//sw/device/tests:sleep_pin_wake_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_otp_image=OtpTypeLcStProd", "+eg2_closes=chip_sw_sleep_pin_wake:REQ_PER_17,REQ_PBF_13,REQ_PBF_18", "+eg2_sb_required=wkup"]
+    }
+    {
+      name: chip_sw_pwrmgr_normal_sleep_all_wake_ups_eg2sb
+      uvm_test_seq: chip_sw_pwrmgr_deep_sleep_all_wake_ups_vseq
+      sw_images: ["//sw/device/tests:pwrmgr_normal_sleep_all_wake_ups:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_pwrmgr_normal_sleep_all_wake_ups:REQ_PER_17,REQ_PER_20,REQ_PER_21,REQ_PER_22,REQ_PBF_18"]
+    }
+    {
+      name: chip_sw_pwrmgr_deep_sleep_all_wake_ups_eg2sb
+      uvm_test_seq: chip_sw_pwrmgr_deep_sleep_all_wake_ups_vseq
+      sw_images: ["//sw/device/tests:pwrmgr_deep_sleep_all_wake_ups:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=18_000_000", "+eg2_closes=chip_sw_pwrmgr_deep_sleep_all_wake_ups:REQ_PER_17,REQ_PER_20,REQ_PER_21,REQ_PER_22,REQ_PBF_18"]
+    }
+    {
+      // spi_device in flash mode: the test ROM bootstraps the image over SPI (Read SFDP, Read
+      // Status, WREN, Page Program and Erase uploads), so spi_device's scoreboard predicts the
+      // status and SFDP bytes and checks the uploads the ROM reads back.
+      name: chip_sw_uart_tx_rx_bootstrap_eg2sb
+      uvm_test_seq: chip_sw_uart_tx_rx_vseq
+      sw_images: ["//sw/device/tests:uart_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_spi_load_bootstrap=1", "+calibrate_usb_clk=1", "+test_timeout_ns=160_000_000", "+eg2_closes=chip_sw_uart_tx_rx_bootstrap:REQ_PER_10,REQ_PER_12,REQ_PBF_13", "+eg2_sb_required=spi_device"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): spi_device's n-th predicted item corrupted and announced.
+      name: chip_sw_spi_device_tpm_eg2sb_sb_corrupt_spi_device_item
+      uvm_test_seq: chip_sw_spi_device_tpm_vseq
+      sw_images: ["//sw/device/tests:spi_device_tpm_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_tpm:REQ_STE_03,REQ_PER_12", "+sb_corrupt=spi_device.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB spi_device item`: the same corruption, not announced.
+      name: chip_sw_spi_device_tpm_eg2sb_sb_flip_spi_device_item
+      uvm_test_seq: chip_sw_spi_device_tpm_vseq
+      sw_images: ["//sw/device/tests:spi_device_tpm_tx_rx_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_spi_device_tpm:REQ_STE_03,REQ_PER_12", "+eg2_sb_flip=spi_device.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): usbdev's n-th predicted item corrupted and announced.
+      name: chip_sw_usbdev_dpi_eg2sb_sb_corrupt_usbdev_item
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+sw_test_timeout_ns=30_000_000", "+eg2_closes=chip_sw_usbdev_dpi:REQ_STE_03,REQ_PER_16", "+sb_corrupt=usbdev.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB usbdev item`: the same corruption, not announced.
+      name: chip_sw_usbdev_dpi_eg2sb_sb_flip_usbdev_item
+      uvm_test_seq: chip_sw_usbdev_dpi_vseq
+      sw_images: ["//sw/device/tests:usbdev_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+uart_idx=0", "+calibrate_usb_clk=1", "+sw_test_timeout_ns=30_000_000", "+eg2_closes=chip_sw_usbdev_dpi:REQ_STE_03,REQ_PER_16", "+eg2_sb_flip=usbdev.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): sysrst_ctrl's n-th predicted item corrupted and announced.
+      name: chip_sw_sysrst_ctrl_outputs_eg2sb_sb_corrupt_sysrst_ctrl_item
+      uvm_test_seq: chip_sw_sysrst_ctrl_outputs_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_outputs_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_outputs:REQ_STE_03,REQ_PER_21", "+sb_corrupt=sysrst_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB sysrst_ctrl item`: the same corruption, not announced.
+      name: chip_sw_sysrst_ctrl_outputs_eg2sb_sb_flip_sysrst_ctrl_item
+      uvm_test_seq: chip_sw_sysrst_ctrl_outputs_vseq
+      sw_images: ["//sw/device/tests:sysrst_ctrl_outputs_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+eg2_closes=chip_sw_sysrst_ctrl_outputs:REQ_STE_03,REQ_PER_21", "+eg2_sb_flip=sysrst_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): adc_ctrl's n-th predicted item corrupted and announced.
+      name: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_eg2sb_sb_corrupt_adc_ctrl_item
+      uvm_test_seq: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_vseq
+      sw_images: ["//sw/device/tests/sim_dv:adc_ctrl_sleep_debug_cable_wakeup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=18_000_000", "+eg2_closes=chip_sw_adc_ctrl_sleep_debug_cable_wakeup:REQ_STE_03,REQ_PER_20", "+sb_corrupt=adc_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB adc_ctrl item`: the same corruption, not announced.
+      name: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_eg2sb_sb_flip_adc_ctrl_item
+      uvm_test_seq: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_vseq
+      sw_images: ["//sw/device/tests/sim_dv:adc_ctrl_sleep_debug_cable_wakeup_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=18_000_000", "+eg2_closes=chip_sw_adc_ctrl_sleep_debug_cable_wakeup:REQ_STE_03,REQ_PER_20", "+eg2_sb_flip=adc_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): sensor_ctrl's n-th predicted item corrupted and announced.
+      name: chip_sw_sensor_ctrl_alert_eg2sb_sb_corrupt_sensor_ctrl_item
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:sensor_ctrl_alert_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=40_000_000", "+eg2_closes=chip_sw_sensor_ctrl_alert:REQ_STE_03,REQ_PER_22", "+sb_corrupt=sensor_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB sensor_ctrl item`: the same corruption, not announced.
+      name: chip_sw_sensor_ctrl_alert_eg2sb_sb_flip_sensor_ctrl_item
+      uvm_test_seq: chip_sw_base_vseq
+      sw_images: ["//sw/device/tests:sensor_ctrl_alert_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+sw_test_timeout_ns=40_000_000", "+eg2_closes=chip_sw_sensor_ctrl_alert:REQ_STE_03,REQ_PER_22", "+eg2_sb_flip=sensor_ctrl.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must DETECT (REQ_STE_03): wkup's n-th predicted item corrupted and announced.
+      name: chip_sw_sleep_pin_wake_eg2sb_sb_corrupt_wkup_item
+      uvm_test_seq: chip_sw_sleep_pin_wake_vseq
+      sw_images: ["//sw/device/tests:sleep_pin_wake_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_otp_image=OtpTypeLcStProd", "+eg2_closes=chip_sw_sleep_pin_wake:REQ_STE_03,REQ_PER_17", "+sb_corrupt=wkup.item"]
+      run_timeout_mins: 480
+    }
+    {
+      // Must FAIL with `EG2_SB wkup item`: the same corruption, not announced.
+      name: chip_sw_sleep_pin_wake_eg2sb_sb_flip_wkup_item
+      uvm_test_seq: chip_sw_sleep_pin_wake_vseq
+      sw_images: ["//sw/device/tests:sleep_pin_wake_test:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_otp_image=OtpTypeLcStProd", "+eg2_closes=chip_sw_sleep_pin_wake:REQ_STE_03,REQ_PER_17", "+eg2_sb_flip=wkup.item"]
+      run_timeout_mins: 480
+    }
+  ]
+  regressions: [
+    {
+      // The peripheral tests with one scoreboard per peripheral (build mode en_eg2_periph): the
+      // new EG2 tests, the framework smoke tests and the legacy peripheral tests as `_eg2sb`. The
+      // `_inject_fail` builds (`make must-fail`) and the `_sb_corrupt_` runs (`make must-detect`)
+      // are run on their own.
+      name: eg2_periph
+      tests: ["chip_sw_eg2_pbf_periph_sb",
+              "chip_sw_eg2_pbf_periph_sb_cheriot",
+              "chip_sw_eg2_pbf_periph_sb_direct",
+              "chip_sw_eg2_pbf_periph_sb_cheriot_direct",
+              "chip_sw_eg2_pbf_periph_fault",
+              "chip_sw_eg2_pbf_periph_fault_cheriot",
+              "chip_sw_eg2_status_smoketest_eg2sb",
+              "chip_sw_eg2_status_smoketest_cheriot_eg2sb",
+              "chip_sw_eg2_dif_smoketest_eg2sb",
+              "chip_sw_eg2_dif_smoketest_cheriot_eg2sb",
+              "chip_sw_uart_tx_rx_eg2sb",
+              "chip_sw_uart_tx_rx_idx1_eg2sb",
+              "chip_sw_uart_tx_rx_idx2_eg2sb",
+              "chip_sw_uart_tx_rx_idx3_eg2sb",
+              "chip_sw_uart_rand_baudrate_eg2sb",
+              "chip_sw_uart_tx_rx_alt_clk_freq_eg2sb",
+              "chip_sw_uart_tx_rx_alt_clk_freq_low_speed_eg2sb",
+              "chip_sw_uart_smoketest_eg2sb",
+              "chip_sw_spi_host_tx_rx_eg2sb",
+              "chip_sw_spi_device_tpm_eg2sb",
+              "chip_sw_spi_device_pass_through_eg2sb",
+              "chip_sw_spi_device_pass_through_collision_eg2sb",
+              "chip_sw_spi_device_pinmux_sleep_retention_eg2sb",
+              "chip_sw_i2c_host_tx_rx_eg2sb",
+              "chip_sw_i2c_host_tx_rx_idx1_eg2sb",
+              "chip_sw_i2c_host_tx_rx_idx2_eg2sb",
+              "chip_sw_i2c_device_tx_rx_eg2sb",
+              "chip_sw_gpio_eg2sb",
+              "chip_sw_gpio_smoketest_eg2sb",
+              "chip_sw_usbdev_dpi_eg2sb",
+              "chip_sw_usbdev_stream_eg2sb",
+              "chip_sw_usbdev_pullup_eg2sb",
+              "chip_sw_usbdev_setuprx_eg2sb",
+              "chip_sw_usbdev_config_host_eg2sb",
+              "chip_sw_usbdev_vbus_eg2sb",
+              "chip_sw_usbdev_pincfg_eg2sb",
+              "chip_sw_usbdev_toggle_restore_eg2sb",
+              "chip_sw_usbdev_aon_pullup_eg2sb",
+              "chip_sw_uart_tx_rx_bootstrap_eg2sb",
+              "chip_sw_sysrst_ctrl_inputs_eg2sb",
+              "chip_sw_sysrst_ctrl_in_irq_eg2sb",
+              "chip_sw_sysrst_ctrl_ulp_z3_wakeup_eg2sb",
+              "chip_sw_sysrst_ctrl_reset_eg2sb",
+              "chip_sw_sysrst_ctrl_outputs_eg2sb",
+              "chip_sw_sysrst_ctrl_ec_rst_l_eg2sb",
+              "chip_sw_adc_ctrl_sleep_debug_cable_wakeup_eg2sb",
+              "chip_sw_sensor_ctrl_alert_eg2sb",
+              "chip_sw_sensor_ctrl_status_eg2sb",
+              "chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup_eg2sb",
+              "chip_sw_sleep_pin_wake_eg2sb",
+              "chip_sw_pwrmgr_normal_sleep_all_wake_ups_eg2sb",
+              "chip_sw_pwrmgr_deep_sleep_all_wake_ups_eg2sb",
+            ]
+    }
+  ]
+}

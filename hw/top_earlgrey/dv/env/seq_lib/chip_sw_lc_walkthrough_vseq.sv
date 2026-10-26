@@ -106,6 +106,9 @@ class chip_sw_lc_walkthrough_vseq extends chip_sw_base_vseq;
     selected_dest_state = {dest_dec_state};
     cfg.mem_bkdr_util_h[RramData].load_mem_from_file(
         {cfg.sw_images[SwTypeTestSlotA], ".128.scr.vmem"});
+    // The model forgets what it kept in the wiped RRAM and takes the image back (EG2 review R19,
+    // 2026-10-26).
+    eg2_iss_wrapper::rram_image_reloaded();
     sw_symbol_backdoor_overwrite("kDestState", selected_dest_state);
   endtask
 endclass

@@ -572,6 +572,10 @@ class chip_sw_rv_core_ibex_lockstep_glitch_vseq extends chip_sw_base_vseq;
               "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_device_sram_ctrl_main__ram.gen_host");
           $assertoff(0,
               "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_device_rram_ctrl__host.gen_host");
+          // EG2 2026-10-25: rv_core_ibex_bind is a sim_top (REQ_TL_01); its host-side checker
+          // on corei_tl sees the same link as the xbar's, so it is turned off with it.
+          $assertoff(0,
+              "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.tlul_assert_host_instr.gen_host");
         end
         "data_req_o",
         "data_we_o",
@@ -580,6 +584,13 @@ class chip_sw_rv_core_ibex_lockstep_glitch_vseq extends chip_sw_base_vseq;
         "data_wdata_o": begin
           $assertoff(0,
               "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_host_cheriot_mem_sys__cored.gen_device");
+          // EG2 2026-10-25: rv_core_ibex_bind and cheriot_mem_sys_bind are sim_tops (REQ_TL_01);
+          // their host-side checkers on the core's data path (cored_tl into cheriot_mem_sys, and
+          // cheriot_mem_sys's cored_tl to the xbar) see the same glitched requests.
+          $assertoff(0,
+              "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.tlul_assert_host_data.gen_host");
+          $assertoff(0,
+              "tb.dut.top_earlgrey.earlgrey_pd_main.u_cheriot_mem_sys.tlul_assert_host_cored.gen_host");
         end
         // The RF read data obtained on Port b may feed into data_wdata_o even if Ibex isn't doing
         // a store.
@@ -587,6 +598,11 @@ class chip_sw_rv_core_ibex_lockstep_glitch_vseq extends chip_sw_base_vseq;
           if (glitched_inp_used) begin
             $assertoff(0,
                 "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_host_cheriot_mem_sys__cored.gen_device");
+            // EG2 2026-10-25: the new host-side checkers on the same path (see data_wdata_o).
+            $assertoff(0,
+                "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.tlul_assert_host_data.gen_host");
+            $assertoff(0,
+                "tb.dut.top_earlgrey.earlgrey_pd_main.u_cheriot_mem_sys.tlul_assert_host_cored.gen_host");
           end
         end
         // There are several SVAs inside ibex_top ensuring correct behavior of crash dump. When

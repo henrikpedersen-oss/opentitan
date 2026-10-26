@@ -401,6 +401,21 @@ module tb;
     end
   end
 
+`ifndef GATE_LEVEL
+  // EG2 F38: the core's load filter (rv_core_ibex, sized from tl_main_pkg's revbm window) and
+  // cheriot_mem_sys (MemSizeRevbm, from topgen's revbm memory) must take the same revocation bitmap
+  // size; neither IP sees the other's, so no RTL assertion can tie them. A mismatch revokes, or
+  // never revokes, capabilities based in the difference, as F38 did.
+  initial begin
+    if (dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.RevBitmapSizeBytes !=
+        dut.top_earlgrey.earlgrey_pd_main.u_cheriot_mem_sys.MemSizeRevbm) begin
+      $fatal(1, "revocation bitmap size: rv_core_ibex %0d bytes, cheriot_mem_sys %0d bytes",
+             dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.RevBitmapSizeBytes,
+             dut.top_earlgrey.earlgrey_pd_main.u_cheriot_mem_sys.MemSizeRevbm);
+    end
+  end
+`endif
+
   // Bind the SW test status interface directly to the sim SRAM interface.
   bind `SIM_SRAM_IF sw_test_status_if u_sw_test_status_if (
     .addr     (tl_h2d.a_address),
@@ -416,6 +431,13 @@ module tb;
     .*
   );
 
+  // The EG2 console's DV channel (eg2_dv_console_if.sv), on the sim SRAM interface as above.
+  bind `SIM_SRAM_IF eg2_dv_console_if u_eg2_dv_console_if (
+    .addr (tl_h2d.a_address),
+    .data (tl_h2d.a_data),
+    .*
+  );
+
   initial begin
     // IO Interfaces
     uvm_config_db#(virtual chip_if)::set(null, "*.env", "chip_vif", dut.chip_if);
@@ -425,6 +447,8 @@ module tb;
         null, "*.env", "sw_test_status_vif", `SIM_SRAM_IF.u_sw_test_status_if);
     uvm_config_db#(virtual sw_logger_if)::set(
         null, "*.env", "sw_logger_vif", `SIM_SRAM_IF.u_sw_logger_if);
+    uvm_config_db#(virtual eg2_dv_console_if)::set(
+        null, "*.env", "eg2_console_vif", `SIM_SRAM_IF.u_eg2_dv_console_if);
 
     // AST supply interface.
     uvm_config_db#(virtual ast_supply_if)::set(
@@ -456,6 +480,127 @@ module tb;
   end
 
   `undef SIM_SRAM_IF
+
+`ifdef RVFI
+  // EG2 RVFI agent: rv_core_ibex's main core, sampled hierarchically (env/eg2_rvfi_if.sv). Only
+  // in the RVFI build (en_ibex_tracer); without it the agent is off.
+  eg2_rvfi_if u_eg2_rvfi_if (
+    .clk  (`CPU_CORE_HIER.clk_i),
+    .rst_n(`CPU_CORE_HIER.rst_ni)
+  );
+  assign u_eg2_rvfi_if.valid              = `CPU_HIER.rvfi_valid;
+  assign u_eg2_rvfi_if.order              = `CPU_HIER.rvfi_order;
+  assign u_eg2_rvfi_if.insn               = `CPU_HIER.rvfi_insn;
+  assign u_eg2_rvfi_if.trap               = `CPU_HIER.rvfi_trap;
+  assign u_eg2_rvfi_if.halt               = `CPU_HIER.rvfi_halt;
+  assign u_eg2_rvfi_if.intr               = `CPU_HIER.rvfi_intr;
+  assign u_eg2_rvfi_if.mode               = `CPU_HIER.rvfi_mode;
+  assign u_eg2_rvfi_if.rs1_addr           = `CPU_HIER.rvfi_rs1_addr;
+  assign u_eg2_rvfi_if.rs2_addr           = `CPU_HIER.rvfi_rs2_addr;
+  assign u_eg2_rvfi_if.rs1_rdata          = `CPU_HIER.rvfi_rs1_rdata;
+  assign u_eg2_rvfi_if.rs2_rdata          = `CPU_HIER.rvfi_rs2_rdata;
+  assign u_eg2_rvfi_if.rd_addr            = `CPU_HIER.rvfi_rd_addr;
+  assign u_eg2_rvfi_if.rd_wdata           = `CPU_HIER.rvfi_rd_wdata;
+  assign u_eg2_rvfi_if.pc_rdata           = `CPU_HIER.rvfi_pc_rdata;
+  assign u_eg2_rvfi_if.pc_wdata           = `CPU_HIER.rvfi_pc_wdata;
+  assign u_eg2_rvfi_if.mem_addr           = `CPU_HIER.rvfi_mem_addr;
+  assign u_eg2_rvfi_if.mem_rmask          = `CPU_HIER.rvfi_mem_rmask;
+  assign u_eg2_rvfi_if.mem_wmask          = `CPU_HIER.rvfi_mem_wmask;
+  assign u_eg2_rvfi_if.mem_rdata          = `CPU_HIER.rvfi_mem_rdata;
+  assign u_eg2_rvfi_if.mem_wdata          = `CPU_HIER.rvfi_mem_wdata;
+  assign u_eg2_rvfi_if.rs1_rcap           = `CPU_HIER.rvfi_rs1_rcap;
+  assign u_eg2_rvfi_if.rs2_rcap           = `CPU_HIER.rvfi_rs2_rcap;
+  assign u_eg2_rvfi_if.rd_wcap            = `CPU_HIER.rvfi_rd_wcap;
+  assign u_eg2_rvfi_if.mem_is_cap         = `CPU_HIER.rvfi_mem_is_cap;
+  assign u_eg2_rvfi_if.mem_rcap           = `CPU_HIER.rvfi_mem_rcap;
+  assign u_eg2_rvfi_if.mem_wcap           = `CPU_HIER.rvfi_mem_wcap;
+  // rv_core_ibex leaves these ibex_top outputs open; they are read at the port.
+  assign u_eg2_rvfi_if.ext_pre_mip        = `CPU_CORE_HIER.rvfi_ext_pre_mip;
+  assign u_eg2_rvfi_if.ext_post_mip       = `CPU_CORE_HIER.rvfi_ext_post_mip;
+  assign u_eg2_rvfi_if.ext_nmi            = `CPU_CORE_HIER.rvfi_ext_nmi;
+  assign u_eg2_rvfi_if.ext_nmi_int        = `CPU_CORE_HIER.rvfi_ext_nmi_int;
+  assign u_eg2_rvfi_if.ext_debug_req      = `CPU_CORE_HIER.rvfi_ext_debug_req;
+  assign u_eg2_rvfi_if.ext_debug_mode     = `CPU_CORE_HIER.rvfi_ext_debug_mode;
+  assign u_eg2_rvfi_if.ext_rf_wr_suppress = `CPU_CORE_HIER.rvfi_ext_rf_wr_suppress;
+  assign u_eg2_rvfi_if.ext_irq_valid      = `CPU_CORE_HIER.rvfi_ext_irq_valid;
+  assign u_eg2_rvfi_if.ext_mcycle         = `CPU_CORE_HIER.rvfi_ext_mcycle;
+  assign u_eg2_rvfi_if.ext_mhpmcounters   = `CPU_CORE_HIER.rvfi_ext_mhpmcounters;
+  assign u_eg2_rvfi_if.ext_mhpmcountersh  = `CPU_CORE_HIER.rvfi_ext_mhpmcountersh;
+  assign u_eg2_rvfi_if.ext_ic_scr_key_valid = `CPU_CORE_HIER.rvfi_ext_ic_scr_key_valid;
+  assign u_eg2_rvfi_if.ext_expanded_insn_valid = `CPU_CORE_HIER.rvfi_ext_expanded_insn_valid;
+  assign u_eg2_rvfi_if.ext_expanded_insn_last  = `CPU_CORE_HIER.rvfi_ext_expanded_insn_last;
+  assign u_eg2_rvfi_if.nmi_int_mtval =
+      `CPU_CORE_HIER.u_ibex_core.id_stage_i.controller_i.irq_nm_int_mtval;
+  assign u_eg2_rvfi_if.data_err           = `CPU_CORE_HIER.data_rvalid_i &
+                                            `CPU_CORE_HIER.data_err_i;
+  assign u_eg2_rvfi_if.cheriot_ena        = `CPU_HIER.cheriot_enable_ibex == ibex_pkg::IbexMuBiOn;
+  assign u_eg2_rvfi_if.boot_addr          = `CPU_CORE_HIER.boot_addr_i;
+  // The data-side bus transactions for the ISS (eg2_rvfi_if): at ibex_core's data port, where a
+  // request PMP stopped never appears, with the load/store unit's flags as the Ibex UVM bench
+  // derives them (core_ibex_tb_top.sv data_mem_vif). Review R2, 2026-10-25.
+  assign u_eg2_rvfi_if.dside_req   = `CPU_CORE_HIER.u_ibex_core.data_req_o &
+                                     `CPU_CORE_HIER.u_ibex_core.data_gnt_i;
+  assign u_eg2_rvfi_if.dside_we    = `CPU_CORE_HIER.u_ibex_core.data_we_o;
+  assign u_eg2_rvfi_if.dside_be    = `CPU_CORE_HIER.u_ibex_core.data_be_o;
+  assign u_eg2_rvfi_if.dside_addr  = `CPU_CORE_HIER.u_ibex_core.data_addr_o;
+  assign u_eg2_rvfi_if.dside_wdata = `CPU_CORE_HIER.u_ibex_core.data_wdata_o[31:0];
+  assign u_eg2_rvfi_if.dside_misaligned_first =
+      `CPU_CORE_HIER.u_ibex_core.load_store_unit_i.handle_misaligned_d |
+      ((`CPU_CORE_HIER.u_ibex_core.load_store_unit_i.lsu_type_i == 2'b01) &
+       (`CPU_CORE_HIER.u_ibex_core.load_store_unit_i.data_offset == 2'b01));
+  assign u_eg2_rvfi_if.dside_misaligned_second =
+      `CPU_CORE_HIER.u_ibex_core.load_store_unit_i.addr_incr_req_o;
+  assign u_eg2_rvfi_if.dside_misaligned_first_saw_error =
+      `CPU_CORE_HIER.u_ibex_core.load_store_unit_i.addr_incr_req_o &
+      `CPU_CORE_HIER.u_ibex_core.load_store_unit_i.lsu_err_d;
+  assign u_eg2_rvfi_if.dside_m_mode =
+      `CPU_CORE_HIER.u_ibex_core.priv_mode_lsu == ibex_pkg::PRIV_LVL_M;
+  assign u_eg2_rvfi_if.dside_rvalid = `CPU_CORE_HIER.u_ibex_core.data_rvalid_i;
+  assign u_eg2_rvfi_if.dside_err    = `CPU_CORE_HIER.u_ibex_core.data_err_i;
+  assign u_eg2_rvfi_if.dside_rdata  = `CPU_CORE_HIER.u_ibex_core.data_rdata_i[31:0];
+  // The ID stage, to tie a fetch error to the instruction that takes it, with the Ibex UVM bench's
+  // probes (core_ibex_tb_top.sv instr_monitor_if, dut_if.wb_exception). Review R11, 2026-10-25.
+  assign u_eg2_rvfi_if.id_done            = `CPU_CORE_HIER.u_ibex_core.rvfi_id_done;
+  assign u_eg2_rvfi_if.id_order           = `CPU_CORE_HIER.u_ibex_core.rvfi_stage_order_d;
+  assign u_eg2_rvfi_if.id_pc              = `CPU_CORE_HIER.u_ibex_core.pc_id;
+  assign u_eg2_rvfi_if.id_fetch_err       =
+      `CPU_CORE_HIER.u_ibex_core.id_stage_i.controller_i.instr_fetch_err;
+  assign u_eg2_rvfi_if.id_fetch_err_plus2 =
+      `CPU_CORE_HIER.u_ibex_core.id_stage_i.controller_i.instr_fetch_err_plus2_i;
+  assign u_eg2_rvfi_if.wb_exception       = `CPU_CORE_HIER.u_ibex_core.id_stage_i.wb_exception;
+  // mcounteren (pushed into Spike before each step, as core_ibex_tb_top's cosim does), mcause in
+  // its CSR read form (ibex_cs_registers.sv CSR_MCAUSE) and mtval, for the CHERIoT-mode trap check.
+  // Review R13, 2026-10-25.
+  assign u_eg2_rvfi_if.csr_mcounteren =
+      `CPU_CORE_HIER.u_ibex_core.cs_registers_i.mcounteren;
+  assign u_eg2_rvfi_if.csr_mcause =
+      {`CPU_CORE_HIER.u_ibex_core.cs_registers_i.mcause_q.irq_ext |
+       `CPU_CORE_HIER.u_ibex_core.cs_registers_i.mcause_q.irq_int,
+       {26{`CPU_CORE_HIER.u_ibex_core.cs_registers_i.mcause_q.irq_int}},
+       `CPU_CORE_HIER.u_ibex_core.cs_registers_i.mcause_q.lower_cause};
+  assign u_eg2_rvfi_if.csr_mtval = `CPU_CORE_HIER.u_ibex_core.cs_registers_i.mtval_q;
+
+  initial begin
+    uvm_config_db#(virtual eg2_rvfi_if)::set(null, "*.env.m_eg2_rvfi_agent", "eg2_rvfi_vif",
+                                             u_eg2_rvfi_if);
+    // The core's configuration, for the reference model's ISS (eg2_iss_wrapper).
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "pmp_num_regions",
+                                      `CPU_HIER.PMPNumRegions);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "pmp_granularity",
+                                      `CPU_HIER.PMPGranularity);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "mhpm_counter_num",
+                                      `CPU_HIER.MHPMCounterNum);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "rv32b", `CPU_HIER.RV32B);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "rv32zc", `CPU_HIER.RV32ZC);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "secure_ibex",
+                                      `CPU_HIER.SecureIbex);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "icache", `CPU_HIER.ICache);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "dm_base_addr",
+                                      `CPU_HIER.DmBaseAddr);
+    uvm_config_db#(int unsigned)::set(null, "*.env.m_eg2_iss", "dm_addr_mask",
+                                      `CPU_HIER.DmAddrMask);
+  end
+`endif
 
   for (genvar i = 0; i < NUM_ALERTS; i++) begin : gen_alert_vif
     initial begin
@@ -877,6 +1022,18 @@ module tb;
 
   // EG2 mutations: +eg2_mutate=<name> (eg2_mutations.hjson).
   `include "eg2_mutate.svh"
+  `include "eg2_cap_halves.svh"  // chip_cheriot_cap_halves's assertion (+eg2_cap_halves=1 only)
+
+`ifdef EG2_PERIPH_SB
+  // EG2 per-peripheral scoreboards (build mode en_eg2_periph): TL-UL taps on the peripherals'
+  // ports and the pads, for env/eg2_periph_env.sv.
+  `include "eg2_periph_tl.svh"
+`endif
+
+`ifdef EG2_RNG
+  // EG2 noise source (build mode en_eg2_rng): +eg2_rng=host|pattern:<name> (eg2_rng_src.svh).
+  `include "eg2_rng_src.svh"
+`endif
 
 // Gatesim initial
 `ifdef GATE_LEVEL

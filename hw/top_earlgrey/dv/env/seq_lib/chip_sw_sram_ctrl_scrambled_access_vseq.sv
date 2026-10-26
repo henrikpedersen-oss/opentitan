@@ -212,6 +212,12 @@ class chip_sw_sram_ctrl_scrambled_access_vseq extends chip_sw_base_vseq;
     for (int ram_idx = 0; ram_idx < cfg.num_ram_main_tiles; ram_idx++) begin
       cfg.mem_bkdr_util_h[chip_mem_e'(RamMain0 + ram_idx)].set_mem();
     end
+    // Behind the core's back: the model has no value for these SRAMs' bytes from now on (EG2
+    // review R19, 2026-10-26).
+    eg2_iss_wrapper::backdoor_undefined(top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR,
+                                        top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_RET_RAM_SIZE_BYTES);
+    eg2_iss_wrapper::backdoor_undefined(top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR,
+                                        top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES);
   endtask: cpu_init
 
   virtual task sync_with_sw(input test_phases_e phase);

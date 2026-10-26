@@ -16,8 +16,14 @@
             lock:  "True",
             items: [
                 {
+                    // A well-formed device identifier, as provisioning writes it (identities and
+                    // root keys, "Device Identifier"): bytes 0-1 Silicon Creator ID 0x0001 (the
+                    // open-source value, EG2 HLS "Silicon Identifiers"), 2-3 Product ID 0x0010,
+                    // 4-11 a unique ID, 12-15 the CRC-32 (IEEE 802.3) of bytes 0-11 (0x416cc30b),
+                    // 16-31 the SKU-specific half. It was "<random>", which never carries a valid
+                    // CRC, so chip_sw_eg2_sec_device_id (REQ_SEC_12) could not pass on any image.
                     name:  "DEVICE_ID",
-                    value: "<random>",
+                    value: "0xce8a46027935e1ac68243f7b1a9e0c5d416cc30bf6409bd2715e3c8a00100001",
                 },
             ],
         }

@@ -1,0 +1,370 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// EG2 mem area (eg2_top_verification: status/test_writing_rules.md; spec REQ_OTP, REQ_SRAM, REQ_CMS_14, REQ_PBF_11/15/18/19).
+// Software in sw/device/tests/eg2_mem/, sequences in env/seq_lib/ (chip_eg2_mem_vseq_list.sv).
+// Each test runs in both modes (`_cheriot`); every `_inject_fail` run must FAIL (REQ_STE_03:
+// Makefile MUST_FAIL_TESTS) and is in no regression list.
+{
+  tests: [
+    {
+      name: chip_sw_sram_ctrl_meta
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_cheriot
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_readback
+      uvm_test_seq: chip_sw_eg2_sram_readback_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_readback:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=50_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_sram_readback_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_readback_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_readback_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=50_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_sram_readback_cheriot
+      uvm_test_seq: chip_sw_eg2_sram_readback_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_readback_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=50_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_sram_readback_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_readback_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_readback_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=50_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otp_ctrl_dai_ecc_error
+      uvm_test_seq: chip_sw_eg2_otp_ctrl_dai_ecc_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otp_ctrl_dai_ecc_error:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otp_ctrl_dai_ecc_error_inject_fail
+      uvm_test_seq: chip_sw_eg2_otp_ctrl_dai_ecc_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otp_ctrl_dai_ecc_error_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otp_ctrl_dai_ecc_error_cheriot
+      uvm_test_seq: chip_sw_eg2_otp_ctrl_dai_ecc_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otp_ctrl_dai_ecc_error_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otp_ctrl_dai_ecc_error_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_otp_ctrl_dai_ecc_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otp_ctrl_dai_ecc_error_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otbn_isa
+      uvm_test_seq: chip_sw_eg2_otbn_isa_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_isa:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otbn_isa_inject_fail
+      uvm_test_seq: chip_sw_eg2_otbn_isa_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_isa_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otbn_isa_cheriot
+      uvm_test_seq: chip_sw_eg2_otbn_isa_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_isa_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otbn_isa_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_otbn_isa_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_isa_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 240
+    }
+    {
+      name: chip_sw_otbn_keymgr
+      uvm_test_seq: chip_sw_eg2_otbn_keymgr_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_keymgr:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_otbn_keymgr_inject_fail
+      uvm_test_seq: chip_sw_eg2_otbn_keymgr_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_keymgr_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_otbn_keymgr_cheriot
+      uvm_test_seq: chip_sw_eg2_otbn_keymgr_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_keymgr_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_otbn_keymgr_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_otbn_keymgr_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_otbn_keymgr_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_keymgr_dpe_sideload_kmac_error
+      uvm_test_seq: chip_sw_eg2_keymgr_dpe_sideload_kmac_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_keymgr_dpe_sideload_kmac_error:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_keymgr_dpe_sideload_kmac_error_inject_fail
+      uvm_test_seq: chip_sw_eg2_keymgr_dpe_sideload_kmac_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_keymgr_dpe_sideload_kmac_error_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_keymgr_dpe_sideload_kmac_error_cheriot
+      uvm_test_seq: chip_sw_eg2_keymgr_dpe_sideload_kmac_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_keymgr_dpe_sideload_kmac_error_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_keymgr_dpe_sideload_kmac_error_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_keymgr_dpe_sideload_kmac_error_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_keymgr_dpe_sideload_kmac_error_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_usb_suspend
+      uvm_test_seq: chip_sw_eg2_usb_suspend_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_usb_suspend:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+calibrate_usb_clk=1", "+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_usb_suspend_inject_fail
+      uvm_test_seq: chip_sw_eg2_usb_suspend_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_usb_suspend_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+calibrate_usb_clk=1", "+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_usb_suspend_cheriot
+      uvm_test_seq: chip_sw_eg2_usb_suspend_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_usb_suspend_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+calibrate_usb_clk=1", "+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_usb_suspend_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_usb_suspend_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_usb_suspend_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+calibrate_usb_clk=1", "+sw_test_timeout_ns=100_000_000"]
+      run_timeout_mins: 480
+    }
+    // REQ_CMS_14, REQ_SEC_18: chip_sw_sram_lc_escalation on sram_ctrl_meta. The `_inject_fail`
+    // runs must fail with `EG2 MEM metaesc: boot 1 failed 1 check(s)`.
+    {
+      name: chip_sw_sram_ctrl_meta_lc_escalation
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_lc_escalation_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_lc_escalation:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_lc_escalation_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_lc_escalation_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_lc_escalation_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_lc_escalation_cheriot
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_lc_escalation_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_lc_escalation_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_meta_lc_escalation_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_ctrl_meta_lc_escalation_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_ctrl_meta_lc_escalation_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    // REQ_OTP_02: CHERIoT mode only (the RISC-V mode test is the legacy
+    // chip_sw_sram_ctrl_scrambled_access, whose run options it takes: the re-keyed words fail
+    // their integrity on purpose). The `_inject_fail` run must fail with `MEM FAIL`.
+    {
+      name: chip_sw_sram_ctrl_scrambled_access_cheriot
+      uvm_test_seq: chip_sw_eg2_sram_scrambled_access_cheriot_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_scrambled_access_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+en_scb_tl_err_chk=0",
+                 "+bypass_alert_ready_to_end_check=1"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_scrambled_access_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_sram_scrambled_access_cheriot_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_scrambled_access_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+en_scb_tl_err_chk=0",
+                 "+bypass_alert_ready_to_end_check=1"]
+      run_timeout_mins: 480
+    }
+    // REQ_SRAM_01, REQ_TL_05: CHERIoT mode only (the RISC-V mode test is the legacy
+    // chip_sw_sram_ctrl_execution_main).
+    {
+      name: chip_sw_sram_ctrl_execution_main_cheriot
+      uvm_test_seq: chip_sw_eg2_mem_sram_execution_main_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_execution_main_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_sram_ctrl_execution_main_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_mem_sram_execution_main_vseq
+      sw_images: ["//sw/device/tests/eg2_mem:eg2_sram_execution_main_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000"]
+      run_timeout_mins: 480
+    }
+  ]
+  regressions: [
+    {
+      name: eg2_mem
+      tests: [
+        "chip_sw_sram_ctrl_meta",
+        "chip_sw_sram_ctrl_meta_cheriot",
+        "chip_sw_sram_readback",
+        "chip_sw_sram_readback_cheriot",
+        "chip_sw_otp_ctrl_dai_ecc_error",
+        "chip_sw_otp_ctrl_dai_ecc_error_cheriot",
+        "chip_sw_otbn_isa",
+        "chip_sw_otbn_isa_cheriot",
+        "chip_sw_otbn_keymgr",
+        "chip_sw_otbn_keymgr_cheriot",
+        "chip_sw_keymgr_dpe_sideload_kmac_error",
+        "chip_sw_keymgr_dpe_sideload_kmac_error_cheriot",
+        "chip_sw_usb_suspend",
+        "chip_sw_usb_suspend_cheriot",
+        "chip_sw_sram_ctrl_execution_main_cheriot",
+        "chip_sw_sram_ctrl_meta_lc_escalation",
+        "chip_sw_sram_ctrl_meta_lc_escalation_cheriot",
+        "chip_sw_sram_ctrl_scrambled_access_cheriot"
+      ]
+    }
+  ]
+}

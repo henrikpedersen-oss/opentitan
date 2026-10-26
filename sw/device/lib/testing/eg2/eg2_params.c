@@ -10,7 +10,6 @@
 OT_USED OT_SECTION(".rodata") volatile const uint32_t kEg2Seed = 0;
 // The bench's active mutation (+eg2_mutate), NUL-padded; empty without one.
 OT_USED OT_SECTION(".rodata") volatile const char kEg2MutationName[kEg2MutationNameSize] = {0};
-static char mutation_name[kEg2MutationNameSize];
 
 // A test without parameters gets an empty table.
 OT_WEAK const eg2_param_t kEg2Params[1];
@@ -46,18 +45,15 @@ static void put_line(const char *what, const char *name, uint32_t value) {
   eg2_puts(")\r\n");
 }
 
-const char *eg2_mutation_active(void) {
-  for (size_t i = 0; i + 1 < kEg2MutationNameSize; ++i) {
-    mutation_name[i] = kEg2MutationName[i];
-  }
-  mutation_name[kEg2MutationNameSize - 1] = '\0';
-  return mutation_name;
-}
+// The bench writes the name before the CPU starts, NUL-padded and shorter than the array
+// (chip_sw_eg2_base_vseq::write_mutation_name), and it does not change afterwards: no copy is
+// needed, which keeps CHERIoT images' globals within their 4 KiB (REQ_STE_12).
+const char *eg2_mutation_active(void) { return (const char *)kEg2MutationName; }
 
 bool eg2_params_begin(void) {
   if (eg2_mutation_active()[0] != '\0') {
     eg2_puts("EG2 mutation ");
-    eg2_puts(mutation_name);
+    eg2_puts(eg2_mutation_active());
     eg2_puts("\r\n");
   }
   uint32_t seed = kEg2Seed;

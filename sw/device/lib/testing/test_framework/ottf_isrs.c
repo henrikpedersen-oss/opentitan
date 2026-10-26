@@ -21,9 +21,19 @@
 
 dif_rv_plic_t ottf_plic;
 
+#ifdef __CHERIOT__
+// In a CHERIoT (purecap) build a table of string pointers is a table of
+// capabilities in the image's globals (which must stay small); the strings are
+// kept in the table itself instead, in read-only data.
+#define OTTF_STRING_TABLE_(name, width) static const char name[][width]
+#else
+#define OTTF_STRING_TABLE_(name, width) static const char *name[]
+#endif  // __CHERIOT__
+
+#line 24  // Keeps the original line numbers.
 // Fault reasons from
 // https://riscv.org/wp-content/uploads/2017/05/riscv-privileged-v1.10.pdf
-static const char *exception_reason[] = {
+OTTF_STRING_TABLE_(exception_reason, 25) = {
     "Instruction Misaligned",
     "Instruction Access",
     "Illegal Instruction",
@@ -58,7 +68,7 @@ static const char *exception_reason[] = {
     "Reserved",
 };
 
-static const char *exc_frame[] = {
+OTTF_STRING_TABLE_(exc_frame, 5) = {
     "mepc", "  ra", "  t0", "  t1", "  t2", "  s0", "  s1", "  a0",
     "  a1", "  a2", "  a3", "  a4", "  a5", "  a6", "  a7", "  s2",
     "  s3", "  s4", "  s5", "  s6", "  s7", "  s8", "  s9", " s10",
@@ -68,7 +78,14 @@ static const char *exc_frame[] = {
 void ottf_generic_fault_print(uint32_t *exc_info, const char *reason,
                               uint32_t mcause) {
   enum { kExcWords = 30 };
+#ifdef __CHERIOT__
+  // CHERIoT has no mepc CSR: `csrr mepc` is an illegal instruction, which re-entered this handler
+  // forever. The faulting PC is MEPCC's address.
+  uint32_t mepc;
+  asm volatile("cspecialr ct0, mepcc\n\tmv %0, t0" : "=r"(mepc) : : "t0");
+#else
   uint32_t mepc = ibex_mepc_read();
+#endif
   uint32_t mtval = ibex_mtval_read();
   if (exc_info) {
     base_printf("===== Exception Frame @ %08x =====", exc_info);
@@ -83,6 +100,20 @@ void ottf_generic_fault_print(uint32_t *exc_info, const char *reason,
     }
     uint32_t *sp = exc_info + kExcWords;
     base_printf("\n");
+#ifdef __CHERIOT__
+    // In CHERIoT mode an integer address is not a pointer: the stack is walked
+    // through the frame's capability, up to its top, and the code is what PCC
+    // covers.
+    uint32_t *ram_start = sp;
+    uint32_t *ram_end =
+        sp + (__builtin_cheri_top_get(sp) - __builtin_cheri_address_get(sp)) /
+                 sizeof(uint32_t);
+    const void *pcc = __builtin_cheri_program_counter_get();
+    const uint32_t text_start = (uint32_t)__builtin_cheri_base_get(pcc);
+    const uint32_t text_end =
+        text_start + (uint32_t)__builtin_cheri_length_get(pcc);
+#else
+#line 86  // Keeps the original line numbers.
     uint32_t ram_base_addr =
         dt_sram_ctrl_memory_base(kDtSramCtrlMain, kDtSramCtrlMemoryRam);
     uint32_t *ram_start = (uint32_t *)ram_base_addr;
@@ -93,6 +124,8 @@ void ottf_generic_fault_print(uint32_t *exc_info, const char *reason,
     extern const char _text_start[], _text_end[];
     const uint32_t text_start = (uint32_t)_text_start;
     const uint32_t text_end = (uint32_t)_text_end;
+#endif  // __CHERIOT__
+#line 96  // Keeps the original line numbers.
     base_printf("===== Call Stack =====\n");
     for (; sp >= ram_start && sp < ram_end; ++sp) {
       uint32_t val = *sp;

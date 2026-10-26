@@ -242,6 +242,7 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
   logic        wb_exception;
   logic        unused_id_exception;
   logic        id_exception_nc;
+  logic        cheriot_exc_id;
 
   logic        branch_in_dec;
   logic        branch_set, branch_set_raw, branch_set_raw_d;
@@ -484,6 +485,7 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
     .cheriot_enable_i(cheriot_enable_i),
 
     // controller
+    .dummy_instr_i (dummy_instr_id_i),
     .illegal_insn_o(illegal_insn_dec),
     .ebrk_insn_o   (ebrk_insn),
     .mret_insn_o   (mret_insn_dec),
@@ -668,6 +670,7 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
     .wb_exception_o       (wb_exception),
     .id_exception_o       (unused_id_exception),
     .id_exception_nc_o    (id_exception_nc),
+    .cheriot_exc_id_o     (cheriot_exc_id),
 
     // jump/branch control
     .branch_set_i     (branch_set),
@@ -1148,7 +1151,8 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
     // Without writeback stage any valid instruction that hasn't seen an error will execute
     assign instr_executing_spec = instr_valid_i & ~instr_fetch_err_i & controller_run;
     assign instr_executing      = instr_executing_spec;
-    assign cheriot_exec_id_o    = (cheriot_enable_i == IbexMuBiOn) & instr_executing;
+    assign cheriot_exec_id_o    = (cheriot_enable_i == IbexMuBiOn) & instr_executing &
+                                  instr_is_legal_cheriot;
 
     `ASSERT(IbexStallIfValidInstrNotExecuting,
       instr_valid_i & ~instr_fetch_err_i & ~instr_executing & controller_run |-> stall_id)
@@ -1188,7 +1192,7 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
     assign unused_rf_wdata_fwd_wb      = rf_wdata_fwd_wb_i;
 
     logic unused_cheriot_wb_signals;
-    assign unused_cheriot_wb_signals = ^{id_exception_nc, rf_we_or_load, instr_is_legal_cheriot};
+    assign unused_cheriot_wb_signals = ^{id_exception_nc, rf_we_or_load};
 
     assign instr_type_wb_o = WB_INSTR_OTHER;
     assign stall_wb        = 1'b0;
@@ -1200,14 +1204,16 @@ module ibex_id_stage import ibex_cheriot_pkg::*; #(
 
   // Signal which instructions to count as retired in minstret, all traps along with ebrk and
   // ecall instructions are not counted. Writes to minstret/minstreth themselves are also excluded
-  // to avoid incrementing right after a write.
+  // to avoid incrementing right after a write. CHERIoT exceptions raised in ID/EX (a CHERI EX
+  // error or an ASR fault) are traps too: before 2026-10-19 they were counted (cheriot_minstret_exact
+  // check 20: a CJALR through c0 added one).
   logic minstret_write;
   assign minstret_write = csr_access_o &
       (csr_op_o inside {CSR_OP_WRITE, CSR_OP_SET, CSR_OP_CLEAR}) &
       (csr_addr_o inside {CSR_MINSTRET, CSR_MINSTRETH});
 
   assign instr_perf_count_id_o = ~ebrk_insn & ~ecall_insn_dec & ~illegal_insn_dec &
-      ~illegal_csr_insn_i & ~instr_fetch_err_i & ~minstret_write &
+      ~illegal_csr_insn_i & ~instr_fetch_err_i & ~minstret_write & ~cheriot_exc_id &
       !(instr_gets_expanded_i inside {INSTR_EXPANDED, INSTR_EXPANDED_COMMIT});
 
   // An instruction is ready to move to the writeback stage (or retire if there is no writeback

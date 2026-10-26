@@ -62,19 +62,20 @@
 .endm
 
 // Writes `reg` as eight hex digits; `reg` is consumed. Clobbers a1, a2, t2.
+// Its labels are 7 and 8: uart_put's own `1:` would capture a `1b` after it.
 .macro uart_puthex cap, reg
   addi a1, x0, 8
-1:
+7:
   srli a2, \reg, 28
   slli \reg, \reg, 4
   addi t2, x0, 10
-  blt  a2, t2, 2f
+  blt  a2, t2, 8f
   addi a2, a2, ('a' - 10 - '0')
-2:
+8:
   addi a2, a2, '0'
   uart_put \cap, a2
   addi a1, a1, -1
-  bnez a1, 1b
+  bnez a1, 7b
 .endm
 
 // -----------------------------------------------------------------------------
@@ -118,6 +119,11 @@ _eg2_cheriot_trap:
   uart_puthex ct0, a0
   uart_putc ct0, '\r'
   uart_putc ct0, '\n'
+  // The line must be out before the status word ends the run.
+1:
+  lw   t2, UART_STATUS_REG_OFFSET(ct0)
+  andi t2, t2, (1 << UART_STATUS_TXIDLE_BIT)
+  beqz t2, 1b
 
   cspecialr       ct0, mtdc
   li              t1, TOP_RV_CORE_IBEX_CFG_BASE_ADDR
