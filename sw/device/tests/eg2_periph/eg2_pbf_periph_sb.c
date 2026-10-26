@@ -38,8 +38,10 @@
  * Built with EG2_PERIPH_INJECT_FAIL the first data check (the first unmapped load's cause) is
  * made against a wrong expected value: the run must fail with `PERIPH FAIL`.
  *
- * EG2_NEEDS_BENCH: the I2C phase needs the bench's I2C agent as the peer; the Verilator top has
- * none, so each transfer waits out kPolls (regr-vlt 2026-10-26: TIMEOUT at `i2c0 write bytes`).
+ * The I2C phase needs the bench's I2C agent as the peer; the Verilator top has none, so each
+ * transfer waited out kPolls (regr-vlt 2026-10-26: TIMEOUT at `i2c0 write bytes`). So `devices`
+ * defaults to every device but I2C (11): Verilator, which sets no knob, runs UART, SPI and GPIO;
+ * the vseq sets `devices` on Xcelium, I2C included (review 2026-10-26: not excluded whole).
  */
 
 #include "hw/top/gpio_regs.h"      // Generated.
@@ -54,7 +56,7 @@ EG2_TEST_CONFIG();
 EG2_PERIPH_INJECT_FAIL_DEFINE;
 
 #define PERIPH_SB_PARAMS(X) \
-  X(devices, 15, 1, 15)     \
+  X(devices, 11, 1, 15)     \
   X(len_class, 3, 0, 3)     \
   X(clk_class, 0, 0, 1)     \
   X(rx_bench, 0, 0, 1)      \

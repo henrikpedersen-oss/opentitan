@@ -9,7 +9,8 @@
  *
  * The memories are the generated table's (eg2_regmem_tables.h): main SRAM (the part that holds
  * neither the image's globals nor the stack), secondary SRAM, retention SRAM, the CHERIoT
- * revocation bitmap at the base of the meta SRAM (in CHERIoT mode only the part whose granules
+ * revocation bitmap at the base of the meta SRAM (in RISC-V mode only checked to fault, as its
+ * window answers an error in ePMP mode; in CHERIoT mode only the part whose granules
  * hold no capability the test uses), OTBN's IMEM and DMEM, the usbdev packet buffer, and, read
  * only, the RRAM host window and the ROM.
  *
@@ -459,6 +460,28 @@ static void one_memory(ctx_t *c, const eg2_rm_mem_t *m) {
   }
   volatile uint8_t *win = (volatile uint8_t *)eg2_rm_ptr(m->base);
   volatile uint8_t *b = win + (wlo - m->base);
+
+#ifndef __CHERIOT__
+  if (kind == kMemMeta && !c->gaps) {
+    // RISC-V (ePMP) mode: cheriot_mem_sys's theory of operation, the revocation bitmap window
+    // "returns a TL-UL error while the system is in ePMP mode" (and "any meta SRAM access while in
+    // ePMP mode": TL-UL error). So a load and a store fault, and no algorithm runs (2026-10-26:
+    // the walking-address test took that fault as unexpected and ended the run).
+    eg2_puts("MEM ");
+    eg2_puts(c->mem);
+    eg2_puts(": ePMP mode, every access answers an error\r\n");
+    expect_access(c, "bitmap load in ePMP mode", b, kEg2RmLw, kEg2RmCauseLoadFault);
+    expect_access(c, "bitmap store in ePMP mode", b, kEg2RmSw, kEg2RmCauseStoreFault);
+    eg2_puts(c->fails == fails0 ? "MEM PASS " : "MEM FAIL ");
+    eg2_puts(c->mem);
+    eg2_puts(": ");
+    eg2_putdec(c->checks - checks0);
+    eg2_puts(" checks, ");
+    eg2_putdec(c->fails - fails0);
+    eg2_puts(" failures\r\n");
+    return;
+  }
+#endif
 
   // The algorithm, width and data background.
   uint32_t wa[kAlgCount] = {EG2_PARAM(w_alg_march_c), EG2_PARAM(w_alg_mats),

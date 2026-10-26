@@ -214,6 +214,7 @@ _RSA = "@nist_cavp_rsa_fips_186_3//:"
 _OTBN_DEPS = [
     ":eg2_nist_otbn",
     "//sw/device/lib/base:hardened",
+    "//sw/device/lib/testing:entropy_testutils",  # 2026-10-26: EDN0 in auto mode first
 ]
 
 # name, generator kind, vector files, files not run, random vectors per file, engine deps.

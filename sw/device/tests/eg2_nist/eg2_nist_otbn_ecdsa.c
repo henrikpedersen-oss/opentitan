@@ -30,6 +30,7 @@
 #include "sw/device/lib/crypto/impl/ecc/p256.h"
 #include "sw/device/lib/crypto/impl/ecc/p384.h"
 #include "sw/device/lib/testing/eg2/eg2_test.h"
+#include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/tests/eg2_nist/eg2_nist.h"
 #include "sw/device/tests/eg2_nist/eg2_nist_otbn.h"
 
@@ -152,6 +153,13 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 }
 
 bool eg2_test_main(void) {
+  // The crypto library's OTBN and hardening code take random words from rv_core_ibex's RND: the
+  // entropy complex in auto mode first, as eg2_nist_aes_kw.c, not the test ROM's one boot-time EDN
+  // generate, which more vectors can exhaust (review 2026-10-26). Not in eg2sim (model_gaps).
+  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+    eg2_puts("NIST otbn_ecdsa: entropy complex not in auto mode\r\n");
+    return false;
+  }
   eg2_nist_otbn_budget_init(EG2_PARAM(per_group));
   return eg2_nist_run("otbn_ecdsa", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }
