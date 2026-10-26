@@ -98,6 +98,22 @@ static inline __attribute__((always_inline)) void ibex_clear_rf(void) {
 
   // Get random word that gets written into the RF.
   uint32_t rnd = ibex_rnd32_read();
+#ifdef __CHERIOT__
+  // CHERIoT (EG2, 2026-10-26, F54): a pointer is a capability, which an "r" operand cannot hold
+  // ("couldn't allocate input reg for constraint 'r'", every CHERIoT image that clears the RF
+  // failed to link, e.g. the GCM test), so the value itself goes in by register; and the core has
+  // x0 ... x15 only (RV32E; an instruction naming x16 ... x31 traps as illegal), so the clearing
+  // stops at x15. Skip x0 ... x4 and x8/x9 as below.
+  asm volatile("mv x5, %0" : : "r"(rnd) : "x5");
+  asm volatile("mv x6, %0" : : "r"(rnd) : "x6");
+  asm volatile("mv x7, %0" : : "r"(rnd) : "x7");
+  asm volatile("mv x10, %0" : : "r"(rnd) : "x10");
+  asm volatile("mv x11, %0" : : "r"(rnd) : "x11");
+  asm volatile("mv x12, %0" : : "r"(rnd) : "x12");
+  asm volatile("mv x13, %0" : : "r"(rnd) : "x13");
+  asm volatile("mv x14, %0" : : "r"(rnd) : "x14");
+  asm volatile("mv x15, %0" : : "r"(rnd) : "x15");
+#else   // __CHERIOT__
   // Skip x0 ... x4 as those register do not contain sensitive values.
   // x5 ... x7
   asm volatile("lw x5, 0(%0)" : : "r"(&rnd) : "x5");
@@ -128,6 +144,7 @@ static inline __attribute__((always_inline)) void ibex_clear_rf(void) {
   asm volatile("lw x29, 0(%0)" : : "r"(&rnd) : "x29");
   asm volatile("lw x30, 0(%0)" : : "r"(&rnd) : "x30");
   asm volatile("lw x31, 0(%0)" : : "r"(&rnd) : "x31");
+#endif  // __CHERIOT__
 #else  // OT_PLATFORM_RV32
   asm volatile("nop");
 #endif
