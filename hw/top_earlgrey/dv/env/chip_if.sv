@@ -553,10 +553,9 @@ interface chip_if;
   // with the I2C agents 1 and 2: not both at once.
   bit __enable_i3c_loopback = 1'b0;  // Internal signal.
 
-  tranif1 i3c_scl_join(mios[top_earlgrey_pkg::MioPadIob11], mios[top_earlgrey_pkg::MioPadIob9],
-                       __enable_i3c_loopback);
-  tranif1 i3c_sda_join(mios[top_earlgrey_pkg::MioPadIob12], mios[top_earlgrey_pkg::MioPadIob10],
-                       __enable_i3c_loopback);
+  // The two bidirectional switches that join the buses are in tb.sv (i3c_scl_join, i3c_sda_join),
+  // controlled by __enable_i3c_loopback: Xcelium allows no primitive inside an interface
+  // (*E,INFINS, 2026-10-26).
   // A high-keeper on SCL, which holds it while no instance drives it (role handover). SDA has no
   // keeper, only the pull-up resistor, switched by either instance's pull-up enable (IOB7, IOB8):
   // with no enable set an undriven SDA floats (Z), so a missing pull-up enable shows instead of

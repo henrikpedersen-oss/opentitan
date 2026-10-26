@@ -276,6 +276,16 @@ module tb;
     .gpio_pull_sel(gpiodpi_pull_sel_d2p)
   );
 
+  // The I3C loopback's bus join (chip_if enable_i3c_loopback, +i3c_loopback=1): I3C0's SCL/SDA
+  // (IOB11/IOB12) switched to I3C1's (IOB9/IOB10). Here and not in chip_if, which holds the keeper
+  // and the pull-up: Xcelium allows no primitive inside an interface (*E,INFINS, 2026-10-26).
+  tranif1 i3c_scl_join(dut.chip_if.mios[top_earlgrey_pkg::MioPadIob11],
+                       dut.chip_if.mios[top_earlgrey_pkg::MioPadIob9],
+                       dut.chip_if.__enable_i3c_loopback);
+  tranif1 i3c_sda_join(dut.chip_if.mios[top_earlgrey_pkg::MioPadIob12],
+                       dut.chip_if.mios[top_earlgrey_pkg::MioPadIob10],
+                       dut.chip_if.__enable_i3c_loopback);
+
   // Assign pad values from gpiodpi outputs if active.
   // TODO: revise the pad assignments: these are literally from verilator.
   assign {dut.IOB12, dut.IOB11, dut.IOB10, dut.IOB9, dut.IOB8, dut.IOB7, dut.IOB6} =
