@@ -1488,9 +1488,11 @@ class eg2_iss_wrapper extends uvm_component;
     inst.pending_wr.push_back('{t: $realtime, kind: WrImage, addr: RramHost,
                                 size: top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES,
                                 data: 0, untag: 0});
-    `uvm_info("eg2_iss_wrapper", $sformatf({"EG2_ISS the bench reloaded the RRAM image: %0d RRAM ",
-                                            "bytes kept from writes behind the core's back forgotten"},
-                                           n), UVM_LOW)
+    // Through inst: `uvm_info calls uvm_report_enabled, which a static function cannot reach.
+    inst.uvm_report_info("eg2_iss_wrapper",
+                         $sformatf({"EG2_ISS the bench reloaded the RRAM image: %0d RRAM bytes ",
+                                    "kept from writes behind the core's back forgotten"}, n),
+                         UVM_LOW, `__FILE__, `__LINE__);
   endfunction
 
   // rram_ctrl's controller writes into the RRAM's data partition (chip_if rram_wr_*): the addresses
