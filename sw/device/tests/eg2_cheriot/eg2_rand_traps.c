@@ -204,6 +204,11 @@ static void phase_irqs(eg2_tally_t *t) {
       ++t->done;  // model_gaps: no interrupts (the header)
       continue;
     }
+    // A line per event, so a hang shows which (2026-10-27: the CHERIoT run on Verilator stopped
+    // in this phase, after "EG2 illegal", with no output for the rest of the hour).
+    eg2_puts("irq event ");
+    eg2_putdec(i);
+    eg2_puts("\r\n");
     irq_event(t, i == 3 ? kIrqTimer : i, i == 3, i);
     ++t->done;
   }
