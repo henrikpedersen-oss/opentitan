@@ -156,6 +156,30 @@ static void report_waits(void) {
   eg2_puts("\r\n");
 }
 
+// The driver calls of one unwrap step, one at a time with a line after each (2026-10-27: in
+// CHERIoT mode both waits above are fine, and the run still stops in the first vector, KWP_AD_192;
+// the RISC-V build passes it). A 192-bit all-zero key, like that vector's length.
+static void report_driver(void) {
+  static const uint32_t kKey[8] = {0};
+  aes_key_t kek = {
+      .mode = kAesCipherModeEcb,
+      .sideload = kHardenedBoolFalse,
+      .key_len = 6,
+      .key_shares = {kKey, kZeroShare},
+  };
+  kek.checksum = aes_key_integrity_checksum(&kek);
+  aes_block_t block = {.data = {1, 2, 3, 4}};
+  put_kv("NIST aes_kw driver: decrypt_begin", status_ok(aes_decrypt_begin(kek, NULL)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw driver: update in", status_ok(aes_update(NULL, &block)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw driver: update out", status_ok(aes_update(&block, NULL)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw driver: end", status_ok(aes_end(NULL)));
+  put_kv(" AES STATUS", abs_mmio_read32(dt_aes_primary_reg_block(kDtAes) + AES_STATUS_REG_OFFSET));
+  eg2_puts("\r\n");
+}
+
 bool eg2_test_main(void) {
   // The crypto library's AES driver takes masks and random orders from rv_core_ibex's RND
   // (drivers/aes.c: "the caller must ensure the entropy complex is up"; upstream's functests call
@@ -169,6 +193,7 @@ bool eg2_test_main(void) {
   }
   if (!EG2_PARAM(model_gaps)) {
     report_waits();
+    report_driver();
   }
   return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }
