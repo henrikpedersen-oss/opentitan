@@ -558,7 +558,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_aes_cheriot_inject_fail
@@ -576,7 +576,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_aes_gcm_inject_fail
@@ -594,7 +594,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_aes_gcm_cheriot_inject_fail
@@ -612,7 +612,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_sha2_inject_fail

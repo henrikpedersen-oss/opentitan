@@ -384,7 +384,7 @@ module uart_core (
               rx_tick_baud                        ? (rx_timeout_count_q + 24'd1) :
               rx_timeout_count_q;
 
-  assign event_rx_timeout = (rx_timeout_count_q == uart_rxto_val) & uart_rxto_en;
+  assign event_rx_timeout = (rx_timeout_count_q == uart_rxto_val) & uart_rxto_en & (rx_fifo_depth != '0);
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin

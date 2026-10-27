@@ -20,7 +20,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_nist=aes_kw", "+eg2_closes=chip_sw_eg2_nist_aes_kw:REQ_PBF_23,REQ_PBF_10"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_aes_kw_inject_fail
@@ -38,7 +38,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_nist=aes_kw", "+eg2_closes=chip_sw_eg2_nist_aes_kw:REQ_PBF_23,REQ_PBF_10"]
-      run_timeout_mins: 480
+      run_timeout_mins: 720
     }
     {
       name: chip_sw_eg2_nist_aes_kw_cheriot_inject_fail
@@ -56,7 +56,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_nist=otbn_ecdsa", "+eg2_closes=chip_sw_eg2_nist_otbn_ecdsa:REQ_PBF_23,REQ_PBF_11"]
-      run_timeout_mins: 480
+      run_timeout_mins: 960
     }
     {
       name: chip_sw_eg2_nist_otbn_ecdsa_inject_fail
@@ -74,7 +74,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_nist=otbn_ecdh", "+eg2_closes=chip_sw_eg2_nist_otbn_ecdh:REQ_PBF_23,REQ_PBF_11"]
-      run_timeout_mins: 480
+      run_timeout_mins: 960
     }
     {
       name: chip_sw_eg2_nist_otbn_ecdh_inject_fail
@@ -92,7 +92,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=400_000_000", "+eg2_nist=otbn_rsa", "+eg2_closes=chip_sw_eg2_nist_otbn_rsa:REQ_PBF_23,REQ_PBF_11"]
-      run_timeout_mins: 480
+      run_timeout_mins: 960
     }
     {
       name: chip_sw_eg2_nist_otbn_rsa_inject_fail

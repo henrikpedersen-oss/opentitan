@@ -1485,13 +1485,13 @@ class eg2_iss_wrapper extends uvm_component;
   // 2026-10-26: the kept bytes were written into Spike again at the next restart, over the image.
   static function void rram_image_reloaded();
     int unsigned n;
+    bit [31:0] del_keys[$];
     if (inst == null) return;
-    foreach (inst.nv_mem[a]) begin
-      if (a >= RramHost && a - RramHost < top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) begin
-        inst.nv_mem.delete(a);
-        n++;
-      end
-    end
+    foreach (inst.nv_mem[a])
+      if (a >= RramHost && a - RramHost < top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES)
+        del_keys.push_back(a);
+    n = del_keys.size();
+    foreach (del_keys[i]) inst.nv_mem.delete(del_keys[i]);
     inst.pending_wr.push_back('{t: $realtime, kind: WrImage, addr: RramHost,
                                 size: top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES,
                                 data: 0, untag: 0});
