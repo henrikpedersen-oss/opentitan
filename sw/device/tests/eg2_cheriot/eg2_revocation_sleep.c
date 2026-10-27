@@ -79,6 +79,15 @@ enum {
 
 static eg2_tally_t tally;
 
+// A line per set-up step (2026-10-27): the Verilator run of 2026-10-26 stopped after "EG2
+// revocation_sleep sleeps" and before "normal sleep during a sweep", so in the set-up below and
+// not in the sleep its EG2_NEEDS_BENCH note blames; these lines show which step.
+static void step(const char *what) {
+  eg2_puts("EG2 revocation_sleep step: ");
+  eg2_puts(what);
+  eg2_puts("\r\n");
+}
+
 static uint32_t dev_addr(eg2_dev_id_t d) { return EG2_ADDR((void *)eg2_dev(d)); }
 
 static uint32_t ret_slot(eg2_ms_rec_t *rec) { return EG2_ADDR(&rec->data[kRecCap]); }
@@ -102,6 +111,7 @@ static void sleep_window(eg2_ms_rec_t *rec, uint32_t kind) {
   for (uint32_t i = 0; i < kNum; ++i) {
     eg2_ms_csc(kSlots + 8 * i, eg2_ms_object_cap(kObj + 8 * i, 8, false));
   }
+  step("capabilities stored to arena B");
   uint32_t w, b0;
   (void)eg2_ms_revbm_bit(kObj, &w, &b0);
   uint32_t pm = dev_addr(kEg2DevPwrmgr), aon = dev_addr(kEg2DevAonTimer);
@@ -167,10 +177,14 @@ bool eg2_test_main(void) {
     eg2_put_kv("EG2 revocation_sleep sleeps", EG2_PARAM(sleeps));
     eg2_puts("\r\n");
     eg2_ms_revbm_clear();
+    step("bitmap cleared");
     eg2_ms_tbre_clear();
+    step("TBRE cleared");
     // A tagged capability stored to retention SRAM: it loads untagged.
     eg2_ms_csc(ret_slot(rec), eg2_ms_object_cap(kObj, 8, false));
+    step("capability stored to retention SRAM");
     eg2_cap_t c = eg2_hw_read(eg2_ms_clc(ret_slot(rec)));
+    step("capability loaded from retention SRAM");
     rec->data[kRecRetHi] = c.hi;
     rec->data[kRecRetAddr] = c.addr;
     check_retention("retention SRAM tag before sleeping", 0, rec);
