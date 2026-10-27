@@ -28,7 +28,7 @@
 
 EG2_TEST_CONFIG();
 
-#define NIST_DRBG_PARAMS(X) X(random_vectors, 3, 0, 64)
+#define NIST_DRBG_PARAMS(X) X(boundary_vectors, 8, 0, 1024) X(random_vectors, 3, 0, 64)
 EG2_TEST_PARAMS(NIST_DRBG_PARAMS);
 
 enum {
@@ -141,7 +141,7 @@ bool eg2_test_main(void) {
     eg2_puts("CSRNG init failed\r\n");
     return false;
   }
-  bool ok = eg2_nist_run("drbg", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
+  bool ok = eg2_nist_run("drbg", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
   // Leave the software instance uninstantiated: it held known-answer state.
   return ready() && dif_csrng_uninstantiate(&csrng) == kDifOk && ok;
 }

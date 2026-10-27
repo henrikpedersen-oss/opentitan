@@ -88,6 +88,13 @@ uint32_t eg2_nist_word(const uint8_t *b, uint32_t nbytes, uint32_t i) {
 
 static bool run_one(eg2_nist_run_fn_t fn, uint32_t idx, bool *corrupt) {
   const eg2_nist_vec_t *v = &kEg2NistVecs[idx];
+  // One line per vector before it runs, so a run that times out shows how far it got (2026-10-27:
+  // aes_kw and aes_gcm printed nothing between their parameters and the 1 h timeout).
+  eg2_puts("NIST vector ");
+  eg2_putdec(idx);
+  eg2_puts(" ");
+  eg2_puts(&kEg2NistFileNames[kEg2NistFileName[v->file]]);
+  eg2_puts("\r\n");
   eg2_nist_result_t r = fn(v, *corrupt);
   ran[idx / 8] = (uint8_t)(ran[idx / 8] | (1u << (idx % 8)));
   if (r == kEg2NistSkipped) {
@@ -103,21 +110,55 @@ static bool run_one(eg2_nist_run_fn_t fn, uint32_t idx, bool *corrupt) {
   return r == kEg2NistPassed;
 }
 
-bool eg2_nist_run(const char *engine, eg2_nist_run_fn_t fn, uint32_t random_draws,
-                  bool inject_fail) {
+bool eg2_nist_run(const char *engine, eg2_nist_run_fn_t fn, uint32_t boundary_draws,
+                  uint32_t random_draws, bool inject_fail) {
   if (kEg2NistNumFiles > kMaxFiles || kEg2NistNumVecs > kMaxVecs) {
     eg2_puts("NIST table larger than the runner's limits\r\n");
     return false;
   }
   bool corrupt = inject_fail;
   bool ok = true;
-  uint32_t total = 0, nrandom = 0;
+  uint32_t total = 0, nrandom = 0, nboundary = 0;
   for (uint32_t i = 0; i < kEg2NistNumVecs; ++i) {
     if (kEg2NistVecs[i].flags & kEg2NistBoundary) {
-      ok = run_one(fn, i, &corrupt) && ok;
-      ++total;
+      ++nboundary;
     } else {
       ++nrandom;
+    }
+  }
+  // The boundary vectors: all of them with boundary_draws 0 (or at least their number), else that many
+  // drawn by the seed, so that runs with different seeds cover the set between them. All of them in
+  // one run did not fit a simulation (2026-10-27: aes_kw has 43, aes_gcm 213; on Verilator, about
+  // 16M cycles an hour, and on Xcelium both timed out at 8 h).
+  eg2_puts("NIST ");
+  eg2_puts(engine);
+  if (boundary_draws == 0 || boundary_draws >= nboundary) {
+    eg2_puts(" boundary: all ");
+    eg2_putdec(nboundary);
+    eg2_puts("\r\n");
+    for (uint32_t i = 0; i < kEg2NistNumVecs; ++i) {
+      if (kEg2NistVecs[i].flags & kEg2NistBoundary) {
+        ok = run_one(fn, i, &corrupt) && ok;
+        ++total;
+      }
+    }
+  } else {
+    eg2_puts(" boundary: ");
+    eg2_putdec(boundary_draws);
+    eg2_puts(" of ");
+    eg2_putdec(nboundary);
+    eg2_puts(" drawn\r\n");
+    for (uint32_t d = 0; d < boundary_draws; ++d) {
+      uint32_t pick = eg2_rand_range(0, nboundary - d - 1);
+      for (uint32_t i = 0; i < kEg2NistNumVecs; ++i) {
+        if ((kEg2NistVecs[i].flags & kEg2NistBoundary) && !was_run(i)) {
+          if (pick-- == 0) {
+            ok = run_one(fn, i, &corrupt) && ok;
+            ++total;
+            break;
+          }
+        }
+      }
     }
   }
   // The random draws: distinct vectors from the rest of the pool, chosen by the seed.

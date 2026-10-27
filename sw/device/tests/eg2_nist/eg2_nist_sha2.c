@@ -19,6 +19,7 @@
 EG2_TEST_CONFIG();
 
 #define NIST_SHA2_PARAMS(X)    \
+  X(boundary_vectors, 8, 0, 1024) \
   X(random_vectors, 8, 0, 256) \
   X(max_burst, 16, 1, 64)      \
   X(monte, 0, 0, 1)
@@ -59,5 +60,5 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 
 bool eg2_test_main(void) {
   eg2_nist_sha2_init();
-  return eg2_nist_run("sha2", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
+  return eg2_nist_run("sha2", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }

@@ -126,10 +126,12 @@ static inline eg2_nist_result_t eg2_nist_result(bool ok) {
 }
 
 /**
- * Runs every boundary vector, then `random_draws` of the others drawn with eg2_rand(); prints one
- * line per file and a total. Returns true if every vector passed.
+ * Runs `boundary_draws` of the boundary vectors drawn with eg2_rand() (all of them when 0), then
+ * `random_draws` of the others; prints a line per vector as it starts, one per file and a total.
+ * Returns true if every vector passed.
  */
-bool eg2_nist_run(const char *engine, eg2_nist_run_fn_t fn, uint32_t random_draws, bool inject_fail);
+bool eg2_nist_run(const char *engine, eg2_nist_run_fn_t fn, uint32_t boundary_draws,
+                  uint32_t random_draws, bool inject_fail);
 
 /** True in a test built with -DEG2_NIST_INJECT_FAIL (the define reaches only the test's source). */
 #ifdef EG2_NIST_INJECT_FAIL

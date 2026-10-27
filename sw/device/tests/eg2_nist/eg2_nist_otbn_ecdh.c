@@ -30,6 +30,7 @@ EG2_TEST_CONFIG();
 
 #define NIST_OTBN_ECDH_PARAMS(X) \
   X(per_group, 1, 0, 64)         \
+  X(boundary_vectors, 8, 0, 1024) \
   X(random_vectors, 0, 0, 64)    \
   X(model_gaps, 0, 0, 1)
 EG2_TEST_PARAMS(NIST_OTBN_ECDH_PARAMS);
@@ -91,5 +92,5 @@ bool eg2_test_main(void) {
     return false;
   }
   eg2_nist_otbn_budget_init(EG2_PARAM(per_group));
-  return eg2_nist_run("otbn_ecdh", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
+  return eg2_nist_run("otbn_ecdh", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }

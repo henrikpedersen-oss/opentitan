@@ -40,6 +40,7 @@
 EG2_TEST_CONFIG();
 
 #define NIST_AES_KW_PARAMS(X) \
+  X(boundary_vectors, 8, 0, 1024) \
   X(random_vectors, 8, 0, 512) \
   X(model_gaps, 0, 0, 1)
 EG2_TEST_PARAMS(NIST_AES_KW_PARAMS);
@@ -119,5 +120,5 @@ bool eg2_test_main(void) {
     eg2_puts("NIST aes_kw: entropy complex not in auto mode\r\n");
     return false;
   }
-  return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(random_vectors), EG2_NIST_INJECT);
+  return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }
