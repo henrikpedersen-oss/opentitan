@@ -76,7 +76,8 @@ bool eg2_test_end(bool passed);
 
 /**
  * Reports the verdict on the console and in the DV status window, then parks the core.
- * CHERIoT mode only: in RISC-V mode OTTF does this.
+ * CHERIoT mode, and tests without OTTF (the boot-ROM test eg2_boot_epmp_reset): in RISC-V mode
+ * OTTF does this.
  */
 void eg2_result_report(bool passed) __attribute__((noreturn));
 

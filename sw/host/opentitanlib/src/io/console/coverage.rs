@@ -41,6 +41,9 @@ struct CoverageState {
     coverage_buf: String,
     /// Number of coverage blocks processed (finished or skipped).
     blocks_processed: usize,
+    /// The inner device's input has ended (EOF or a read error): it is not read again, and the
+    /// buffered data is returned before the end of input.
+    ended: bool,
 }
 
 impl Default for CoverageState {
@@ -51,6 +54,7 @@ impl Default for CoverageState {
             output_buf: VecDeque::new(),
             coverage_buf: String::new(),
             blocks_processed: 0,
+            ended: false,
         }
     }
 }
@@ -268,6 +272,11 @@ impl<T: ConsoleDevice> ConsoleDevice for CoverageMiddleware<T> {
                 // match_buf starts with a prefix, must wait for more data.
             }
 
+            // The input has ended and everything buffered has been returned.
+            if state.ended {
+                return Poll::Ready(Ok(0));
+            }
+
             // Need more data from inner. Read 1 byte.
             let mut one_byte = [0u8; 1];
             drop(state);
@@ -275,31 +284,29 @@ impl<T: ConsoleDevice> ConsoleDevice for CoverageMiddleware<T> {
             state = self.state.lock().unwrap();
 
             match res {
-                Ok(0) => {
-                    // EOF. Flush match_buf.
-                    if !state.match_buf.is_empty() {
-                        let safe_len = state.match_buf.len();
-                        self.flush_match_buf(&mut state, safe_len);
-                    }
-                    return Poll::Ready(Ok(0));
-                }
                 Ok(1) => {
                     state.match_buf.push_back(one_byte[0]);
+                    continue;
                 }
+                Ok(0) => {}
                 // The inner device failed: in these runs the Verilator console's read ended in an
                 // error, not EOF, once the simulation had exited. This was
                 // `_ => unreachable!()`, which panicked and turned passing tests into failures (EG2
                 // regr-vlt 2026-10-26: 10 tests with "SW TEST PASSED" from the simulator panicked
-                // here). Handled as the end of input, as Ok(0) above, after a warning.
+                // here). Handled as the end of input, as Ok(0), after a warning.
                 Err(e) => {
                     log::warn!("Console read failed, treated as end of input: {:?}", e);
-                    if !state.match_buf.is_empty() {
-                        let safe_len = state.match_buf.len();
-                        self.flush_match_buf(&mut state, safe_len);
-                    }
-                    return Poll::Ready(Ok(0));
                 }
                 Ok(_) => unreachable!("a one-byte read returned more than one byte"),
+            }
+            // EOF. Flush match_buf; it is returned by the next turns of the loop, then Ok(0).
+            // The inner device is not read again (2026-10-27: it was, and after the simulation
+            // had exited every read failed, so the warning above repeated until Bazel's timeout:
+            // a 30 GB test.log for eg2_boot_epmp_reset_inject_fail).
+            state.ended = true;
+            if !state.match_buf.is_empty() {
+                let safe_len = state.match_buf.len();
+                self.flush_match_buf(&mut state, safe_len);
             }
         }
     }

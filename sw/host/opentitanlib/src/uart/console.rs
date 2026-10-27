@@ -59,7 +59,12 @@ impl UartConsole {
         let timeout = self.timeout;
         let rx = async {
             loop {
-                self.uart_read(device).await?;
+                // The end of the input (the Verilator simulation has exited) without an exit
+                // match is a failure now, not a read again (2026-10-27: polled until Bazel's
+                // timeout).
+                if !self.uart_read(device).await? {
+                    return Err(anyhow!("console input ended before an exit pattern matched"));
+                }
                 if self
                     .exit_success
                     .as_ref()
@@ -108,8 +113,8 @@ impl UartConsole {
         }
     }
 
-    // Read from the console device and process the data read.
-    async fn uart_read<T>(&mut self, device: &T) -> Result<()>
+    // Read from the console device and process the data read. Returns false at the end of input.
+    async fn uart_read<T>(&mut self, device: &T) -> Result<bool>
     where
         T: ConsoleDevice + ?Sized,
     {
@@ -120,13 +125,13 @@ impl UartConsole {
             std::future::poll_fn(|cx| device.poll_read(cx, std::slice::from_mut(&mut ch))).await?;
 
         if len == 0 {
-            return Ok(());
+            return Ok(false);
         }
 
         if self.uses_regex() {
             self.append_buffer(std::slice::from_ref(&ch));
         }
-        Ok(())
+        Ok(true)
     }
 
     pub fn captures(&self, status: ExitStatus) -> Option<Captures<'_>> {

@@ -54,10 +54,6 @@ static const uint8_t kExpected[kProbes] = {
     kNone,      kNone, kFetch, kLoad,  kStore, kFetch, kLoad,
 };
 
-static void dv_status(uint32_t word) {
-  eg2_dev_write32(kEg2DevRvCoreIbexCfg, RV_CORE_IBEX_DV_SIM_WINDOW_REG_OFFSET, word);
-}
-
 void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
   const uint32_t regs[4] = {r0, r1, r2, r3};
   eg2_console_init();
@@ -79,6 +75,8 @@ void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
   eg2_putdec(kProbes);
   eg2_puts(", failed ");
   eg2_putdec(failed);
-  eg2_puts(failed == 0 ? "\r\nPASS!\r\n" : "\r\nFAIL!\r\n");
-  dv_status(failed == 0 ? 0x900d : 0xbaad);
+  eg2_puts("\r\n");
+  // The verdict on UART0, drained before the DV status word ends the run (2026-10-27: written
+  // here without the drain, the Verilator run ended before the console saw `PASS!` or `FAIL!`).
+  eg2_result_report(failed == 0);
 }
