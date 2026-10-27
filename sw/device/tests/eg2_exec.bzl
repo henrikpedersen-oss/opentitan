@@ -16,9 +16,12 @@ first.
 
 load("//rules/opentitan:defs.bzl", "verilator_params")
 
+# The trap and fault patterns wait for the end of their line: the trap handlers print the cause, mtval
+# and the PC after the word, and matching `CTRAP ` alone ended the run before them (2026-10-27,
+# eg2_tag_roundtrip_cheriot: the log ended in "CTRAP ").
 EG2_VERILATOR = verilator_params(
     exit_success = r"PASS!\r?\n",
-    exit_failure = r"(FAIL!|FAULT: |[CR]TRAP |BFV:[0-9a-f]{8})",
+    exit_failure = r"(FAIL!|FAULT: [^\n]*\n|[CR]TRAP [^\n]*\n|BFV:[0-9a-f]{8})",
 )
 
 # The same verdicts with Bazel's "eternal" timeout, which regr_vlt.sh maps to VLT_TIMEOUT_LONG:
@@ -27,5 +30,5 @@ EG2_VERILATOR = verilator_params(
 EG2_VERILATOR_LONG = verilator_params(
     timeout = "eternal",
     exit_success = r"PASS!\r?\n",
-    exit_failure = r"(FAIL!|FAULT: |[CR]TRAP |BFV:[0-9a-f]{8})",
+    exit_failure = r"(FAIL!|FAULT: [^\n]*\n|[CR]TRAP [^\n]*\n|BFV:[0-9a-f]{8})",
 )
