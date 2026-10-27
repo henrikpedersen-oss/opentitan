@@ -1111,6 +1111,10 @@ class eg2_iss_wrapper extends uvm_component;
       cheriot_sail_cosim_set_mhpmcounter(3 + i, {item.mhpmcountersh[i], item.mhpmcounters[i]});
     end
     cheriot_sail_cosim_set_ic_scr_key_valid(item.ic_scr_key_valid);
+    // The chip's pending interrupts, an input like the counters: a csrr mip in the model reads
+    // them (2026-10-27: chip_sw_eg2_connectivity_cheriot read mip 0x880 on the chip and 0 in the
+    // model, which saw pending bits only when the chip took an interrupt).
+    cheriot_sail_cosim_set_mip(item.pre_mip);
     // After a trap, on the handler's first instruction (both sides have committed it, the model is
     // not stepped yet): the chip's mcause and mtval against the model's, as the Ibex UVM bench's
     // check_cheriot_trap_cause. Not after an NMI or debug entry, which the model has no counterpart
