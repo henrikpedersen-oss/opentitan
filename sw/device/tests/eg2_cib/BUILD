@@ -39,6 +39,7 @@ _ENVS = {
 
 _DEPS = [
     ":eg2_isa_decode",
+    "//sw/device/lib/arch:device",
     "//hw/top:rram_ctrl_c_regs",
     "//hw/top:rv_core_ibex_c_regs",
     "//hw/top:sram_ctrl_c_regs",

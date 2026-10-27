@@ -89,6 +89,7 @@
 #include "hw/top/rram_ctrl_regs.h"  // Generated.
 #include "hw/top/sram_ctrl_regs.h"  // Generated.
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
+#include "sw/device/lib/arch/device.h"
 #include "sw/device/lib/base/multibits.h"
 #include "sw/device/tests/eg2_cib/eg2_isa_decode.h"
 #include "sw/device/tests/eg2_mem/eg2_chk.h"
@@ -601,7 +602,10 @@ bool eg2_test_main(void) {
                                 .usable = main_slots - kPad >= sym_bss_end()};
   s.area[kPlaceSec] = (area_t){.slots = kSecSlots, .cap = kMaxSlots, .usable = true, .ready = true};
   s.area[kPlaceRram] = (area_t){.slots = kRramSlots, .cap = kMaxSlots, .usable = false};
-  s.area[kPlaceRom] = (area_t){.slots = kRomSlots, .cap = kMaxSlots, .usable = !gaps};
+  // The ROM placement needs the chip bench's backdoor (sim_dv): on the Verilator top the ROM keeps
+  // its built words (2026-10-27: "ROM batch words as built exp 0x00000000 got 0x00000100").
+  bool rom_bench = kDeviceType == kDeviceSimDV;
+  s.area[kPlaceRom] = (area_t){.slots = kRomSlots, .cap = kMaxSlots, .usable = !gaps && rom_bench};
   uint32_t nb = EG2_PARAM(batch);
   if (s.model_cheriot) {
     // MPACT-CHERIoT runs stale code at an address written again (model finding): one batch in
@@ -616,6 +620,8 @@ bool eg2_test_main(void) {
   }
   if (gaps) {
     eg2_chk_skip("the ROM placement (no bench)");
+  } else if (!rom_bench) {
+    eg2_chk_skip("the ROM placement (no bench: not sim_dv)");
   }
   if (!(gaps && kCheriot) && EG2_PARAM(w_place_rram) != 0) {
     if (eg2_chk_true("RRAM controller initialised", eg2_rram_wait_init(kPolls))) {
