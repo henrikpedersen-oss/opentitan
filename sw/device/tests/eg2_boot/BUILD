@@ -121,10 +121,12 @@ _MODES = [
         linker_script = "//sw/device/lib/testing/test_rom:linker_script",
         local_defines = defines,
         deps = [
-            "//hw/top:rv_core_ibex_c_regs",
             "//hw/top:top_lib",
+            "//hw/top/dt",
             "//sw/device/lib/arch:device",
             "//sw/device/lib/crt",
+            "//sw/device/lib/dif:pinmux",
+            "//sw/device/lib/testing:pinmux_testutils",
             "//sw/device/lib/testing/eg2:dev",
             "//sw/device/lib/testing/eg2:status",
             "//sw/device/silicon_creator/lib/base:static_critical",

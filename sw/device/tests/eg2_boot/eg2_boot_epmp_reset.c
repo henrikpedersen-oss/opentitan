@@ -22,7 +22,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hw/top/rv_core_ibex_regs.h"  // Generated.
+#include "sw/device/lib/dif/dif_pinmux.h"
+#include "sw/device/lib/testing/pinmux_testutils.h"
 #include "sw/device/lib/testing/eg2/eg2_dev.h"
 #include "sw/device/lib/testing/eg2/eg2_result.h"
 
@@ -56,6 +57,12 @@ static const uint8_t kExpected[kProbes] = {
 
 void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
   const uint32_t regs[4] = {r0, r1, r2, r3};
+  // This test is the ROM, so nothing has routed UART0 to its pad yet: the pinmux set-up the test
+  // ROM does before every other test (test_rom.c, init_pinmux). Without it the Verilator console
+  // never saw a character (2026-10-27); the DV bench takes the verdict from the status window.
+  static dif_pinmux_t pinmux;
+  dif_pinmux_init_from_dt(kDtPinmuxFirst, &pinmux);
+  pinmux_testutils_init(&pinmux);
   eg2_console_init();
   eg2_result_in_test();
   eg2_puts("EG2 ePMP at reset (boot ROM probes)\r\n");
