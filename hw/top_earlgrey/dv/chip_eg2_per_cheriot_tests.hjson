@@ -925,6 +925,53 @@
       ]
     }
     {
+      name: chip_sw_aes_enc_jitter_en_cheriot
+      uvm_test_seq: chip_sw_base_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      run_opts:
+      [
+        +sw_test_timeout_ns=26_000_000
+        +en_jitter=1
+      ]
+      sw_images:
+      [
+        "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
+      ]
+    }
+    {
+      name: chip_sw_aes_enc_jitter_en_reduced_freq_cheriot
+      uvm_test_seq: chip_sw_base_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      run_opts:
+      [
+        +sw_test_timeout_ns=26_000_000
+        +en_jitter=1
+        +cal_sys_clk_70mhz=1
+      ]
+      sw_images:
+      [
+        "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
+      ]
+    }
+    {
+      name: chip_sw_aes_smoketest_cheriot
+      uvm_test_seq: chip_sw_base_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      sw_images:
+      [
+        "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
+      ]
+    }
+    {
       name: chip_sw_alert_handler_escalation_cheriot
       uvm_test_seq: chip_sw_alert_handler_escalation_vseq
       en_run_modes:
@@ -939,6 +986,23 @@
       sw_images:
       [
         "//sw/device/tests:alert_handler_escalation_test_cheriot:1:new_rules"
+      ]
+    }
+    {
+      name: chip_sw_all_escalation_resets_cheriot
+      uvm_test_seq: chip_sw_all_escalation_resets_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      run_opts:
+      [
+        +bypass_alert_ready_to_end_check=1
+      ]
+      reseed: 100
+      sw_images:
+      [
+        "//sw/device/tests/sim_dv:all_escalation_resets_test_cheriot:1:new_rules"
       ]
     }
     {
@@ -994,6 +1058,22 @@
       ]
     }
     {
+      name: chip_sw_rstmgr_rst_cnsty_escalation_cheriot
+      uvm_test_seq: chip_sw_rstmgr_cnsty_fault_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      run_opts:
+      [
+        +bypass_alert_ready_to_end_check=1
+      ]
+      sw_images:
+      [
+        "//sw/device/tests/sim_dv:all_escalation_resets_test_cheriot:1:new_rules"
+      ]
+    }
+    {
       name: chip_sw_rv_core_ibex_icache_invalidate_cheriot
       uvm_test_seq: chip_sw_rv_core_ibex_icache_invalidate_vseq
       en_run_modes:
@@ -1019,6 +1099,22 @@
       sw_images:
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
+      ]
+    }
+    {
+      name: chip_sw_rv_core_ibex_mcounteren_writable_cheriot
+      uvm_test_seq: chip_sw_base_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      run_opts:
+      [
+        +sw_test_timeout_ns=7_000_000
+      ]
+      sw_images:
+      [
+        "//sw/device/tests:rv_core_ibex_mcounteren_writable_test_cheriot:1:new_rules"
       ]
     }
     {
@@ -1195,12 +1291,18 @@
       [
         chip_rv_dm_ndm_reset_req_cheriot
         chip_sw_aes_enc_cheriot
+        chip_sw_aes_enc_jitter_en_cheriot
+        chip_sw_aes_enc_jitter_en_reduced_freq_cheriot
+        chip_sw_aes_smoketest_cheriot
         chip_sw_alert_handler_escalation_cheriot
+        chip_sw_all_escalation_resets_cheriot
         chip_sw_otp_ctrl_dai_lock_cheriot
         chip_sw_otp_ctrl_descrambling_cheriot
         chip_sw_otp_ctrl_escalation_cheriot
+        chip_sw_rstmgr_rst_cnsty_escalation_cheriot
         chip_sw_rv_core_ibex_icache_invalidate_cheriot
         chip_sw_rv_core_ibex_lockstep_glitch_cheriot
+        chip_sw_rv_core_ibex_mcounteren_writable_cheriot
         chip_sw_rv_core_ibex_nmi_irq_cheriot
         chip_sw_rv_dm_access_after_escalation_reset_cheriot
         chip_sw_rv_dm_access_after_wakeup_cheriot

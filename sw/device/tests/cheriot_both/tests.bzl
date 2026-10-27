@@ -39,6 +39,7 @@ CHERIOT_BOTH_MODES = [
     "//sw/device/tests:pwrmgr_usb_clk_disabled_when_active_test",
     "//sw/device/tests:pwrmgr_usbdev_smoketest",
     "//sw/device/tests:rstmgr_sw_req_test",
+    "//sw/device/tests:rv_core_ibex_mcounteren_writable_test",
     "//sw/device/tests:rv_timer_smoketest",
     "//sw/device/tests:rv_timer_systick_test",
     "//sw/device/tests:sensor_ctrl_alert_test",
