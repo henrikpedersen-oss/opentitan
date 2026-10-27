@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("//sw/device/tests:eg2_exec.bzl", "EG2_VERILATOR")
+load("//sw/device/tests:eg2_exec.bzl", "EG2_VERILATOR", "EG2_VERILATOR_LONG")
 
 # The random-number tests of Earl Grey 2 (eg2_top_verification spec "Random Number Generation Test
 # Suite", REQ_PBF_24, REQ_PBF_12). One source per test, built for RISC-V mode (OTTF) and CHERIoT
@@ -57,6 +57,10 @@ cc_library(
     ],
 )
 
+# rng_capture needs 3× the default timeout on Verilator in CHERIoT mode (cosim overhead,
+# regr-vlt 2026-10-27: CHERIoT timeout at 1h, RISC-V passes at the same 64 capture_words).
+_VLT_LONG = ["eg2_rng_capture"]
+
 _TESTS = {
     "eg2_rng_capture": [],
     "eg2_rng_health": [],
@@ -66,7 +70,7 @@ _TESTS = {
 
 [
     opentitan_test(
-        verilator = EG2_VERILATOR,
+        verilator = EG2_VERILATOR_LONG if name in _VLT_LONG else EG2_VERILATOR,
         name = name + mode + variant,
         srcs = [name + ".c"] + extra,
         copts = select({

@@ -55,10 +55,9 @@
  * Built with EG2_RRAM_CRASH_ALERT_INJECT_FAIL the first value check expects bit
  * 0 flipped: the run must fail with `RRAM FAIL`.
  *
- * Fault 1 waits for the vseq's integrity corruption on core_tl, which only the bench makes
- * (regr-vlt 2026-10-26: TIMEOUT after `EG2 RRAM crash local`, the default seed's draw). So `fault`
- * defaults to 0, the global escalation, which needs no bench: Verilator, which sets no knob, runs
- * it; the vseq sets `fault` on Xcelium (review 2026-10-26: not excluded whole).
+ * EG2_NEEDS_BENCH: the alert-handler escalation reset does not complete in the Verilator top
+ * (regr-vlt 2026-10-27: both modes timeout at 1h; the pwrmgr escalation-reset path needs the
+ * bench's AST/power model). Fault 1 also needs the vseq's core_tl integrity corruption.
  */
 
 #include "sw/device/tests/eg2_rram/eg2_rram.h"
