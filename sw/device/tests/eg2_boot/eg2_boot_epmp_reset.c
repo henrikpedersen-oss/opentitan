@@ -61,7 +61,9 @@ void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
   // ROM does before every other test (test_rom.c, init_pinmux). Without it the Verilator console
   // never saw a character (2026-10-27); the DV bench takes the verdict from the status window.
   static dif_pinmux_t pinmux;
-  dif_pinmux_init_from_dt(kDtPinmuxFirst, &pinmux);
+  if (dif_pinmux_init_from_dt(kDtPinmuxFirst, &pinmux) != kDifOk) {
+    eg2_result_report(false);  // No console without pinmux: the status word says it.
+  }
   pinmux_testutils_init(&pinmux);
   eg2_console_init();
   eg2_result_in_test();
