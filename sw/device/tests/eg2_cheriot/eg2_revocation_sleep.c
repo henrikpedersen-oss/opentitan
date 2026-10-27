@@ -143,6 +143,9 @@ static void sleep_window(eg2_ms_rec_t *rec, uint32_t kind) {
   eg2_rv_op_revbm(&o, w, 0);
   eg2_puts(kind == 1 ? "EG2 revocation_sleep: normal sleep during a sweep\r\n"
                      : "EG2 revocation_sleep: deep sleep during a sweep\r\n");
+  // Out of the UART before the low-power entry (2026-10-27: on Verilator this line never appeared,
+  // still in the TX FIFO when the chip slept, so the run looked hung in the set-up before it).
+  eg2_uart_drain();
   // The window's out words: [0] the CDC sync's polls left, [1] TBRE_STATUS; into the record.
   eg2_rv_ops_run(&o, EG2_ADDR(&rec->data[kRecSync]));
   eg2_puts("EG2 revocation_sleep: the WFI returned (no sleep)\r\n");

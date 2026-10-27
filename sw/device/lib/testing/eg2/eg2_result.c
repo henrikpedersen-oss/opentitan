@@ -156,7 +156,7 @@ static void gpio_verdict(bool passed) {
 static void gpio_verdict(bool passed) { (void)passed; }
 #endif
 
-static void uart0_drain(void) {
+void eg2_uart_drain(void) {
   while (!(eg2_dev_read32(kEg2DevUart0, UART_STATUS_REG_OFFSET) &
            (1u << UART_STATUS_TXIDLE_BIT))) {
   }
@@ -186,7 +186,7 @@ static void uart_verdict(bool passed) {
     uart_puts("\r\n");
   }
   // The UART line must be out before the run ends on the status word.
-  uart0_drain();
+  eg2_uart_drain();
 }
 
 bool eg2_test_end(bool passed) {

@@ -61,6 +61,12 @@ void eg2_puts(const char *s);
 /** Writes `value` as eight hex digits. */
 void eg2_puthex(uint32_t value);
 
+/**
+ * Waits until UART0 has sent everything written to it, and the receiver had time for the last
+ * character: before anything that stops the clock or the run (a low-power entry, the status word).
+ */
+void eg2_uart_drain(void);
+
 /** Writes `value` in decimal. */
 void eg2_putdec(uint32_t value);
 
