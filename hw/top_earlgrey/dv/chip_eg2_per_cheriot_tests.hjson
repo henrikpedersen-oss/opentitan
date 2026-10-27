@@ -21,6 +21,7 @@
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_plic_all_irqs_10_cheriot
@@ -33,6 +34,7 @@
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_10_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_plic_all_irqs_20_cheriot
@@ -45,6 +47,7 @@
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_20_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_adc_ctrl_sleep_debug_cable_wakeup_cheriot
@@ -61,6 +64,7 @@
       [
         "//sw/device/tests/sim_dv:adc_ctrl_sleep_debug_cable_wakeup_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aon_timer_irq_cheriot
@@ -77,6 +81,7 @@
       [
         "//sw/device/tests:aon_timer_irq_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aon_timer_sleep_wdog_sleep_pause_cheriot
@@ -94,6 +99,7 @@
       [
         "//sw/device/tests:aon_timer_sleep_wdog_sleep_pause_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aon_timer_smoketest_cheriot
@@ -106,6 +112,7 @@
       [
         "//sw/device/tests:aon_timer_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aon_timer_wdog_bite_reset_cheriot
@@ -122,6 +129,7 @@
       [
         "//sw/device/tests:aon_timer_wdog_bite_reset_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_gpio_cheriot
@@ -134,6 +142,7 @@
       [
         "//sw/device/tests/sim_dv:gpio_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_gpio_smoketest_cheriot
@@ -146,6 +155,7 @@
       [
         "//sw/device/tests:gpio_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_i2c_device_tx_rx_cheriot
@@ -158,6 +168,7 @@
       [
         "//sw/device/tests/sim_dv:i2c_device_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_i2c_host_tx_rx_cheriot
@@ -174,6 +185,7 @@
       [
         "//sw/device/tests/sim_dv:i2c_host_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_i2c_host_tx_rx_idx1_cheriot
@@ -190,6 +202,7 @@
       [
         "//sw/device/tests/sim_dv:i2c_host_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_i2c_host_tx_rx_idx2_cheriot
@@ -206,6 +219,7 @@
       [
         "//sw/device/tests/sim_dv:i2c_host_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_plic_sw_irq_cheriot
@@ -218,6 +232,7 @@
       [
         "//sw/device/tests:plic_sw_irq_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_deep_sleep_all_wake_ups_cheriot
@@ -234,6 +249,7 @@
       [
         "//sw/device/tests:pwrmgr_deep_sleep_all_wake_ups_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_normal_sleep_all_wake_ups_cheriot
@@ -246,6 +262,7 @@
       [
         "//sw/device/tests:pwrmgr_normal_sleep_all_wake_ups_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_sensor_ctrl_deep_sleep_wake_up_cheriot
@@ -263,6 +280,7 @@
       [
         "//sw/device/tests:pwrmgr_sensor_ctrl_deep_sleep_wake_up_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup_cheriot
@@ -279,6 +297,7 @@
       [
         "//sw/device/tests:sensor_ctrl_wakeup_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_sysrst_ctrl_reset_cheriot
@@ -291,6 +310,7 @@
       [
         "//sw/device/tests/sim_dv:pwrmgr_sysrst_ctrl_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_usb_clk_disabled_when_active_cheriot
@@ -303,6 +323,7 @@
       [
         "//sw/device/tests:pwrmgr_usb_clk_disabled_when_active_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_pwrmgr_usbdev_smoketest_cheriot
@@ -315,6 +336,7 @@
       [
         "//sw/device/tests:pwrmgr_usbdev_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rstmgr_sw_req_cheriot
@@ -327,6 +349,7 @@
       [
         "//sw/device/tests:rstmgr_sw_req_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_timer_irq_cheriot
@@ -339,6 +362,7 @@
       [
         "//sw/device/tests:rv_timer_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_timer_smoketest_cheriot
@@ -351,6 +375,7 @@
       [
         "//sw/device/tests:rv_timer_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_timer_systick_test_cheriot
@@ -368,6 +393,7 @@
       [
         "//sw/device/tests:rv_timer_systick_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sensor_ctrl_alert_cheriot
@@ -385,6 +411,7 @@
       [
         "//sw/device/tests:sensor_ctrl_alert_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sensor_ctrl_status_cheriot
@@ -401,6 +428,7 @@
       [
         "//sw/device/tests/sim_dv:sensor_ctrl_status_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sleep_pin_mio_dio_val_cheriot
@@ -417,6 +445,7 @@
       [
         "//sw/device/tests:sleep_pin_mio_dio_val_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sleep_pin_retention_cheriot
@@ -429,6 +458,7 @@
       [
         "//sw/device/tests:sleep_pin_retention_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sleep_pin_wake_cheriot
@@ -445,6 +475,7 @@
       [
         "//sw/device/tests:sleep_pin_wake_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_spi_device_pass_through_cheriot
@@ -457,6 +488,7 @@
       [
         "//sw/device/tests/sim_dv:spi_passthrough_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_spi_device_pass_through_collision_cheriot
@@ -469,6 +501,7 @@
       [
         "//sw/device/tests/sim_dv:spi_passthrough_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_spi_device_pinmux_sleep_retention_cheriot
@@ -481,6 +514,7 @@
       [
         "//sw/device/tests:spi_device_sleep_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_spi_device_tpm_cheriot
@@ -493,6 +527,7 @@
       [
         "//sw/device/tests:spi_device_tpm_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_spi_host_tx_rx_cheriot
@@ -505,6 +540,7 @@
       [
         "//sw/device/tests/sim_dv:spi_host_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_ec_rst_l_cheriot
@@ -518,6 +554,7 @@
       [
         "//sw/device/tests/sim_dv:sysrst_ctrl_ec_rst_l_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_in_irq_cheriot
@@ -530,6 +567,7 @@
       [
         "//sw/device/tests:sysrst_ctrl_in_irq_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_inputs_cheriot
@@ -542,6 +580,7 @@
       [
         "//sw/device/tests:sysrst_ctrl_inputs_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_outputs_cheriot
@@ -554,6 +593,7 @@
       [
         "//sw/device/tests:sysrst_ctrl_outputs_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_reset_cheriot
@@ -570,6 +610,7 @@
       [
         "//sw/device/tests:sysrst_ctrl_reset_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sysrst_ctrl_ulp_z3_wakeup_cheriot
@@ -582,6 +623,7 @@
       [
         "//sw/device/tests:sysrst_ctrl_ulp_z3_wakeup_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_rand_baudrate_cheriot
@@ -601,6 +643,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_smoketest_cheriot
@@ -613,6 +656,7 @@
       [
         "//sw/device/tests:uart_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_cheriot
@@ -631,6 +675,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_alt_clk_freq_cheriot
@@ -651,6 +696,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_alt_clk_freq_low_speed_cheriot
@@ -670,6 +716,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_idx1_cheriot
@@ -688,6 +735,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_idx2_cheriot
@@ -706,6 +754,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_uart_tx_rx_idx3_cheriot
@@ -724,6 +773,7 @@
       [
         "//sw/device/tests:uart_tx_rx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usb_ast_clk_calib_cheriot
@@ -742,6 +792,7 @@
       [
         "//sw/device/tests/sim_dv:ast_usb_clk_calib_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_aon_pullup_cheriot
@@ -760,6 +811,7 @@
       [
         "//sw/device/tests:usbdev_aon_pullup_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_config_host_cheriot
@@ -778,6 +830,7 @@
       [
         "//sw/device/tests:usbdev_config_host_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_dpi_cheriot
@@ -798,6 +851,7 @@
       [
         "//sw/device/tests:usbdev_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_pincfg_cheriot
@@ -818,6 +872,7 @@
       [
         "//sw/device/tests:usbdev_pincfg_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_pullup_cheriot
@@ -836,6 +891,7 @@
       [
         "//sw/device/tests:usbdev_pullup_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_setuprx_cheriot
@@ -854,6 +910,7 @@
       [
         "//sw/device/tests:usbdev_setuprx_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_toggle_restore_cheriot
@@ -872,6 +929,7 @@
       [
         "//sw/device/tests:usbdev_toggle_restore_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_usbdev_vbus_cheriot
@@ -890,6 +948,7 @@
       [
         "//sw/device/tests:usbdev_vbus_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_rv_dm_ndm_reset_req_cheriot
@@ -907,6 +966,7 @@
       [
         "//sw/device/tests:rv_dm_ndm_reset_req_rma_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aes_enc_cheriot
@@ -923,6 +983,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aes_enc_jitter_en_cheriot
@@ -940,6 +1001,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aes_enc_jitter_en_reduced_freq_cheriot
@@ -958,6 +1020,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_aes_smoketest_cheriot
@@ -970,6 +1033,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_alert_handler_escalation_cheriot
@@ -987,6 +1051,7 @@
       [
         "//sw/device/tests:alert_handler_escalation_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_all_escalation_resets_cheriot
@@ -1004,6 +1069,7 @@
       [
         "//sw/device/tests/sim_dv:all_escalation_resets_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_otp_ctrl_dai_lock_cheriot
@@ -1022,6 +1088,7 @@
       [
         "//sw/device/tests:otp_ctrl_mem_access_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_otp_ctrl_descrambling_cheriot
@@ -1039,6 +1106,7 @@
         "//sw/device/tests:otp_ctrl_descrambling_test_cheriot:1:new_rules"
         "//sw/device/tests:otp_ctrl_descrambling_otp_image:4"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_otp_ctrl_escalation_cheriot
@@ -1056,6 +1124,7 @@
       [
         "//sw/device/tests/sim_dv:all_escalation_resets_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rstmgr_rst_cnsty_escalation_cheriot
@@ -1072,6 +1141,7 @@
       [
         "//sw/device/tests/sim_dv:all_escalation_resets_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_core_ibex_icache_invalidate_cheriot
@@ -1084,6 +1154,7 @@
       [
         "//sw/device/tests:rv_core_ibex_icache_invalidate_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_core_ibex_lockstep_glitch_cheriot
@@ -1100,6 +1171,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_core_ibex_mcounteren_writable_cheriot
@@ -1116,6 +1188,7 @@
       [
         "//sw/device/tests:rv_core_ibex_mcounteren_writable_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_core_ibex_nmi_irq_cheriot
@@ -1132,6 +1205,7 @@
       [
         "//sw/device/tests:rv_core_ibex_nmi_irq_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_dm_access_after_escalation_reset_cheriot
@@ -1148,6 +1222,7 @@
       [
         "//sw/device/tests:alert_handler_escalation_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_dm_access_after_wakeup_cheriot
@@ -1164,6 +1239,7 @@
       [
         "//sw/device/tests:rv_dm_access_after_wakeup_rma_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_rv_dm_ndm_reset_req_when_cpu_halted_cheriot
@@ -1180,6 +1256,7 @@
       [
         "//sw/device/tests:rv_dm_ndm_reset_req_when_cpu_halted_rma_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sleep_sram_ret_contents_no_scramble_cheriot
@@ -1198,6 +1275,7 @@
       [
         "//sw/device/tests:sram_ctrl_sleep_sram_ret_contents_no_scramble_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
     {
       name: chip_sw_sleep_sram_ret_contents_scramble_cheriot
@@ -1216,6 +1294,7 @@
       [
         "//sw/device/tests:sram_ctrl_sleep_sram_ret_contents_scramble_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_cosim
     }
   ]
   regressions:
