@@ -24,8 +24,11 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
   // The execution mode as software sets it (rv_core_ibex CHERIOT_ENA, then CHERIOT_LOCK; the
   // register descriptions): MuBi4True written to CHERIOT_LOCK while CHERIOT_ENA holds MuBi4True
   // enters CHERIoT mode until reset; otherwise the system stays in ePMP mode. Followed from the
-  // bus writes, not read from the DUT.
+  // bus writes, not read from the DUT. CHERIOT_ENA's value is kept from its own write: the register
+  // model's mirror is not updated by the core's writes at chip level (2026-10-27: read from the
+  // mirror, the mode never switched and chip_sw_eg2_mem_test_cheriot failed).
   protected bit eg2_cheriot_mode;
+  protected bit [3:0] eg2_cheriot_ena_written = prim_mubi_pkg::MuBi4False;
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -86,6 +89,7 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
   virtual function void reset(string kind = "HARD");
     super.reset(kind);
     eg2_cheriot_mode = 1'b0;
+    eg2_cheriot_ena_written = prim_mubi_pkg::MuBi4False;
 
     // If there is a JTAG DTM register model (created by calling cfg.set_use_jtag_dmi) then reset
     // its values to match the reset event.
@@ -114,11 +118,15 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       if (channel == DataChannel) `DV_CHECK_EQ(item.d_error, 1)
       return 1;
     end
-    // The execution mode: the CHERIOT_LOCK write that locks it.
+    // The execution mode: CHERIOT_ENA's written value, then the CHERIOT_LOCK write that locks it.
+    if (channel == AddrChannel && item.is_write() &&
+        item.a_addr == ral.rv_core_ibex_cfg.cheriot_ena.get_address()) begin
+      eg2_cheriot_ena_written = item.a_data[3:0];
+    end
     if (channel == AddrChannel && item.is_write() &&
         item.a_addr == ral.rv_core_ibex_cfg.cheriot_lock.get_address() &&
         item.a_data[3:0] == prim_mubi_pkg::MuBi4True &&
-        ral.rv_core_ibex_cfg.cheriot_ena.get_mirrored_value() == prim_mubi_pkg::MuBi4True) begin
+        eg2_cheriot_ena_written == prim_mubi_pkg::MuBi4True) begin
       eg2_cheriot_mode = 1'b1;
     end
     // cheriot_mem_sys theory of operation: the revocation bitmap window "returns a TL-UL error
