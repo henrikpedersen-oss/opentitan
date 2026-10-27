@@ -25,11 +25,21 @@ static const eg2_window_t kWindows[] = {
 #undef EG2_WINDOW_ROW_
 };
 
+// The window of the previous call, tried first: consecutive accesses nearly always go to the same
+// device. Each call still checks the address against the window, so a stale index (an interrupt
+// handler's access in between) only costs the search. Without it every MMIO access searched the
+// whole table, about 500 instructions (2026-10-27: chip_sw_eg2_nist_aes_kw_cheriot spent its
+// 8 hours on Xcelium, and the CHERIoT NIST tests their hour on Verilator, in this loop).
+static size_t last_window;
+
 volatile void *ot_cheriot_mmio_cap(uintptr_t address) {
   const size_t addr = (size_t)address;
-  for (size_t i = 0; i < sizeof(kWindows) / sizeof(kWindows[0]); ++i) {
+  const size_t n = sizeof(kWindows) / sizeof(kWindows[0]);
+  for (size_t k = 0; k < n; ++k) {
+    const size_t i = k == 0 ? last_window : (k <= last_window ? k - 1 : k);
     const eg2_window_t *w = &kWindows[i];
     if (addr - w->base < w->size) {
+      last_window = i;
       // The memory root stays in MTDC for the whole test. Windows are powers of two aligned to
       // their size, so exact bounds are representable; were one not, the tag would be cleared
       // and the first access would trap.
