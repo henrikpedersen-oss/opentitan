@@ -160,6 +160,13 @@ static void uart0_drain(void) {
   while (!(eg2_dev_read32(kEg2DevUart0, UART_STATUS_REG_OFFSET) &
            (1u << UART_STATUS_TXIDLE_BIT))) {
   }
+  // TXIDLE comes before the receiver has the last character: three more character times (10 bits
+  // each) before the status word ends the run (2026-10-27: on Verilator the final "\r\n" of
+  // "PASS!\r\n" was lost, so the console never matched; about 2000 cycles there, a few on DV).
+  uint32_t cycles = 3u * 10u * ((uint32_t)kClockFreqCpuHz / (uint32_t)kUartBaudrate);
+  for (uint32_t i = 0; i < cycles / 2u; ++i) {
+    __asm__ volatile("nop");
+  }
 }
 
 // The verdict on UART0, whichever channel the console uses: `PASS!`, or `FAIL! ` and the first
