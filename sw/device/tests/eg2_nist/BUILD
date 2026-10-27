@@ -231,6 +231,8 @@ _TESTS_LIB = [
         "//hw/top/dt:rv_core_ibex",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
+        "//sw/device/lib/base:hardened_memory",
+        "//sw/device/lib/base:mmio",
     ]),
     ("otbn_ecdsa", "ecdsa", [
         _ECDSA + "SigVer.rsp",

@@ -35,7 +35,9 @@
 #include "hw/top/rv_core_ibex_regs.h"
 #include "sw/device/lib/base/abs_mmio.h"
 #include "sw/device/lib/base/bitfield.h"
+#include "sw/device/lib/base/cheriot_mmio.h"
 #include "sw/device/lib/base/hardened.h"
+#include "sw/device/lib/base/hardened_memory.h"
 #include "sw/device/lib/base/memory.h"
 #include "sw/device/lib/crypto/drivers/aes.h"
 #include "sw/device/lib/crypto/impl/aes_kwp/aes_kwp.h"
@@ -156,6 +158,45 @@ static void report_waits(void) {
   eg2_puts("\r\n");
 }
 
+// aes_begin's steps (drivers/aes.c) one at a time, each wait bounded (2026-10-27: in CHERIoT mode
+// aes_decrypt_begin never returned, the first driver call of report_driver): the CTRL write, the
+// idle wait, the key shares through hardened_memshred / hardened_memcpy and the AES window's
+// capability (OT_MMIO_ADDR_TO_PTR, as the driver's AES_REG_PTR_), the idle wait after the key.
+static uint32_t poll_idle(uint32_t aes) {
+  uint32_t polls = 0;
+  for (; polls < kWaitPolls; ++polls) {
+    if (bitfield_bit32_read(abs_mmio_read32(aes + AES_STATUS_REG_OFFSET), AES_STATUS_IDLE_BIT)) {
+      break;
+    }
+  }
+  return polls;
+}
+
+static void report_begin_steps(void) {
+  static const uint32_t kKey[8] = {0};
+  uint32_t aes = dt_aes_primary_reg_block(kDtAes);
+  uint32_t ctrl = abs_mmio_read32(aes + AES_CTRL_SHADOWED_REG_OFFSET);
+  put_kv("NIST aes_kw begin: CTRL", ctrl);
+  eg2_puts("\r\n");
+  abs_mmio_write32_shadowed(aes + AES_CTRL_SHADOWED_REG_OFFSET, ctrl);
+  put_kv("NIST aes_kw begin: CTRL written, idle polls", poll_idle(aes));
+  put_kv(" STATUS", abs_mmio_read32(aes + AES_STATUS_REG_OFFSET));
+  eg2_puts("\r\n");
+  uint32_t *share0 = (uint32_t *)OT_MMIO_ADDR_TO_PTR(aes + AES_KEY_SHARE0_0_REG_OFFSET);
+  uint32_t *share1 = (uint32_t *)OT_MMIO_ADDR_TO_PTR(aes + AES_KEY_SHARE1_0_REG_OFFSET);
+  put_kv("NIST aes_kw begin: memshred share0", status_ok(hardened_memshred(share0, 8)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw begin: memcpy share0", status_ok(hardened_memcpy(share0, kKey, 6)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw begin: memshred share1", status_ok(hardened_memshred(share1, 8)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw begin: memcpy share1", status_ok(hardened_memcpy(share1, kZeroShare, 6)));
+  eg2_puts("\r\n");
+  put_kv("NIST aes_kw begin: key written, idle polls", poll_idle(aes));
+  put_kv(" STATUS", abs_mmio_read32(aes + AES_STATUS_REG_OFFSET));
+  eg2_puts("\r\n");
+}
+
 // The driver calls of one unwrap step, one at a time with a line after each (2026-10-27: in
 // CHERIoT mode both waits above are fine, and the run still stops in the first vector, KWP_AD_192;
 // the RISC-V build passes it). A 192-bit all-zero key, like that vector's length.
@@ -193,6 +234,7 @@ bool eg2_test_main(void) {
   }
   if (!EG2_PARAM(model_gaps)) {
     report_waits();
+    report_begin_steps();
     report_driver();
   }
   return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
