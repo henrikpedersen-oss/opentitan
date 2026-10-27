@@ -52,6 +52,8 @@ interface eg2_rvfi_if #(
   logic [31:0]     ext_mhpmcounters [10];
   logic [31:0]     ext_mhpmcountersh [10];
   logic            ext_ic_scr_key_valid;
+  // ibex_top's mcounteren_writable_i is On (rv_core_ibex MCOUNTEREN_WRITABLE, software-writable).
+  logic            ext_mcounteren_writable;
   // Zcmp: Ibex retires one item per micro-operation; the last one carries `_last`.
   logic            ext_expanded_insn_valid;
   logic            ext_expanded_insn_last;
@@ -104,7 +106,7 @@ interface eg2_rvfi_if #(
           mem_rdata, mem_wdata, rs1_rcap, rs2_rcap, rd_wcap, mem_is_cap, mem_rcap, mem_wcap,
           ext_pre_mip, ext_post_mip, ext_nmi, ext_nmi_int, ext_debug_req, ext_debug_mode,
           ext_rf_wr_suppress, ext_irq_valid, ext_mcycle, ext_mhpmcounters, ext_mhpmcountersh,
-          ext_ic_scr_key_valid, ext_expanded_insn_valid, ext_expanded_insn_last, nmi_int_mtval,
+          ext_ic_scr_key_valid, ext_mcounteren_writable, ext_expanded_insn_valid, ext_expanded_insn_last, nmi_int_mtval,
           data_err, cheriot_ena, boot_addr,
           dside_req, dside_we, dside_be, dside_addr, dside_wdata, dside_misaligned_first,
           dside_misaligned_second, dside_misaligned_first_saw_error, dside_m_mode, dside_rvalid,

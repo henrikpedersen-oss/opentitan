@@ -223,6 +223,7 @@ class eg2_rvfi_monitor extends uvm_monitor;
       item.mhpmcountersh[i] = vif.monitor_cb.ext_mhpmcountersh[i];
     end
     item.ic_scr_key_valid = vif.monitor_cb.ext_ic_scr_key_valid;
+    item.mcounteren_writable = vif.monitor_cb.ext_mcounteren_writable;
     // As the core bench: a trapping micro-operation ends the instruction even if not flagged last.
     item.more_ops         = vif.monitor_cb.ext_expanded_insn_valid &&
                             !vif.monitor_cb.ext_expanded_insn_last && !vif.monitor_cb.trap;

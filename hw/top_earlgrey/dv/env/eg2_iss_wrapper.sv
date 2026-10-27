@@ -1111,6 +1111,9 @@ class eg2_iss_wrapper extends uvm_component;
       cheriot_sail_cosim_set_mhpmcounter(3 + i, {item.mhpmcountersh[i], item.mhpmcounters[i]});
     end
     cheriot_sail_cosim_set_ic_scr_key_valid(item.ic_scr_key_valid);
+    // rv_core_ibex's MCOUNTEREN_WRITABLE, which software may clear: the model's default (writable)
+    // holds only until then. As the core bench (2026-10-27, from the mip review).
+    cheriot_sail_cosim_set_mcounteren_writable(item.mcounteren_writable);
     // The chip's pending interrupts, an input like the counters: a csrr mip in the model reads
     // them (2026-10-27: chip_sw_eg2_connectivity_cheriot read mip 0x880 on the chip and 0 in the
     // model, which saw pending bits only when the chip took an interrupt).

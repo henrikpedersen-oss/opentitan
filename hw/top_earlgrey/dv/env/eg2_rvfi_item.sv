@@ -60,6 +60,7 @@ class eg2_rvfi_item extends uvm_sequence_item;
   bit [31:0]           mhpmcounters [10];
   bit [31:0]           mhpmcountersh [10];
   bit                  ic_scr_key_valid;
+  bit                  mcounteren_writable;
   // A Zcmp micro-operation that is not the instruction's last (the ISS steps on the last).
   bit                  more_ops;
   // The mtval of an internal NMI (eg2_rvfi_if.nmi_int_mtval).

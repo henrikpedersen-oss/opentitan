@@ -537,6 +537,8 @@ module tb;
   assign u_eg2_rvfi_if.ext_mhpmcounters   = `CPU_CORE_HIER.rvfi_ext_mhpmcounters;
   assign u_eg2_rvfi_if.ext_mhpmcountersh  = `CPU_CORE_HIER.rvfi_ext_mhpmcountersh;
   assign u_eg2_rvfi_if.ext_ic_scr_key_valid = `CPU_CORE_HIER.rvfi_ext_ic_scr_key_valid;
+  assign u_eg2_rvfi_if.ext_mcounteren_writable =
+      `CPU_CORE_HIER.mcounteren_writable_i == ibex_pkg::IbexMuBiOn;
   assign u_eg2_rvfi_if.ext_expanded_insn_valid = `CPU_CORE_HIER.rvfi_ext_expanded_insn_valid;
   assign u_eg2_rvfi_if.ext_expanded_insn_last  = `CPU_CORE_HIER.rvfi_ext_expanded_insn_last;
   assign u_eg2_rvfi_if.nmi_int_mtval =
