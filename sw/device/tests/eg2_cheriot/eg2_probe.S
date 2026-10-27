@@ -86,9 +86,14 @@ eg2_probe_trap:
   srli       t2, t1, 2              // 3 -> 0, 7 -> 1, 11 -> 2
   slli       t2, t2, 2
   cincoffset ct2, ct0, t2
-  lw         t2, REC_IRQ(ct2)
-  addi       t2, t2, 1
-  sw         t2, REC_IRQ(ct2)
+  // The count in t1, not t2: t2 is ct2's address, and a load into it untagged the pointer, so the
+  // store faulted inside the handler, which re-entered itself with ct0 swapped back and never
+  // returned (2026-10-27: rand_traps_cheriot hung silently at its first interrupt).
+  lw         t1, REC_IRQ(ct2)
+  addi       t1, t1, 1
+  sw         t1, REC_IRQ(ct2)
+  csrr       t1, mcause
+  andi       t1, t1, 0x1f
   addi       t2, x0, 1
   sll        t2, t2, t1
   csrc       mie, t2
