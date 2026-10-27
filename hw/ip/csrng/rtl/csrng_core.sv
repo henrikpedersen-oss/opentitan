@@ -700,9 +700,9 @@ module csrng_core import csrng_pkg::*; #(
     assign genbits_stage_rdy[hai] = csrng_cmd_i[hai].genbits_ready;
   end : gen_app_if
 
-  // Assign ack statuss
+  // Assign ack statuss; HW_EXC_STS covers hardware apps only (not the SW app at NumHwApps).
   for (genvar i = 0; i < 16; i = i+1) begin : gen_app_if_sts
-    if (i < NumApps) begin : gen_assign
+    if (i < NumHwApps) begin : gen_assign
       assign hw_exception_sts[i] = cmd_stage_ack[i] && (cmd_stage_ack_sts[i] != CMD_STS_SUCCESS);
     end else begin : gen_dummy_assign
       assign hw_exception_sts[i] = 1'b0;
