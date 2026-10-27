@@ -29,6 +29,12 @@
  * ("NIST ... mismatch").
  */
 
+#include "hw/top/aes_regs.h"
+#include "hw/top/dt/aes.h"
+#include "hw/top/dt/rv_core_ibex.h"
+#include "hw/top/rv_core_ibex_regs.h"
+#include "sw/device/lib/base/abs_mmio.h"
+#include "sw/device/lib/base/bitfield.h"
 #include "sw/device/lib/base/hardened.h"
 #include "sw/device/lib/base/memory.h"
 #include "sw/device/lib/crypto/drivers/aes.h"
@@ -109,6 +115,47 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
   return eg2_nist_result(eg2_nist_expect(v, kEg2NistOut, (const uint8_t *)out, nout, corrupt));
 }
 
+// The two waits the crypto library's AES driver never bounds, polled here a bounded number of times
+// through the same abs_mmio path: rv_core_ibex's RND_STATUS (drivers/rv_core_ibex.c
+// wait_rnd_valid, before every masked key write and register clear) and the AES block's STATUS
+// (drivers/aes.c spin_until). 2026-10-27: the CHERIoT build printed "NIST vector 46" and then
+// nothing for the hour, the RISC-V build passes in 14 minutes; this says which wait never ends.
+enum { kWaitPolls = 10000 };
+
+static void put_kv(const char *key, uint32_t value) {
+  eg2_puts(key);
+  eg2_puts(" 0x");
+  eg2_puthex(value);
+}
+
+static void report_waits(void) {
+  uint32_t ibex = dt_rv_core_ibex_primary_reg_block(kDtRvCoreIbex);
+  uint32_t aes = dt_aes_primary_reg_block(kDtAes);
+  uint32_t polls = 0, valid = 0;
+  for (; polls < kWaitPolls; ++polls) {
+    uint32_t sts = abs_mmio_read32(ibex + RV_CORE_IBEX_RND_STATUS_REG_OFFSET);
+    if (bitfield_bit32_read(sts, RV_CORE_IBEX_RND_STATUS_RND_DATA_VALID_BIT)) {
+      valid = 1;
+      break;
+    }
+  }
+  put_kv("NIST aes_kw wait: RND_DATA_VALID", valid);
+  put_kv(" polls", polls);
+  if (valid) {
+    // A second word: the driver reads several in a row.
+    (void)abs_mmio_read32(ibex + RV_CORE_IBEX_RND_DATA_REG_OFFSET);
+    for (polls = 0; polls < kWaitPolls; ++polls) {
+      if (bitfield_bit32_read(abs_mmio_read32(ibex + RV_CORE_IBEX_RND_STATUS_REG_OFFSET),
+                              RV_CORE_IBEX_RND_STATUS_RND_DATA_VALID_BIT)) {
+        break;
+      }
+    }
+    put_kv(" next word polls", polls);
+  }
+  put_kv(" AES STATUS", abs_mmio_read32(aes + AES_STATUS_REG_OFFSET));
+  eg2_puts("\r\n");
+}
+
 bool eg2_test_main(void) {
   // The crypto library's AES driver takes masks and random orders from rv_core_ibex's RND
   // (drivers/aes.c: "the caller must ensure the entropy complex is up"; upstream's functests call
@@ -119,6 +166,9 @@ bool eg2_test_main(void) {
   if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
     eg2_puts("NIST aes_kw: entropy complex not in auto mode\r\n");
     return false;
+  }
+  if (!EG2_PARAM(model_gaps)) {
+    report_waits();
   }
   return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }

@@ -224,6 +224,13 @@ _TESTS_LIB = [
         "//sw/device/lib/crypto/drivers:aes",
         "//sw/device/lib/crypto/impl/aes_kwp",
         "//sw/device/lib/testing:entropy_testutils",  # 2026-10-26: EDN0 in auto mode first
+        # 2026-10-27: report_waits polls the driver's two unbounded waits
+        "//hw/top:aes_c_regs",
+        "//hw/top:rv_core_ibex_c_regs",
+        "//hw/top/dt:aes",
+        "//hw/top/dt:rv_core_ibex",
+        "//sw/device/lib/base:abs_mmio",
+        "//sw/device/lib/base:bitfield",
     ]),
     ("otbn_ecdsa", "ecdsa", [
         _ECDSA + "SigVer.rsp",
