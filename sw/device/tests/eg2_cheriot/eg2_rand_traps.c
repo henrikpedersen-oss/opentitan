@@ -157,12 +157,23 @@ static void timer_ack(void) {
   eg2_dev_write32(kEg2DevRvTimer, RV_TIMER_INTR_STATE0_REG_OFFSET, 1);
 }
 
+// A line per step of an interrupt event (2026-10-27: the CHERIoT run on Verilator printed "irq
+// event 0", the rv_plic software interrupt, and nothing more in the hour; the RISC-V run passes).
+static void irq_step(const char *what) {
+  eg2_puts("  irq: ");
+  eg2_puts(what);
+  eg2_puts("\r\n");
+}
+
 // One interrupt from `which`; `in_wfi` waits for the timer in wfi.
 static void irq_event(eg2_tally_t *t, uint32_t which, bool in_wfi, uint32_t idx) {
   uint32_t before = eg2_trap_rec.irq_count[which];
+  uint32_t traps = eg2_trap_rec.count;
   uint32_t bit = which == kIrqSoft ? 3u : (which == kIrqTimer ? 7u : 11u);
   __asm__ volatile("csrs mie, %0" : : "r"(1u << bit));
+  irq_step("mie bit set");
   mie_set(true);
+  irq_step("mstatus.MIE set");
   if (which == kIrqSoft) {
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_MSIP0_REG_OFFSET, 1);
   } else if (which == kIrqTimer) {
@@ -178,8 +189,16 @@ static void irq_event(eg2_tally_t *t, uint32_t which, bool in_wfi, uint32_t idx)
     eg2_dev_write32(kEg2DevGpio, GPIO_INTR_ENABLE_REG_OFFSET, 1);
     eg2_dev_write32(kEg2DevGpio, GPIO_INTR_TEST_REG_OFFSET, 1);
   }
+  irq_step("source raised");
   bool taken = wait_irq(which, before);
   mie_set(false);
+  eg2_puts("  irq: wait done, taken ");
+  eg2_puthex(taken ? 1u : 0u);
+  eg2_puts(" irq_count ");
+  eg2_puthex(eg2_trap_rec.irq_count[which] - before);
+  eg2_puts(" other traps ");
+  eg2_puthex(eg2_trap_rec.count - traps);
+  eg2_puts("\r\n");
   eg2_check(t, which == kIrqSoft ? "irq software" : (which == kIrqTimer ? "irq timer" : "irq ext"),
             idx, taken ? 1u : 0u, 1u);
   // The source cleared; the handler masked it in mie.
@@ -196,6 +215,7 @@ static void irq_event(eg2_tally_t *t, uint32_t which, bool in_wfi, uint32_t idx)
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_IE0_0_REG_OFFSET + 4 * (kGpioPlicId / 32), 0);
   }
   __asm__ volatile("csrc mie, %0" : : "r"(1u << bit));
+  irq_step("source cleared");
 }
 
 static void phase_irqs(eg2_tally_t *t) {
