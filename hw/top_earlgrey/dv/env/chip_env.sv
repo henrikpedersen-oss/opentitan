@@ -180,6 +180,7 @@ class chip_env extends cip_base_env #(
       m_eg2_scoreboard.insn_enabled = m_eg2_iss.enabled && !cfg.rom_ext_assembled;
       m_eg2_rvfi_agent.monitor.analysis_port.connect(m_eg2_iss.rvfi_fifo.analysis_export);
       m_eg2_iss.exp_port.connect(m_eg2_scoreboard.rvfi_exp_fifo.analysis_export);
+      m_eg2_scoreboard.iss = m_eg2_iss;
       foreach (m_uart_agents[i]) begin
         m_uart_agents[i].monitor.tx_analysis_port.connect(
             m_eg2_scoreboard.uart_fifo[i].analysis_export);

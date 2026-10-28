@@ -46,13 +46,16 @@ class eg2_scoreboard extends uvm_scoreboard;
   protected int          rvfi_log;
   protected int          uart_log[NUM_UARTS];
   protected string       sb_corrupt;
+  // An insn mismatch inside an announced injection (eg2_inject_registry) is EXPECTED rather than an
+  // error, in every build; after one from a bench fault (`diverges`) the ISS (set by chip_env)
+  // stops until the chip reset (2026-10-28, chip_cheriot_fi_meta).
+  eg2_iss_wrapper        iss;
+  protected int unsigned insn_expected;
 `ifdef EG2_PERIPH_SB
   // Set by chip_env in an EG2 periph run (+eg2_periph_sb=1): the UARTs have their own scoreboards
-  // (eg2_periph_env), rvfi.chip.log gets the REQ_STE_10 header, and a mismatch inside an announced
-  // injection (eg2_inject_registry) is EXPECTED rather than an error.
+  // (eg2_periph_env) and rvfi.chip.log gets the REQ_STE_10 header.
   bit                    periph_mode;
   protected eg2_sb_log   rvfi_slog;
-  protected int unsigned insn_expected;
 `endif
 
 `ifdef EG2_SYSMODEL
@@ -151,20 +154,23 @@ class eg2_scoreboard extends uvm_scoreboard;
         string last;
         insn_mismatches++;
         foreach (history[i]) last = {last, "\n    ", history[i]};
-`ifdef EG2_PERIPH_SB
-        if (periph_mode) begin
+        if (eg2_inject_registry::in_use()) begin
           string src = eg2_inject_registry::consult("insn");
           if (src != "") begin
             insn_mismatches--;
             insn_expected++;
             `uvm_info(`gfn, $sformatf("EG2_SB insn EXPECTED mismatch (injected by %s) at order %0d pc %08h: %s",
                                       src, exp.order, exp.pc, exp.errors), UVM_LOW)
+            // The model no longer has the chip's state: no check until the reset the fault must
+            // escalate to (a stop no reset ends fails the run, eg2_iss_wrapper check_phase).
+            if (eg2_inject_registry::diverges_last() && iss != null) begin
+              iss.stop_until_reset({"injected by ", src});
+            end
             history.push_back(exp.act.log_line());
             if (history.size() > HistoryLen) void'(history.pop_front());
             continue;
           end
         end
-`endif
         `uvm_error(`gfn, $sformatf({"EG2_SB insn mismatch at order %0d pc %08h: %s",
                                     "\n  chip: %s\n  instructions before it:%s"},
                                    exp.order, exp.pc, exp.errors, exp.act.log_line(), last))
@@ -307,8 +313,9 @@ class eg2_scoreboard extends uvm_scoreboard;
       default: ;
     endcase
     table_s = $sformatf("\n  rvfi   %0d%s", rvfi_count, rvfi_enabled ? "" : " (no RVFI build)");
-    table_s = {table_s, $sformatf("\n  insn   %0d compared, %0d mismatched%s", insn_count,
-                                  insn_mismatches, insn_enabled ? "" : " (no co-simulation build)")};
+    table_s = {table_s, $sformatf("\n  insn   %0d compared, %0d mismatched, %0d EXPECTED (injected)%s",
+                                  insn_count, insn_mismatches, insn_expected,
+                                  insn_enabled ? "" : " (no co-simulation build)")};
     foreach (uart_count[i]) table_s = {table_s, $sformatf("\n  uart%0d  %0d", i, uart_count[i])};
 `ifdef EG2_SYSMODEL
     foreach (uart_act[i]) check_uart_end(i);

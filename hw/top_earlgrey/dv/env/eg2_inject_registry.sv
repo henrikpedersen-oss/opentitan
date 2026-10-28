@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The EG2 injection registry (eg2_top_verification, status/decisions.md 2026-10-24 "Deliberate
-// corruption is announced"; spec "Checker fault injection"). Compiled with EG2_PERIPH_SB only,
-// active with +eg2_periph_sb=1.
+// corruption is announced"; spec "Checker fault injection"). Compiled in every build; active with
+// +eg2_periph_sb=1, and in any run once a bench fault is announced (in_use(): the instruction
+// check of a co-simulation build consults it then too, 2026-10-28, chip_cheriot_fi_meta).
 //
 // Every source of an intended fault announces it here: the source ("eg2_mutate <name>",
 // "sb_corrupt uart1.item", "eg2_sysmodel fault lockstep", "uart1 agent"), the checks it targets
@@ -45,10 +46,13 @@ class eg2_inject_registry;
     bit      must_detect; // 0: stimulus with errors (bad parity, a NACK): may cause a mismatch, need not
     int      hits;       // UntilConsumed: the mismatches it covers per target
     bit      closed;     // UntilConsumed: ended by a chip reset
+    bit      diverges;   // a fault in the chip the model cannot follow (not a checker corruption)
     int      detected[string];
   } entry_t;
 
   protected static entry_t entries[$];
+  // The entry the last consult() matched (-1: none).
+  protected static int     last_hit = -1;
   // The checks of this run that can detect an injection, by instance.
   protected static bit     checks[string];
   // Mismatches reported as EXPECTED, per instance.
@@ -66,6 +70,12 @@ class eg2_inject_registry;
     return on;
   endfunction
 
+  // Whether a check must consult the registry: an EG2 periph run, or any run with an announcement
+  // (a bench fault of a co-simulation build).
+  static function bit in_use();
+    return active() || entries.size() > 0;
+  endfunction
+
   // A check that can detect injections on `target` is part of this run.
   static function void register_check(string target);
     checks[target] = 1'b1;
@@ -77,9 +87,12 @@ class eg2_inject_registry;
 
   // Announces an injection; `targets` is a comma-separated list. Returns its id. The default window
   // covers `hits` mismatches per target and ends at the next chip reset (R12, 2026-10-25).
+  // `diverges`: a fault in the chip (a bench fault on a bus or a memory), after which the reference
+  // model no longer has the chip's state; a check that consumes it stops until the reset
+  // (diverges_last). A checker corruption (sb_corrupt) leaves it 0.
   static function int announce(string source, string targets, string kind,
                                realtime start = $realtime, realtime stop = UntilConsumed,
-                               bit must_detect = 1'b1, int hits = 1);
+                               bit must_detect = 1'b1, int hits = 1, bit diverges = 1'b0);
     entry_t e;
     string  t[$];
     split(targets, t);
@@ -90,6 +103,7 @@ class eg2_inject_registry;
     e.stop   = stop;
     e.must_detect = must_detect;
     e.hits   = hits;
+    e.diverges = diverges;
     entries.push_back(e);
     `uvm_info("EG2_INJECT", $sformatf("announced: %s (%s) on %s from %0t%s", source, kind,
                                       targets, start,
@@ -121,6 +135,7 @@ class eg2_inject_registry;
   // A mismatch on `target`, of a value made at time `t`. Returns "" if no announcement covers it,
   // else "<source>: <kind>" (and counts the detection).
   static function string consult(string target, realtime t = $realtime);
+    last_hit = -1;
     foreach (entries[i]) begin
       if (!(target inside {entries[i].targets})) continue;
       if (t < entries[i].start) continue;
@@ -135,9 +150,15 @@ class eg2_inject_registry;
       entries[i].detected[target]++;
       if (!expected_cnt.exists(target)) expected_cnt[target] = 0;
       expected_cnt[target]++;
+      last_hit = i;
       return {entries[i].source, ": ", entries[i].kind};
     end
     return "";
+  endfunction
+
+  // Whether the injection the last consult() matched was announced with `diverges`.
+  static function bit diverges_last();
+    return last_hit >= 0 && entries[last_hit].diverges;
   endfunction
 
   // How many injections target `target`, and how many of them it detected.

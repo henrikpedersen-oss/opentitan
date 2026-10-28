@@ -17,8 +17,8 @@
 // does, logging each one), calls `bench_op(op, a, b, result)` for each step, then writes n and
 // the result into kEg2BenchAck (eg2_memsys.c), which the software polls. The ops every EG2 test
 // may use are here (SBA accesses, resets, faults); a test's vseq overrides bench_op for its own
-// and calls super for the rest. Every deliberate fault is marked for the injection registry
-// (decision 2026-10-24) with `TODO(inject-registry)` until eg2_inject_registry is wired in.
+// and calls super for the rest. Every deliberate fault is announced to the injection registry
+// (decision 2026-10-24; announce_fault).
 class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
   `uvm_object_utils(chip_sw_eg2_rand_vseq)
 
@@ -297,6 +297,19 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
 
   // ------------------------------------------------------------------ faults
 
+  // The registry id of the last bench fault announced (-1: none).
+  protected int last_fault = -1;
+
+  // Announces a bench fault at `path` to the instruction check (eg2_inject_registry). The model is
+  // not told of it, so a mismatch it causes is EXPECTED, and the check then stops until the chip
+  // reset the fault must escalate to (`diverges`; a stop no reset ends fails the run). A fault
+  // that changes nothing the core sees is not an error (must_detect 0). Four mismatches: the
+  // instructions the model compared before the stop took effect. 2026-10-28, chip_cheriot_fi_meta.
+  protected function void announce_fault(string path, string kind);
+    last_fault = eg2_inject_registry::announce({"bench fault at ", path}, "insn", kind, $realtime,
+                                               eg2_inject_registry::UntilConsumed, 1'b0, 4, 1'b1);
+  endfunction
+
   // One clock of the core's clock domain.
   protected task cpu_clk();
     cfg.chip_vif.cpu_clk_rst_if.wait_clks(1);
@@ -317,7 +330,8 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
           1: h.a_user.data_intg[bitpos % 7] ^= 1'b1;
           default: h.a_data[bitpos % 32] ^= 1'b1;
         endcase
-        // TODO(inject-registry): announce this fault (source bench step, target `path`, now).
+        announce_fault(path, $sformatf("A-channel field %0d bit %0d at 0x%08x", field, bitpos,
+                                       h.a_address));
         `uvm_info(`gfn, $sformatf("EG2 fault: %s A-channel field %0d bit %0d at 0x%08x", path,
                                   field, bitpos, h.a_address), UVM_LOW)
         `DV_CHECK_FATAL(uvm_hdl_force(path, uvm_hdl_data_t'(h)), path)
@@ -343,7 +357,7 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
           1: d.d_user.data_intg[bitpos % 7] ^= 1'b1;
           default: d.d_data[bitpos % 32] ^= 1'b1;
         endcase
-        // TODO(inject-registry): announce this fault (source bench step, target `path`, now).
+        announce_fault(path, $sformatf("D-channel field %0d bit %0d", field, bitpos));
         `uvm_info(`gfn, $sformatf("EG2 fault: %s D-channel field %0d bit %0d", path, field,
                                   bitpos), UVM_LOW)
         `DV_CHECK_FATAL(uvm_hdl_force(path, uvm_hdl_data_t'(d)), path)
@@ -391,7 +405,7 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
       h2d = tlul_pkg::tl_h2d_t'(valid[$bits(tlul_pkg::tl_h2d_t)-1:0]);
       if (valid[valid_msb] && (valid_msb != $bits(tlul_pkg::tl_h2d_t) - 1 ||
           (h2d.a_address inside {[lo:hi-1]}))) begin
-        // TODO(inject-registry): announce this fault (source bench step, target `path`, now).
+        announce_fault(path, $sformatf("MuBi4 0x%0x", bad));
         `uvm_info(`gfn, $sformatf("EG2 fault: %s = 0x%0x", path, bad), UVM_LOW)
         `DV_CHECK_FATAL(uvm_hdl_force(path, uvm_hdl_data_t'(bad)), path)
         cpu_clk();

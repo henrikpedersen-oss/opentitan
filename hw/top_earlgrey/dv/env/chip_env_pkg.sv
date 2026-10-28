@@ -179,10 +179,11 @@ package chip_env_pkg;
   // package sources
   // EG2, every build: the stub CPU's TL sequences hold their requests (F26).
   `include "eg2_tl_hold_custom_seq.sv"
-`ifdef EG2_PERIPH_SB
-  // EG2 per-peripheral scoreboards (build mode en_eg2_periph): the injection registry, the logs
-  // and the items, used by the classes below them too.
+  // EG2, every build: the injection registry (bench faults are announced in every build).
   `include "eg2_inject_registry.sv"
+`ifdef EG2_PERIPH_SB
+  // EG2 per-peripheral scoreboards (build mode en_eg2_periph): the logs and the items, used by the
+  // classes below them too.
   `include "eg2_sb_log.sv"
   `include "eg2_periph_items.sv"
   `include "eg2_periph_cov.sv"

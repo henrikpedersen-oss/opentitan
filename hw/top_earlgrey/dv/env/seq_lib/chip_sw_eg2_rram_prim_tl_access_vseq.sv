@@ -45,7 +45,6 @@ class chip_sw_eg2_rram_prim_tl_access_vseq extends chip_sw_eg2_chk_base_vseq;
     `DV_CHECK_LT_FATAL(t, 200_000, "no access reached rram_macro.prim")
     intg = rd({PrimTl, ".a_user.cmd_intg"});
     intg[0] = ~intg[0];
-    // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
     announce("chip_sw_eg2_rram_prim_tl_access_vseq", "rram_ctrl",
              "rram_macro.prim command integrity bit 0 flipped on one access");
     if (!(uvm_hdl_force({PrimTl, ".a_user.cmd_intg"}, intg))) `uvm_fatal(`gfn, $sformatf("Check failed (uvm_hdl_force({PrimTl, \".a_user.cmd_intg\"}, intg)) %s", PrimTl))

@@ -80,7 +80,6 @@ class chip_sw_eg2_rram_crash_alert_vseq extends chip_sw_eg2_chk_base_vseq;
     begin
       uvm_hdl_data_t intg = rd({tl, ".a_user.cmd_intg"});
       intg[0] = ~intg[0];
-      // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
       announce("chip_sw_eg2_rram_crash_alert_vseq", "rram_ctrl",
                "core_tl command integrity bit 0 flipped on one SCRATCH read");
       if (!(uvm_hdl_force({tl, ".a_user.cmd_intg"}, intg))) `uvm_fatal(`gfn, $sformatf("Check failed (uvm_hdl_force({tl, \".a_user.cmd_intg\"}, intg)) %s", tl))

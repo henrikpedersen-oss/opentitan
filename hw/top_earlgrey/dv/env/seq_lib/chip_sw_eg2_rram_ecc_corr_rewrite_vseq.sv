@@ -63,7 +63,6 @@ class chip_sw_eg2_rram_ecc_corr_rewrite_vseq extends chip_sw_eg2_chk_base_vseq;
       end else begin
         mask[$urandom_range(0, 1) ? $urandom_range(64, 127) : $urandom_range(0, 63)] = 1'b1;
       end
-      // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
       announce("chip_sw_eg2_rram_ecc_corr_rewrite_vseq", "rram_ctrl,insn",
                $sformatf("RRAM row 0x%0h data mask 0x%036h (%0d-bit correctable)", off, mask,
                          bits));

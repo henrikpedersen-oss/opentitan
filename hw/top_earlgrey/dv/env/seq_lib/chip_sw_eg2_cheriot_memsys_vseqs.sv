@@ -225,7 +225,7 @@ class chip_sw_eg2_fault_base_vseq extends chip_sw_eg2_cheriot_vseq;
       do b1 = lo + $urandom_range(0, span - 1); while (b1 == b0);
       v[b1] ^= 1'b1;
     end
-    // TODO(inject-registry): announce this fault (meta SRAM word `word`, now, until reset).
+    announce_fault(path, $sformatf("%0d bit(s) flipped", nbits));
     `uvm_info(`gfn, $sformatf("EG2 fault: meta SRAM word %0d, %0d bit(s) flipped", word, nbits),
               UVM_LOW)
     `DV_CHECK_FATAL(uvm_hdl_deposit(path, v), path)
@@ -346,6 +346,10 @@ class chip_sw_eg2_fi_meta_vseq extends chip_sw_eg2_fault_base_vseq;
   endfunction
   virtual task bench_op(string op, bit [31:0] a, bit [31:0] b, output bit [31:0] result);
     if (op == "fi") begin
+      // The round before ended without a reset: its fault's window ends here, so it covers no
+      // mismatch of a later round.
+      if (last_fault >= 0) eg2_inject_registry::close(last_fault);
+      last_fault = -1;
       arm($urandom_range(0, 4), $urandom_range(1, 2), $urandom());
       result = 0;
     end else begin

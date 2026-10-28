@@ -50,7 +50,6 @@ class chip_sw_eg2_rram_otp_rsw_vseq extends chip_sw_eg2_chk_base_vseq;
     row = saved;
     bit_idx = 8 * rram_off[3:0] + $urandom_range(0, 7);
     row[bit_idx] = ~row[bit_idx];
-    // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
     announce("chip_sw_eg2_rram_otp_rsw_vseq", "otp_ctrl",
              $sformatf("OTP integrity byte of word 0x%0h (RRAM 0x%0h) bit %0d flipped", off,
                        rram_off, bit_idx % 8));

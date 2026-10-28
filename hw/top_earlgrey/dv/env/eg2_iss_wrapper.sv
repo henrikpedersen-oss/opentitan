@@ -380,10 +380,9 @@ class eg2_iss_wrapper extends uvm_component;
     bit [31:0] rd_wdata;
 
     if (item.reset) begin
-`ifdef EG2_PERIPH_SB
-      // Announced faults end at a chip reset (review R12, 2026-10-25).
-      if (eg2_inject_registry::active()) eg2_inject_registry::chip_reset(item.reset_start);
-`endif
+      // Announced faults end at a chip reset (review R12, 2026-10-25), in every build (bench faults,
+      // 2026-10-28).
+      if (eg2_inject_registry::in_use()) eg2_inject_registry::chip_reset(item.reset_start);
       if (stop_open) begin
         `uvm_info(`gfn, $sformatf("EG2_ISS the chip reset ends the stop (%s): %0d items not compared",
                                   stop_why, dropped), UVM_LOW)

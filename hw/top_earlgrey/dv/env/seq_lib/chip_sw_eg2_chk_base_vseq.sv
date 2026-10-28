@@ -76,11 +76,8 @@ class chip_sw_eg2_chk_base_vseq extends chip_sw_eg2_base_vseq;
   // Announces a deliberate fault: `source` names the sequence, `targets` the checks that must see
   // it (comma-separated instance names), `kind` what it is.
   protected function void announce(string source, string targets, string kind);
-`ifdef EG2_PERIPH_SB
-    if (eg2_inject_registry::active()) begin
-      void'(eg2_inject_registry::announce(source, targets, kind));
-    end
-`endif
+    // Every build (2026-10-28): outside an EG2 periph run only the insn check consults it.
+    void'(eg2_inject_registry::announce(source, targets, kind));
     `uvm_info("EG2_INJECT", $sformatf("%s: %s on %s", source, kind, targets), UVM_LOW)
   endfunction
 

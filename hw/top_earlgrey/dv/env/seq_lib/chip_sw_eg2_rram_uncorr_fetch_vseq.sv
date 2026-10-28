@@ -68,7 +68,6 @@ class chip_sw_eg2_rram_uncorr_fetch_vseq extends chip_sw_eg2_chk_base_vseq;
     do b = lo + $urandom_range(0, 63); while (b == a);
     mask[a] = 1'b1;
     mask[b] = 1'b1;
-    // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
     // Not "insn": the model is told of the fault (above; R12, 2026-10-25).
     announce("chip_sw_eg2_rram_uncorr_fetch_vseq", "rram_ctrl",
              $sformatf("RRAM row 0x%0h data mask 0x%036h (uncorrectable)", off, mask));

@@ -84,7 +84,6 @@ class chip_sw_eg2_rram_host_intg_vseq extends chip_sw_eg2_chk_base_vseq;
                                     word_addr), UVM_LOW)
         end
       end
-      // TODO(inject-registry): announce() reaches the registry only in EG2_PERIPH_SB builds.
       announce("chip_sw_eg2_rram_host_intg_vseq", told ? "rv_core_ibex,rvfi" : "rv_core_ibex,insn,rvfi",
                $sformatf("RRAM read buffer entry %0d (word 0x%0h, %s) data bit %0d flipped",
                          entry, word_addr, kind, bit_idx));
