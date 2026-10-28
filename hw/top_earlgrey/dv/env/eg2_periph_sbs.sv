@@ -373,12 +373,16 @@ class eg2_i2c_sb extends eg2_periph_sb_base #(i2c_item);
   virtual function bit compare_rx(i2c_item rd, i2c_item drv, output string why);
     why = "";
     if (rd.data_q.size() != 1 || drv.data_q.size() != 1) return 1'b0;
-    if (rd.data_q[0] != drv.data_q[0]) return 1'b0;
     // ACQDATA: the entry's kind too (START, STOP, data).
     if (chip_is_target() && rd.signal != drv.signal) begin
       why = "ACQDATA signal";
       return 1'b0;
     end
+    // A STOP entry's ABYTE "contains no data" (i2c.hjson ACQDATA.SIGNAL STOP): not compared. The
+    // RTL leaves the last shifted-in byte there (i2c_target_fsm.sv, {AcqStop, input_byte}; 0x0c in
+    // chip_sw_i2c_device_tx_rx_eg2sb, 2026-10-28).
+    if (chip_is_target() && drv.signal inside {i2c_pkg::AcqStop, i2c_pkg::AcqNackStop}) return 1'b1;
+    if (rd.data_q[0] != drv.data_q[0]) return 1'b0;
     return 1'b1;
   endfunction
 
