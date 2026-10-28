@@ -1313,16 +1313,22 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
       end
     end
     prev_active = active;
-    // Status changes raise the event interrupts.
-    begin
-      bit [1:0] pok  = vif.sensor_io_pok;
-      bit [3:0] init = vif.sensor_init_done;
-      if (pok != prev_io_pok) set_st("INTR_STATE", get_st("INTR_STATE") | 1);
-      if (init != prev_init) set_st("INTR_STATE", get_st("INTR_STATE") | 2);
-      prev_io_pok = pok;
-      prev_init = init;
-      set_st("STATUS", {pok, init == prim_mubi_pkg::MuBi4True});
-    end
+    sample_status();
+  endfunction
+
+  // Status changes raise the event interrupts. Also called at a read of STATUS or INTR_STATE:
+  // sensor_ctrl synchronises the inputs on its own clock (clk_io_div4), far faster than the AON
+  // step, so a change between two steps was already in the register while the model still held the
+  // old value and did not know the bit had just changed (every eg2sb test's first STATUS read,
+  // ast_init_done, 2026-10-28). Sampled at the read, a fresh change is marked recent and not checked.
+  protected function void sample_status();
+    bit [1:0] pok  = vif.sensor_io_pok;
+    bit [3:0] init = vif.sensor_init_done;
+    if (pok != prev_io_pok) set_st("INTR_STATE", get_st("INTR_STATE") | 1);
+    if (init != prev_init) set_st("INTR_STATE", get_st("INTR_STATE") | 2);
+    prev_io_pok = pok;
+    prev_init = init;
+    set_st("STATUS", {pok, init == prim_mubi_pkg::MuBi4True});
   endfunction
 
   virtual function void tl_write(bit [31:0] off, tl_seq_item t);
@@ -1351,8 +1357,14 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
     case (off)
       sensor_ctrl_reg_pkg::SENSOR_CTRL_RECOV_ALERT_OFFSET: read_st("RECOV_ALERT", t.d_data, 32'h7ff);
       sensor_ctrl_reg_pkg::SENSOR_CTRL_FATAL_ALERT_OFFSET: read_st("FATAL_ALERT", t.d_data, 32'h7ff);
-      sensor_ctrl_reg_pkg::SENSOR_CTRL_STATUS_OFFSET: read_st("STATUS", t.d_data, 32'h7);
-      sensor_ctrl_reg_pkg::SENSOR_CTRL_INTR_STATE_OFFSET: read_st("INTR_STATE", t.d_data, 32'h3);
+      sensor_ctrl_reg_pkg::SENSOR_CTRL_STATUS_OFFSET: begin
+        sample_status();
+        read_st("STATUS", t.d_data, 32'h7);
+      end
+      sensor_ctrl_reg_pkg::SENSOR_CTRL_INTR_STATE_OFFSET: begin
+        sample_status();
+        read_st("INTR_STATE", t.d_data, 32'h3);
+      end
       default: ;
     endcase
   endfunction

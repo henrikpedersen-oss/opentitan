@@ -212,6 +212,9 @@ class eg2_iss_wrapper extends uvm_component;
   } mem_wr_t;
   protected mem_wr_t     pending_wr[$];
   protected int unsigned unknown_reads;
+  // Memory bytes the bench uses as a mailbox (backdoor_mailbox): read like a device, the chip's
+  // value every time, because a backdoor write can cross a chip read already in flight.
+  protected bit mailbox[bit [31:0]];
 
   // The chip's data accesses the model has been told of and has not taken up, each with the step
   // it came with: at most one more step may pass before its instruction retires. R9, 2026-10-25.
@@ -671,6 +674,10 @@ class eg2_iss_wrapper extends uvm_component;
       int unsigned r;
       mem_kind_e   k;
       if (!be[b]) continue;
+      if (mailbox.exists(addr)) begin
+        model_write_byte(addr, rdata[8 * b +: 8]);
+        continue;
+      end
       k = mem_kind(addr, r);
       if (k != MemNone && model_has(addr)) continue;
       model_write_byte(addr, rdata[8 * b +: 8]);
@@ -1092,6 +1099,10 @@ class eg2_iss_wrapper extends uvm_component;
     // CHERIoT-Sail read 0x100 where the chip read 0x101 (fetch_backpressure, rand_isa_cheriot,
     // testrig_seq, 2026-10-28).
     cheriot_sail_cosim_set_cpuctrlsts(eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_CPUCTRLSTS)));
+    // And Spike's minstret: CHERIoT-Sail counted from 0 and read 0x3c1d2 where the chip read
+    // 0x45b73 (rand_isa_cheriot, 2026-10-28).
+    cheriot_sail_cosim_set_minstret({32'(eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MINSTRETH))),
+                                     32'(eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MINSTRET)))});
     sail_active    = 1'b1;
     sail_prev_trap = 1'b0;
     sail_prev_skip = 1'b0;
@@ -1480,6 +1491,15 @@ class eg2_iss_wrapper extends uvm_component;
   static function void backdoor_write(bit [31:0] addr, bit [7:0] data[]);
     if (inst == null) return;
     foreach (data[i]) inst.mem_write_byte(addr + i, data[i]);
+  endfunction
+
+  // The bench's mailbox in memory (`kEg2BenchAck` in RRAM): the chip's loads of [addr, addr + len)
+  // are not predicted but taken as read, like a device's. The bench writes it through the backdoor
+  // while the software polls it, and a chip read in flight returns the old value after the model
+  // already has the new one (fetch_backpressure, tbre_corners, 2026-10-28).
+  static function void backdoor_mailbox(bit [31:0] addr, int unsigned len);
+    if (inst == null) return;
+    for (int unsigned i = 0; i < len; i++) inst.mailbox[addr + i] = 1'b1;
   endfunction
 
   static function void backdoor_write32(bit [31:0] addr, bit [31:0] data);

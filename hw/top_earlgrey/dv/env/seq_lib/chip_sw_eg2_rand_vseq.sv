@@ -117,6 +117,7 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
 
   // Steps done, for the log.
   int unsigned bench_steps;
+  protected bit ack_is_mailbox;  // kEg2BenchAck registered with the instruction-set model
 
   virtual task body();
     configure_uart_agent(.uart_idx(0), .enable(1));
@@ -179,6 +180,17 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
     // Not wait_rram_rd_buf_rdy's 1 us: the software polls this RRAM word, with a pause between
     // polls (eg2_memsys.c), so the buffer is idle once per poll period, not within 1 us.
     `DV_WAIT(cfg.chip_vif.rram_rd_buf_rdy === 1'b1, "RRAM-rd-buf timeout (bench ack)", 100_000)
+    // The software polls this word while the bench writes it: the instruction-set model takes the
+    // chip's reads of it as they come (a mailbox), it cannot know which poll sees the new value.
+    if (!ack_is_mailbox) begin
+      bit [bus_params_pkg::BUS_AW-1:0] a;
+      uint sz;
+      if (dv_utils_pkg::sw_symbol_get_addr_size($sformatf("%0s.elf", cfg.sw_images[SwTypeTestSlotA]),
+                                                "kEg2BenchAck", 1'b1, a, sz)) begin
+        eg2_iss_wrapper::backdoor_mailbox(a, sz);
+      end
+      ack_is_mailbox = 1'b1;
+    end
     sw_symbol_backdoor_overwrite("kEg2BenchAck", bytes);
   endtask
 
