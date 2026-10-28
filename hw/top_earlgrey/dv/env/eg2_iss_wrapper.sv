@@ -1075,6 +1075,10 @@ class eg2_iss_wrapper extends uvm_component;
                                 eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MIE)),
                                 eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MCAUSE)),
                                 eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MTVAL)));
+    // Spike's cpuctrlsts too: the boot code enables the icache in RISC-V mode, and a fresh
+    // CHERIoT-Sail read 0x100 where the chip read 0x101 (fetch_backpressure, rand_isa_cheriot,
+    // testrig_seq, 2026-10-28).
+    cheriot_sail_cosim_set_cpuctrlsts(eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_CPUCTRLSTS)));
     sail_active    = 1'b1;
     sail_prev_trap = 1'b0;
     sail_prev_skip = 1'b0;

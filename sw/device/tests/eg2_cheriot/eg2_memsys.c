@@ -61,9 +61,16 @@ bool eg2_ms_bench(const char *op, uint32_t a, uint32_t b, bool bench) {
     return true;
   }
   eg2_puts("\r\n");
-  for (uint32_t i = 0; i < 20000000u; ++i) {
+  // A pause without memory access between polls: the bench writes the acknowledgement into RRAM
+  // through the backdoor only while the RRAM read buffer is idle, which a back-to-back poll of
+  // this RRAM word kept from happening (RRAM-rd-buf timeout, fi_meta, tbre_regs_cheriot,
+  // 2026-10-28).
+  for (uint32_t i = 0; i < 400000u; ++i) {
     if (bench_ack(0) == n) {
       return true;
+    }
+    for (uint32_t d = 0; d < 64; ++d) {
+      __asm__ volatile("nop");
     }
   }
   eg2_puts("EG2 BENCH ");

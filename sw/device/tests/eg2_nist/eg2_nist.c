@@ -193,7 +193,12 @@ bool eg2_nist_run(const char *engine, eg2_nist_run_fn_t fn, uint32_t boundary_dr
     eg2_putdec(skipped[f]);
     eg2_puts(" skipped\r\n");
     nfail += failed[f];
-    if (passed[f] + failed[f] + skipped[f] == 0) {
+    // A file this seed drew nothing from is fine; a file the image has no vector of is not.
+    uint32_t in_image = 0;
+    for (uint32_t i = 0; i < kEg2NistNumVecs; ++i) {
+      in_image += kEg2NistVecs[i].file == f;
+    }
+    if (in_image == 0) {
       eg2_puts("NIST FAIL: a vector file has no vector\r\n");
       ok = false;
     }

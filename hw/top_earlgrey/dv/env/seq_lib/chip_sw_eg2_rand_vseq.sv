@@ -176,7 +176,9 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
       bytes[i] = n[8 * i +: 8];
       bytes[4 + i] = result[8 * i +: 8];
     end
-    wait_rram_rd_buf_rdy();
+    // Not wait_rram_rd_buf_rdy's 1 us: the software polls this RRAM word, with a pause between
+    // polls (eg2_memsys.c), so the buffer is idle once per poll period, not within 1 us.
+    `DV_WAIT(cfg.chip_vif.rram_rd_buf_rdy === 1'b1, "RRAM-rd-buf timeout (bench ack)", 100_000)
     sw_symbol_backdoor_overwrite("kEg2BenchAck", bytes);
   endtask
 

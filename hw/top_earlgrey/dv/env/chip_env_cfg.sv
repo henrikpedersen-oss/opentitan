@@ -263,8 +263,10 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
 
     m_jtag_riscv_agent_cfg.use_jtag_dmi = 1;
 
-    // Both, the regs only supports 1 outstanding.
-    m_tl_agent_cfgs[RAL_T::type_name].max_outstanding_req = 1;
+    // With the CPU running, this agent monitors the core's data port (chip_if cpu_d_tl_if on
+    // cored_tl_h_o/i), behind rv_core_ibex's data tlul_adapter_host #(.MAX_REQS(2)); a CLC's two
+    // word requests are both outstanding (chip_cheriot_cap_halves, trvk_backpressure, 2026-10-28).
+    m_tl_agent_cfgs[RAL_T::type_name].max_outstanding_req = 2;
 
     m_jtag_agent_cfg = jtag_agent_cfg::type_id::create("m_jtag_agent_cfg");
     m_jtag_agent_cfg.if_mode = dv_utils_pkg::Host;

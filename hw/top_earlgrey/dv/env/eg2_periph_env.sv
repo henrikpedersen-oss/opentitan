@@ -230,6 +230,8 @@ class eg2_periph_env extends uvm_env;
              "Debug and life-cycle access over JTAG", "eg2/hw/ip/rv_dm/README.md");
 
     m_path = eg2_periph_path_check::type_id::create("m_path", this);
+    // add_port creates the port's TLM fifo, a component: only legal in build_phase.
+    foreach (taps[i]) m_path.add_port(taps[i].name, taps[i].base, taps[i].size);
     if (cfg.en_cov) inject_cg = new({get_full_name(), "::eg2_inject_cg"});
   endfunction
 
@@ -298,7 +300,6 @@ class eg2_periph_env extends uvm_env;
                             jtag_riscv_agent jtag_agent,
                             eg2_rvfi_agent   rvfi_agent);
     foreach (taps[i]) begin
-      m_path.add_port(taps[i].name, taps[i].base, taps[i].size);
       m_tl_mon[taps[i].name].d_chan_port.connect(m_path.tl_fifo[taps[i].name].analysis_export);
     end
     m_path.enabled = rvfi_agent.enabled() && !cfg.chip_vif.stub_cpu;
