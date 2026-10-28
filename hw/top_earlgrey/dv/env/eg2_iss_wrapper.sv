@@ -858,6 +858,19 @@ class eg2_iss_wrapper extends uvm_component;
   endfunction
 
   // CHERIoT-Sail's capability tags over [base, base + size) cleared (one per 8 bytes). R18.
+  // The memories with capability tags (REQ_CMS_10): main SRAM, sec SRAM, RRAM.
+  protected function bit holds_tags(bit [31:0] addr);
+    return (addr >= top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR &&
+            addr - top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR <
+            top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES) ||
+           (addr >= top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR &&
+            addr - top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR <
+            top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_SIZE_BYTES) ||
+           (addr >= top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_BASE_ADDR &&
+            addr - top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_BASE_ADDR <
+            top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES);
+  endfunction
+
   protected function void sail_clear_tags(bit [31:0] base, bit [31:0] size);
     for (bit [31:0] off = 0; off < size; off += 8) cheriot_sail_cosim_clear_tag(base + off);
   endfunction
@@ -1223,6 +1236,16 @@ class eg2_iss_wrapper extends uvm_component;
     end
     for (int i = 0; i < cheriot_sail_cosim_get_num_errors(); i++) begin
       exp.errors = {exp.errors, cheriot_sail_cosim_get_error(i), "; "};
+    end
+    // Only main SRAM, sec SRAM and RRAM hold tags (REQ_CMS_10, REQ_SRAM_02): a capability the
+    // model stored anywhere else loads back untagged (revocation_sleep via retention SRAM,
+    // 2026-10-28).
+    begin
+      bit [31:0] sa = cheriot_sail_cosim_get_mem_addr();
+      if (sail_active && cheriot_sail_cosim_get_mem_present() &&
+          8'(cheriot_sail_cosim_get_mem_wmask()) == 8'hff && !holds_tags(sa)) begin
+        cheriot_sail_cosim_clear_tag({sa[31:3], 3'b000});
+      end
     end
     // Every capability result in full, address and metadata, as ibex_sail_rvfi_cmp compares it for
     // TestRIG: cheriot_sail_cosim_step compares only a capability write's register and tag.
