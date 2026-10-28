@@ -21,6 +21,16 @@ if {[info exists ::env(dv_root)]} {
 # waves in specific hierarchies, set the dump_tb_top flag to 0 (i.e. uncomment the line below), and
 # specify the paths to dump on line 32.
 # set dump_tb_top 0
+#
+# EG2: the environment variable EG2_WAVES_SCOPE (hierarchies separated by spaces) does the same
+# without editing this file: `EG2_WAVES_SCOPE=tb.dut.foo make test WAVES=1 ...`.
+set eg2_waves_scope ""
+if {[info exists ::env(EG2_WAVES_SCOPE)]} {
+  set eg2_waves_scope [string trim $::env(EG2_WAVES_SCOPE)]
+}
+if {$eg2_waves_scope ne ""} {
+  set dump_tb_top 0
+}
 
 source "${dv_root}/tools/common.tcl"
 source "${dv_root}/tools/waves.tcl"
@@ -32,6 +42,9 @@ global tb_top
 # Dumping waves in specific hierarchies (example):
 # wavedumpScope $waves $simulator tb.dut.foo.bar 12
 # wavedumpScope $waves $simulator tb.dut.baz 0
+foreach eg2_scope $eg2_waves_scope {
+  wavedumpScope $waves $simulator $eg2_scope 0
+}
 
 if {$simulator eq "xcelium"} {
   puts "INFO: The following assertions are permamently disabled:"
