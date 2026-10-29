@@ -167,7 +167,7 @@ bool Eg2MpactCpu::ibex_csr(uint32_t insn) {
   unsigned rd = (insn >> 7) & 31, rs1 = (insn >> 15) & 31;
   if (rd >= 16 || (f3 < 4 && rs1 >= 16)) return false;  // MPACT makes it illegal (16 registers)
   uint32_t src = f3 >= 5 ? rs1 : eg2_mpact_gpr(m_, rs1);  // the immediate forms: zimm
-  uint32_t old = csr == 0x7c0 ? (cpuctrlsts_ | (1u << 8)) : 0;
+  uint32_t old = csr == 0x7c0 ? (cpuctrlsts_ | (key_wait_ ? 0 : 1u << 8)) : 0;
   uint32_t v = cpuctrlsts_;
   switch (f3 & 3) {
     case 1: v = src; break;                            // csrrw
@@ -228,7 +228,9 @@ bool Eg2MpactCpu::step() {
   // registers: an operand above x15 stays with MPACT, which makes it illegal).
   last_fence_i_ = (last_insn_ & 0x707f) == 0x100f;
   last_emulated_ = last_fence_i_;
+  if (key_wait_) --key_wait_;
   if (last_fence_i_) {
+    key_wait_ = kIcKeyRenewInsns;
     eg2_mpact_step_emulated(m_, 4, 0, 0);
     return true;
   }

@@ -360,6 +360,16 @@ bool Eg2SpikeCpu::step_spike() {
     processor_->get_mmu()->flush_tlb();
     processor_->get_mmu()->flush_icache();
   }
+  // cpuctrlsts.ic_scr_key_valid, which Spike does not model (kIcKeyRenewInsns): FENCE.I drops the
+  // key; a CSR instruction on cpuctrlsts that retired gets bit 8 in its result from the model.
+  if (key_wait_) --key_wait_;
+  bool retired = uint32_t(processor_->get_state()->pc) == pc + 4;
+  if ((insn & 0x707f) == 0x100f) key_wait_ = kIcKeyRenewInsns;
+  unsigned f3 = (insn >> 12) & 7, rd = (insn >> 7) & 31;
+  if (retired && (insn & 0x7f) == 0x73 && f3 != 0 && f3 != 4 && (insn >> 20) == 0x7c0 && rd) {
+    uint32_t v = uint32_t(processor_->get_state()->XPR[rd]);
+    processor_->get_state()->XPR.write(rd, (v & ~(1u << 8)) | (key_wait_ ? 0 : 1u << 8));
+  }
   if (lock_pending_) {
     lock_pending_ = false;
     if (ena_low_) {

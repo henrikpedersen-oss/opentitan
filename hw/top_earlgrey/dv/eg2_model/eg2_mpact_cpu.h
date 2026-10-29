@@ -105,6 +105,7 @@ class Eg2MpactCpu : public Eg2Iss {
   eg2_mpact *m_ = nullptr;
   Eg2Memory *meta_ = nullptr;
   uint32_t cpuctrlsts_ = 0;
+  uint32_t key_wait_ = 0;  // instructions until the icache key is valid again (kIcKeyRenewInsns)
   uint32_t last_pc_ = 0, last_insn_ = 0;
   bool last_fetch_fault_ = false, last_fence_i_ = false, last_emulated_ = false;
 };

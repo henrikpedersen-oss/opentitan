@@ -28,6 +28,14 @@ struct Eg2Handover {
   uint32_t cpuctrlsts = 0;  // bits 7:0: the same CSR in both modes, carried over
 };
 
+// cpuctrlsts.ic_scr_key_valid (bit 8): a FENCE.I fetches a new icache scrambling key, which arrives
+// in the background (Ibex doc/03_reference/icache.rst, Scramble Key Renewal; cs_registers.rst).
+// The model has the key back this many instructions after the FENCE.I; on the chip the request to
+// OTP takes some cycles, which the documentation does not give. Both instruction-set models use it
+// (2026-10-29: rv_core_ibex_icache_invalidate_test checks that bit 8 drops after a FENCE.I and
+// comes back; Spike never set it, and the test never ended).
+constexpr uint32_t kIcKeyRenewInsns = 100;
+
 class Eg2Iss {
  public:
   // A transaction on the core's bus: false for an error response (a bus error).

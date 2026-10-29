@@ -144,6 +144,7 @@ class Eg2SpikeCpu : public sc_core::sc_module, public simif_t {
   Eg2Iss *cheriot_iss_ = nullptr;
   bool cheriot_ = false;       // CHERIoT mode: cheriot_iss_ executes
   bool lock_pending_ = false;  // the current Spike step locked CHERIoT mode
+  uint32_t key_wait_ = 0;     // instructions until the icache key is valid again (kIcKeyRenewInsns)
   bool ena_low_ = false;       // fault cheriot_ena_low: cheriot_enable_i forced to MuBi4False
   struct PendingFault {
     std::string name;
