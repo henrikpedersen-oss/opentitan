@@ -46,6 +46,10 @@ Eg2SpikeCpu::Eg2SpikeCpu(sc_core::sc_module_name name, const Eg2CoreConfig &cfg,
   }
   Eg2System &sys = Eg2System::get();
   sys.clock = [this] { return now_ps(); };
+  sys.addr_translation_changed = [this] {
+    processor_->get_mmu()->flush_tlb();
+    processor_->get_mmu()->flush_icache();
+  };
   // In CHERIoT mode the CHERIoT-mode model does not give these fields: the dump reads zeros there (a
   // model limit) rather than the last RISC-V-mode state.
   sys.cpu_crashdump = [this] {
@@ -362,7 +366,8 @@ bool Eg2SpikeCpu::step_spike() {
   // core has no DMI pointer into it, so Spike fetches through mmio_load, which refuses: an
   // instruction access fault, as the chip's bus error on the fetch gives. Spike's TLB and decode
   // cache are flushed around the step, so neither holds a pointer the step must not use.
-  bool deny = !sys.fetch_allowed(pc);
+  uint32_t fetch_addr = sys.addr_translate ? sys.addr_translate(pc, true) : pc;
+  bool deny = !sys.fetch_allowed(fetch_addr);
   if (deny) {
     fetch_denied_ = true;
     processor_->get_mmu()->flush_tlb();
@@ -376,20 +381,25 @@ bool Eg2SpikeCpu::step_spike() {
   }
   // The crash dump's last data access address: a load's or store's effective address, from the
   // registers before it runs (RV32I loads and stores, C.LW/C.SW/C.LWSP/C.SWSP).
+  bool data_access = false;
   {
     state_t *st = processor_->get_state();
     auto x = [&](unsigned r) { return uint32_t(st->XPR[r]); };
     uint32_t c = insn & 0xffff, op = insn & 0x7f;
     if ((insn & 3) == 3 && (op == 0x03 || op == 0x23)) {
+      data_access = true;
       int32_t imm = op == 0x03 ? int32_t(insn) >> 20
                                : ((int32_t(insn) >> 25) << 5) | int32_t((insn >> 7) & 31);
       dump_daddr_ = x((insn >> 15) & 31) + uint32_t(imm);
     } else if ((c & 3) == 0 && ((c >> 13) == 2 || (c >> 13) == 6)) {
+      data_access = true;
       dump_daddr_ = x(8 + ((c >> 7) & 7)) +
                     ((((c >> 10) & 7) << 3) | (((c >> 6) & 1) << 2) | (((c >> 5) & 1) << 6));
     } else if ((c & 3) == 2 && (c >> 13) == 2) {
+      data_access = true;
       dump_daddr_ = x(2) + ((((c >> 12) & 1) << 5) | (((c >> 4) & 7) << 2) | (((c >> 2) & 3) << 6));
     } else if ((c & 3) == 2 && (c >> 13) == 6) {
+      data_access = true;
       dump_daddr_ = x(2) + ((((c >> 9) & 0xf) << 2) | (((c >> 7) & 3) << 6));
     }
   }
@@ -399,6 +409,16 @@ bool Eg2SpikeCpu::step_spike() {
                    sys.mcounteren_writable && !sys.mcounteren_writable();
   reg_t mc_old = mc_locked ? processor_->get_csr(CSR_MCOUNTEREN) : 0;
   reg_t instret = processor_->get_csr(CSR_MINSTRET);
+  // addr_to_mem above probes the current fetch before Spike does, and the decoder found this
+  // instruction's data address. If either is translated, discard the ordinary page mapping filled
+  // by earlier accesses so Spike asks for the redirected pointer.
+  bool translated_data = data_access && sys.addr_translate &&
+                         sys.addr_translate(dump_daddr_, false) != dump_daddr_;
+  if (translation_used_ || translated_data) {
+    translation_used_ = false;
+    processor_->get_mmu()->flush_tlb();
+    processor_->get_mmu()->flush_icache();
+  }
   processor_->step(1);
   if (mc_locked) processor_->put_csr(CSR_MCOUNTEREN, mc_old);
   // A trap: the instruction did not retire and the core went elsewhere (not a WFI). A synchronous
@@ -419,8 +439,9 @@ bool Eg2SpikeCpu::step_spike() {
   }
   dump_pc_ = pc;
   dump_npc_ = uint32_t(processor_->get_state()->pc);
-  if (deny) {
-    fetch_denied_ = false;
+  if (deny) fetch_denied_ = false;
+  if (deny || translation_used_) {
+    translation_used_ = false;
     processor_->get_mmu()->flush_tlb();
     processor_->get_mmu()->flush_icache();
   }
@@ -459,7 +480,18 @@ bool Eg2SpikeCpu::step_cheriot() {
 }
 
 char *Eg2SpikeCpu::addr_to_mem(reg_t addr) {
-  if (fetch_denied_ && !Eg2System::get().fetch_allowed(uint32_t(addr))) return nullptr;
+  // rv_core_ibex theory_of_operation.md, "Simple Address Translation": instruction and data
+  // transactions have separate translation controls and only accesses inside a matching region
+  // are redirected. During a Spike step an access at the current PC is an instruction fetch;
+  // other direct-memory accesses are data transactions. Spike fetches only from direct memory, so
+  // return the redirected pointer and flush its page-sized cache after the instruction; a NAPOT
+  // region may be smaller than that page and must not redirect neighbouring addresses.
+  Eg2System &sys = Eg2System::get();
+  bool ibus = uint32_t(addr) == pc();
+  reg_t original = addr;
+  if (sys.addr_translate) addr = sys.addr_translate(uint32_t(addr), ibus);
+  if (addr != original) translation_used_ = true;
+  if (fetch_denied_ && ibus && !sys.fetch_allowed(uint32_t(addr))) return nullptr;
   for (const tlm::tlm_dmi &d : dmi_) {
     if (addr >= d.get_start_address() && addr <= d.get_end_address()) {
       return reinterpret_cast<char *>(d.get_dmi_ptr() + (addr - d.get_start_address()));
@@ -491,10 +523,23 @@ bool Eg2SpikeCpu::transport(tlm::tlm_command cmd, reg_t addr, size_t len, uint8_
 }
 
 bool Eg2SpikeCpu::mmio_load(reg_t addr, size_t len, uint8_t *bytes) {
-  if (fetch_denied_ && !Eg2System::get().fetch_allowed(uint32_t(addr))) return false;
+  Eg2System &sys = Eg2System::get();
+  bool ibus = uint32_t(addr) == pc();
+  if (sys.addr_translate) {
+    reg_t original = addr;
+    addr = sys.addr_translate(uint32_t(addr), ibus);
+    if (addr != original) translation_used_ = true;
+  }
+  if (fetch_denied_ && ibus && !sys.fetch_allowed(uint32_t(addr))) return false;
   return transport(tlm::TLM_READ_COMMAND, addr, len, bytes);
 }
 
 bool Eg2SpikeCpu::mmio_store(reg_t addr, size_t len, const uint8_t *bytes) {
+  Eg2System &sys = Eg2System::get();
+  if (sys.addr_translate) {
+    reg_t original = addr;
+    addr = sys.addr_translate(uint32_t(addr), false);
+    if (addr != original) translation_used_ = true;
+  }
   return transport(tlm::TLM_WRITE_COMMAND, addr, len, const_cast<uint8_t *>(bytes));
 }

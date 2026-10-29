@@ -502,7 +502,11 @@ class Eg2AlertHandler : public Eg2IpModel {
 };
 
 // rv_core_ibex's configuration window (rv_core_ibex.hjson; RFC CHERIoT in OpenTitan "mode
-// switch"; hw/top_earlgrey/ip_autogen/rv_core_ibex/doc/theory_of_operation.md). CHERIOT_LOCK
+// switch"; hw/top_earlgrey/ip_autogen/rv_core_ibex/doc/theory_of_operation.md). Its "Simple
+// Address Translation" has two NAPOT regions on each bus, with the lowest index winning; matching
+// accesses keep their offset in the region and take the upper bits from REMAP_ADDR.
+//
+// CHERIOT_LOCK
 // written with MuBi4True locks the mode CHERIOT_ENA holds; writes after the lock change nothing. A
 // lock with any other value, or a CHERIOT_ENA that is neither True nor False at the lock, is the
 // switch's error state ("Error State"): fatal_hw_err, and Ibex's internal major alert on the invalid
@@ -531,8 +535,8 @@ class Eg2AlertHandler : public Eg2IpModel {
 // from this register invalidates the data and requests new data from the EDN. The register becomes
 // valid again when the EDN provides new data. When invalid the register value will read as 0x0
 // with an EDN request for new data pending. Upon reset the data will be invalid with a new EDN
-// request pending." The words come from edn0 (Eg2Edn::get); a pending request is retried whenever
-// software reads RND_STATUS or RND_DATA.
+// request pending." The words come from edn0 (Eg2Edn::get); after the request has been observable
+// as pending, it is retried whenever software reads RND_STATUS or RND_DATA.
 class Eg2RvCoreIbexCfg : public Eg2IpModel {
  public:
   Eg2RvCoreIbexCfg(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
@@ -549,6 +553,15 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     nmi_enable_ = reg("NMI_ENABLE");
     nmi_state_ = reg("NMI_STATE");
     err_status_ = reg("ERR_STATUS");
+    for (unsigned i = 0; i < 2; ++i) {
+      ibus_en_[i] = reg(fmt("IBUS_ADDR_EN_%u", i).c_str());
+      ibus_match_[i] = reg(fmt("IBUS_ADDR_MATCHING_%u", i).c_str());
+      ibus_remap_[i] = reg(fmt("IBUS_REMAP_ADDR_%u", i).c_str());
+      dbus_en_[i] = reg(fmt("DBUS_ADDR_EN_%u", i).c_str());
+      dbus_match_[i] = reg(fmt("DBUS_ADDR_MATCHING_%u", i).c_str());
+      dbus_remap_[i] = reg(fmt("DBUS_REMAP_ADDR_%u", i).c_str());
+    }
+    sys_.addr_translate = [this](uint32_t addr, bool ibus) { return translate(addr, ibus); };
     set_modelled(rnd_data_);
     set_modelled(rnd_status_);
     set_modelled(nmi_state_);
@@ -574,6 +587,7 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     switch_error_ = false;
     set_value(rnd_data_, 0);
     set_value(rnd_status_, 0);
+    rnd_ready_cycle_ = 0;
     nmi_src_ = 0;
     nmi_line_ = 0;
   }
@@ -605,6 +619,16 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
 
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
+    // theory_of_operation.md, "Translation and Instruction Caching": software must invalidate
+    // cached instructions after translation controls change. Drop both of Spike's address and
+    // decoded-instruction caches here as well, so the model observes the completed register write.
+    for (unsigned i = 0; i < 2; ++i) {
+      if (r == ibus_en_[i] || r == ibus_match_[i] || r == ibus_remap_[i] || r == dbus_en_[i] ||
+          r == dbus_match_[i] || r == dbus_remap_[i]) {
+        if (sys_.addr_translation_changed) sys_.addr_translation_changed();
+        break;
+      }
+    }
     uint32_t w = wdata & wmask;
     if (r == nmi_state_ || r == nmi_enable_) {
       // A source still asserted stays recorded.
@@ -639,13 +663,20 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
   }
 
   void reg_before_read(uint16_t r) override {
-    if ((r == rnd_data_ || r == rnd_status_) && !(value(rnd_status_) & 1)) fetch_rnd();
+    if ((r == rnd_data_ || r == rnd_status_) && !(value(rnd_status_) & 1)) {
+      // EDN theory_of_operation.md, "Peripheral Hardware Interface - Req/Ack": ack is low after
+      // a word is consumed until EDN supplies fresh bits. Its waveform has separate handshakes;
+      // keep the request visible through the following status/data/status reads.
+      uint64_t now = sys_.clock_cycles(Eg2System::Clk::kMain, sys_.now_ps());
+      if (now >= rnd_ready_cycle_) fetch_rnd();
+    }
   }
   void reg_after_read(uint16_t r) override {
     if (r == rnd_data_ && (value(rnd_status_) & 1)) {
       set_value(rnd_data_, 0);
       set_value(rnd_status_, 0);
-      fetch_rnd();
+      uint64_t now = sys_.clock_cycles(Eg2System::Clk::kMain, sys_.now_ps());
+      rnd_ready_cycle_ = now + 4;
     }
   }
   // The pending EDN request: valid once edn0 gives a word (RND_DATA_FIPS stays 0: the EDN model
@@ -674,6 +705,21 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
   }
 
  private:
+  uint32_t translate(uint32_t addr, bool ibus) const {
+    const uint16_t *en = ibus ? ibus_en_ : dbus_en_;
+    const uint16_t *matching = ibus ? ibus_match_ : dbus_match_;
+    const uint16_t *remap = ibus ? ibus_remap_ : dbus_remap_;
+    for (unsigned i = 0; i < 2; ++i) {
+      if (!(value(en[i]) & 1)) continue;
+      uint32_t napot = value(matching[i]);
+      unsigned ones = 0;
+      while (ones < 31 && ((napot >> ones) & 1)) ++ones;
+      uint32_t mask = ones == 31 ? 0xffffffffu : (uint32_t(1) << (ones + 1)) - 1;
+      if ((addr & ~mask) == (napot & ~mask)) return (value(remap[i]) & ~mask) | (addr & mask);
+    }
+    return addr;
+  }
+
   static std::string hex(uint32_t v) {
     char b[16];
     std::snprintf(b, sizeof b, "%x", v);
@@ -687,8 +733,11 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
   }
   uint16_t mcw_, ena_, lock_, recov_, fatal_, rnd_data_, rnd_status_, nmi_enable_, nmi_state_,
       err_status_;
+  uint16_t ibus_en_[2], ibus_match_[2], ibus_remap_[2];
+  uint16_t dbus_en_[2], dbus_match_[2], dbus_remap_[2];
   int dv_;
   bool locked_ = false, cheriot_ = false, switch_error_ = false;
+  uint64_t rnd_ready_cycle_ = 0;
   uint32_t nmi_src_ = 0, nmi_line_ = 0;
   eg2_model::Eg2Edn *edn0_ = nullptr;
 };

@@ -41,7 +41,8 @@
 //               refuse instruction fetches (sram_ctrl EXEC, rram_ctrl EXEC) registers it;
 //               fetch_allowed(addr) is what the core asks before each instruction. fetch_map, when
 //               set, is the instruction side's own address decode (a board whose instruction
-//               crossbar reaches fewer devices than its data crossbar).
+//               crossbar reaches fewer devices than its data crossbar). addr_translate is the
+//               rv_core_ibex wrapper's separate instruction/data address translation.
 //   Monitors    at(t, f): f at time t, for what is not an IP model (a board's run monitor).
 
 #ifndef EG2_MODEL_EG2_SYSTEM_H_
@@ -349,6 +350,8 @@ class Eg2System {
     return !fetch_map || fetch_map(addr);
   }
   std::function<bool(uint32_t)> fetch_map;
+  std::function<uint32_t(uint32_t, bool)> addr_translate;
+  std::function<void()> addr_translation_changed;
 
   // ---- The CHERIoT lock ----
   // Called by rv_core_ibex's model when a store to CHERIOT_LOCK locks CHERIoT mode, when set: the
