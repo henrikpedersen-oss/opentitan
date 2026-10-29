@@ -150,6 +150,17 @@ class Eg2IpModel : public Eg2RegBlock {
   // overrides it).
   virtual bool idle() const { return true; }
 
+  // An access while clkmgr has the block's clock off never completes: the core stalls on it until
+  // a reset (Eg2System::clock_off; clkmgr's "Access to disabled unit should freeze").
+  bool access_frozen() override {
+    if (!sys_.clock_off) return false;
+    std::string inst = desc().window;
+    inst = inst.substr(0, inst.find('.'));
+    if (!sys_.clock_off(inst)) return false;
+    sys_.halt_core("clkmgr", "access to " + inst + " while its clock is off");
+    return true;
+  }
+
  protected:
   // Subclass hooks (see the header comment).
   virtual void reg_write(uint16_t /*reg*/, uint32_t /*old*/, uint32_t /*wdata*/,

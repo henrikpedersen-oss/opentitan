@@ -36,7 +36,8 @@ namespace eg2_model {
 // ALERT_INFO_ATTR.CNT_AVAIL is the dump's number of 32-bit words ("the number of 32-bit values
 // contained in the alert info dump", whether or not one was captured: they read 0 until then),
 // ALERT_INFO the word ALERT_INFO_CTRL.INDEX selects. EN is cleared by every reset ("even if rstmgr
-// is not reset"). The CPU dump (CPU_INFO) is not modelled: CPU_INFO_ATTR reads 0.
+// is not reset"). The CPU dump (CPU_INFO_CTRL, CPU_INFO_ATTR, CPU_INFO) works the same way with the
+// core's crash dump (Eg2System::cpu_crashdump: 8 words).
 class Eg2Rstmgr : public Eg2IpModel {
  public:
   Eg2Rstmgr(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
@@ -46,13 +47,22 @@ class Eg2Rstmgr : public Eg2IpModel {
     alert_ctrl_ = reg("ALERT_INFO_CTRL");
     alert_attr_ = reg("ALERT_INFO_ATTR");
     alert_info_ = reg("ALERT_INFO");
-    for (uint16_t r : {info_, alert_ctrl_, alert_attr_, alert_info_}) set_modelled(r);
+    cpu_ctrl_ = reg("CPU_INFO_CTRL");
+    cpu_attr_ = reg("CPU_INFO_ATTR");
+    cpu_info_ = reg("CPU_INFO");
+    for (uint16_t r : {info_, alert_ctrl_, alert_attr_, alert_info_, cpu_attr_, cpu_info_}) {
+      set_modelled(r);
+    }
     for (unsigned i = 0; i < kSwResets; ++i) {
       sw_rst_[i] = reg(("SW_RST_CTRL_N_" + std::to_string(i)).c_str());
     }
   }
 
   void before_reset(Eg2ResetCause c) override {
+    if (c != Eg2ResetCause::kPor && (value(cpu_ctrl_) & 1) && sys_.cpu_crashdump) {
+      cpu_dump_ = sys_.cpu_crashdump();
+      sys_.note("rstmgr: CPU crash dump captured");
+    }
     if (c == Eg2ResetCause::kPor || !(value(alert_ctrl_) & 1) || !sys_.alert_crashdump) return;
     alert_dump_ = sys_.alert_crashdump();
     char buf[64];
@@ -65,10 +75,12 @@ class Eg2Rstmgr : public Eg2IpModel {
     if (c == Eg2ResetCause::kPor) {
       Eg2IpModel::on_reset(c);
       alert_dump_.clear();
+      cpu_dump_.clear();
       set_value(info_, 1);
       return;
     }
     set_value(alert_ctrl_, value(alert_ctrl_) & ~1u);
+    set_value(cpu_ctrl_, value(cpu_ctrl_) & ~1u);
     uint32_t bit = 0;
     switch (c) {
       case Eg2ResetCause::kLowPowerExit: bit = 1u << 1; break;
@@ -106,11 +118,17 @@ class Eg2Rstmgr : public Eg2IpModel {
     } else if (r == alert_info_) {
       uint32_t idx = (value(alert_ctrl_) >> 4) & 0xf;
       set_value(alert_info_, idx < alert_dump_.size() ? alert_dump_[idx] : 0);
+    } else if (r == cpu_attr_) {
+      set_value(cpu_attr_, sys_.cpu_crashdump ? 8 : 0);
+    } else if (r == cpu_info_) {
+      uint32_t idx = (value(cpu_ctrl_) >> 4) & 0xf;
+      set_value(cpu_info_, idx < cpu_dump_.size() ? cpu_dump_[idx] : 0);
     }
   }
 
  private:
-  uint16_t req_, info_, alert_ctrl_, alert_attr_, alert_info_;
+  uint16_t req_, info_, alert_ctrl_, alert_attr_, alert_info_, cpu_ctrl_, cpu_attr_, cpu_info_;
+  std::vector<uint32_t> cpu_dump_;  // the last capture
   // SW_RST_CTRL_N_<i>: the blocks in the order of rstmgr.hjson's SW_RST countermeasures (usbdev_aon
   // has no model of its own).
   static constexpr unsigned kSwResets = 10;

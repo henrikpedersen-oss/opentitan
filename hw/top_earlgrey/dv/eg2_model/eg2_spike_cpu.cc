@@ -46,6 +46,11 @@ Eg2SpikeCpu::Eg2SpikeCpu(sc_core::sc_module_name name, const Eg2CoreConfig &cfg,
   }
   Eg2System &sys = Eg2System::get();
   sys.clock = [this] { return now_ps(); };
+  sys.cpu_crashdump = [this] {
+    return std::vector<uint32_t>{dump_mtval_,      dump_mepc_,      dump_daddr_,
+                                 dump_npc_,        dump_pc_,        dump_prev_mtval_,
+                                 dump_prev_mepc_,  uint32_t(dump_prev_valid_)};
+  };
   sys.where = [this] {
     char b[96];
     std::snprintf(b, sizeof b, "%llu instructions, pc 0x%08x, %.3f us",
@@ -156,6 +161,9 @@ uint64_t Eg2SpikeCpu::now_ps() const {
 // Ibex's reset state, as Ibex's co-simulation sets it up (SpikeCosim::initial_proc_setup): at
 // start-up and after every reset of the chip.
 void Eg2SpikeCpu::ibex_reset() {
+  // The crash dump state resets with the core, cleared at the first step after it: rstmgr captures
+  // it during the reset.
+  dump_clear_ = true;
   state_t *s = processor_->get_state();
   s->pc = cfg_.boot_addr + 0x80;
   s->mtvec->write(cfg_.boot_addr | 1);
@@ -357,13 +365,57 @@ bool Eg2SpikeCpu::step_spike() {
     processor_->get_mmu()->flush_tlb();
     processor_->get_mmu()->flush_icache();
   }
+  if (dump_clear_) {
+    dump_clear_ = false;
+    dump_pc_ = dump_npc_ = dump_daddr_ = dump_mtval_ = dump_mepc_ = 0;
+    dump_prev_mtval_ = dump_prev_mepc_ = 0;
+    dump_prev_valid_ = in_handler_ = false;
+  }
+  // The crash dump's last data access address: a load's or store's effective address, from the
+  // registers before it runs (RV32I loads and stores, C.LW/C.SW/C.LWSP/C.SWSP).
+  {
+    state_t *st = processor_->get_state();
+    auto x = [&](unsigned r) { return uint32_t(st->XPR[r]); };
+    uint32_t c = insn & 0xffff, op = insn & 0x7f;
+    if ((insn & 3) == 3 && (op == 0x03 || op == 0x23)) {
+      int32_t imm = op == 0x03 ? int32_t(insn) >> 20
+                               : ((int32_t(insn) >> 25) << 5) | int32_t((insn >> 7) & 31);
+      dump_daddr_ = x((insn >> 15) & 31) + uint32_t(imm);
+    } else if ((c & 3) == 0 && ((c >> 13) == 2 || (c >> 13) == 6)) {
+      dump_daddr_ = x(8 + ((c >> 7) & 7)) +
+                    ((((c >> 10) & 7) << 3) | (((c >> 6) & 1) << 2) | (((c >> 5) & 1) << 6));
+    } else if ((c & 3) == 2 && (c >> 13) == 2) {
+      dump_daddr_ = x(2) + ((((c >> 12) & 1) << 5) | (((c >> 4) & 7) << 2) | (((c >> 2) & 3) << 6));
+    } else if ((c & 3) == 2 && (c >> 13) == 6) {
+      dump_daddr_ = x(2) + ((((c >> 9) & 0xf) << 2) | (((c >> 7) & 3) << 6));
+    }
+  }
   // A CSR instruction on mcounteren (0x306) while rv_core_ibex's MCOUNTEREN_WRITABLE is not
   // MuBi4True reads but does not write it (Eg2System::mcounteren_writable).
   bool mc_locked = (insn & 0x7f) == 0x73 && ((insn >> 12) & 3) != 0 && (insn >> 20) == 0x306 &&
                    sys.mcounteren_writable && !sys.mcounteren_writable();
   reg_t mc_old = mc_locked ? processor_->get_csr(CSR_MCOUNTEREN) : 0;
+  reg_t instret = processor_->get_csr(CSR_MINSTRET);
   processor_->step(1);
   if (mc_locked) processor_->put_csr(CSR_MCOUNTEREN, mc_old);
+  // A trap: the instruction did not retire and the core went elsewhere (not a WFI). A synchronous
+  // exception while a handler runs is a double fault: the current state moves to previous.
+  if (processor_->get_csr(CSR_MINSTRET) == instret && uint32_t(processor_->get_state()->pc) != pc) {
+    if (!(processor_->get_csr(CSR_MCAUSE) >> 31)) {
+      if (in_handler_) {
+        dump_prev_mtval_ = dump_mtval_;
+        dump_prev_mepc_ = dump_mepc_;
+        dump_prev_valid_ = true;
+      }
+      in_handler_ = true;
+    }
+    dump_mtval_ = uint32_t(processor_->get_csr(CSR_MTVAL));
+    dump_mepc_ = uint32_t(processor_->get_csr(CSR_MEPC));
+  } else if (insn == 0x30200073) {  // mret
+    in_handler_ = false;
+  }
+  dump_pc_ = pc;
+  dump_npc_ = uint32_t(processor_->get_state()->pc);
   if (deny) {
     fetch_denied_ = false;
     processor_->get_mmu()->flush_tlb();

@@ -141,6 +141,11 @@ class Eg2SpikeCpu : public sc_core::sc_module, public simif_t {
   uint64_t local_ps_ = 0;  // time ahead of SystemC time
   unsigned resets_ = 0;
   bool fetch_denied_ = false;  // this step's fetch is from a region that refuses fetches
+  uint32_t dump_pc_ = 0, dump_npc_ = 0, dump_daddr_ = 0;  // the crash dump's PCs and data address
+  // The exception state Ibex latches at a trap (mtval, mepc), the previous one after a double fault
+  // (a synchronous exception before the handler's mret), and whether a handler is running.
+  uint32_t dump_mtval_ = 0, dump_mepc_ = 0, dump_prev_mtval_ = 0, dump_prev_mepc_ = 0;
+  bool dump_prev_valid_ = false, in_handler_ = false, dump_clear_ = false;
   Eg2Iss *cheriot_iss_ = nullptr;
   bool cheriot_ = false;       // CHERIoT mode: cheriot_iss_ executes
   bool lock_pending_ = false;  // the current Spike step locked CHERIoT mode

@@ -9,7 +9,7 @@
 // immediately honored and the clock turned on." CLK_HINTS_STATUS "provides read feedback for the
 // current clock state": bit i is 1 while the hint enables the clock or the block (AES, HMAC, KMAC,
 // OTBN, in that order) is busy (Eg2IpModel::idle). The model clocks nothing: a block whose clock
-// is off still works.
+// is off freezes an access to it (clock_off below): the core stalls until a reset.
 
 #ifndef EG2_MODEL_IP_EG2_CLKMGR_H_
 #define EG2_MODEL_IP_EG2_CLKMGR_H_
@@ -26,6 +26,8 @@ class Eg2Clkmgr : public Eg2IpModel {
   Eg2Clkmgr(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
       : Eg2IpModel(n, d, base) {
     hints_ = reg("CLK_HINTS");
+    enables_ = reg("CLK_ENABLES");
+    sys_.clock_off = [this](const std::string &b) { return clock_off(b); };
     status_ = reg("CLK_HINTS_STATUS");
     set_modelled(status_);
   }
@@ -46,7 +48,29 @@ class Eg2Clkmgr : public Eg2IpModel {
   }
 
  private:
-  uint16_t hints_, status_;
+  // Whether the block's clock is off: a transactional block (AES, HMAC, KMAC, OTBN) whose hint is
+  // clear while it is idle; a peripheral whose CLK_ENABLES bit is clear. The peripherals: those
+  // clkmgr_off_peri_test names (bit 0 clk_io_div4_peri uart0, 2 clk_io_peri spi_host0,
+  // 3 clk_usb_peri usbdev, 4 clk_io_spi_host1 spi_host1); the rest of each clock group is not
+  // gated in the model.
+  bool clock_off(const std::string &b) {
+    static const char *const kHinted[] = {"aes", "hmac", "kmac", "otbn"};
+    for (unsigned i = 0; i < 4; ++i) {
+      if (b != kHinted[i] || ((value(hints_) >> i) & 1)) continue;
+      for (Eg2IpModel *m : sys_.models()) {
+        if (std::string(m->module()) == kHinted[i] && !m->idle()) return false;
+      }
+      return true;
+    }
+    static const struct { const char *block; unsigned bit; } kPeri[] = {
+        {"uart0", 0}, {"spi_host0", 2}, {"usbdev", 3}, {"spi_host1", 4}};
+    for (const auto &p : kPeri) {
+      if (b == p.block) return !((value(enables_) >> p.bit) & 1);
+    }
+    return false;
+  }
+
+  uint16_t hints_, status_, enables_ = 0;
 };
 
 }  // namespace eg2_model

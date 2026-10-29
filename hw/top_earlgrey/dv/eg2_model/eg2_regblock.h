@@ -136,9 +136,15 @@ class Eg2RegBlock : public sc_core::sc_module {
   }
   // From any hook: the access in progress answers an error.
   void fail_access() { fail_ = true; }
+  // True if the block cannot answer an access now (its clock is off: eg2_ip_model.h).
+  virtual bool access_frozen() { return false; }
 
  private:
   void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+    if (access_frozen()) {  // the block's clock is off: the access never completes
+      trans.set_response_status(tlm::TLM_OK_RESPONSE);
+      return;
+    }
     fail_ = false;
     access(trans);
     trans.set_response_status(fail_ ? tlm::TLM_ADDRESS_ERROR_RESPONSE : tlm::TLM_OK_RESPONSE);

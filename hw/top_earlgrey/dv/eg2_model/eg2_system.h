@@ -184,6 +184,10 @@ class Eg2System {
   // The alert handler's crash dump (alert_crashdump_t in 32-bit words, word 0 the least
   // significant), set by the alert handler model; rstmgr captures it.
   std::function<std::vector<uint32_t>()> alert_crashdump;
+  // The core's crash dump as rstmgr captures it (rv_core_ibex theory_of_operation.md "Crash Dump
+  // Collection"): mtval, mepc, the last data access address, the next PC, the current PC, the
+  // previous exception's mtval and mepc, and the previous state's valid bit (8 words).
+  std::function<std::vector<uint32_t>()> cpu_crashdump;
 
   // ---- Core halt (instruction fetch disabled) ----
   void halt_core(const std::string &source, const std::string &why) {
@@ -263,6 +267,8 @@ class Eg2System {
   // rv_core_ibex.cfg MCOUNTEREN_WRITABLE is MuBi4True (the core's mcounteren_writable_i): software
   // writes to mcounteren take effect only then (the hjson). Unset: writable.
   std::function<bool()> mcounteren_writable;
+  // clkmgr has the clock of the block (by module name) off: an access to it never completes.
+  std::function<bool(const std::string &block)> clock_off;
 
   // ---- Verdict ----
   void finish(bool passed, const std::string &why) {
