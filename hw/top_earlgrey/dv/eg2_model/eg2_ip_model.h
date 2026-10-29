@@ -153,12 +153,19 @@ class Eg2IpModel : public Eg2RegBlock {
   // An access while clkmgr has the block's clock off never completes: the core stalls on it until
   // a reset (Eg2System::clock_off; clkmgr's "Access to disabled unit should freeze").
   bool access_frozen() override {
-    if (!sys_.clock_off) return false;
     std::string inst = desc().window;
     inst = inst.substr(0, inst.find('.'));
-    if (!sys_.clock_off(inst)) return false;
-    sys_.halt_core("clkmgr", "access to " + inst + " while its clock is off");
-    return true;
+    if (sys_.clock_off && sys_.clock_off(inst)) {
+      sys_.halt_core("clkmgr", "access to " + inst + " while its clock is off");
+      return true;
+    }
+    // Likewise a block rstmgr holds in reset (theory_of_operation.md "Hung Transaction": "accessing
+    // a device whose clock is not turned on or is under reset").
+    if (sys_.held_in_reset && sys_.held_in_reset(inst)) {
+      sys_.halt_core("rstmgr", "access to " + inst + " while it is held in reset");
+      return true;
+    }
+    return false;
   }
 
  protected:

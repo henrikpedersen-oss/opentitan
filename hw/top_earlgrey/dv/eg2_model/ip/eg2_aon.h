@@ -56,6 +56,12 @@ class Eg2Rstmgr : public Eg2IpModel {
     for (unsigned i = 0; i < kSwResets; ++i) {
       sw_rst_[i] = reg(("SW_RST_CTRL_N_" + std::to_string(i)).c_str());
     }
+    sys_.held_in_reset = [this](const std::string &b) {
+      for (unsigned i = 0; i < kSwResets; ++i) {
+        if (b == kSwResetBlocks[i]) return !(value(sw_rst_[i]) & 1);
+      }
+      return false;
+    };
   }
 
   void before_reset(Eg2ResetCause c) override {
@@ -103,8 +109,8 @@ class Eg2Rstmgr : public Eg2IpModel {
       sys_.request_reset(Eg2ResetCause::kSoftware, "software reset (rstmgr RESET_REQ)");
     }
     // A peripheral's software reset: SW_RST_CTRL_N_<i> written 0 holds the block in reset (its
-    // registers back to their reset values) until it is written 1 (theory_of_operation.md
-    // "Software Controlled Resets").
+    // registers back to their reset values, and an access to it hangs: held_in_reset) until it is
+    // written 1 (theory_of_operation.md "Software Controlled Resets").
     for (unsigned i = 0; i < kSwResets; ++i) {
       if (r != sw_rst_[i] || (value(r) & 1) || !*kSwResetBlocks[i]) continue;
       if (Eg2IpModel *m = sys_.model(kSwResetBlocks[i])) m->on_reset(Eg2ResetCause::kSoftware);

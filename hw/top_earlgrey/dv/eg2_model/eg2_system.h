@@ -269,6 +269,8 @@ class Eg2System {
   std::function<bool()> mcounteren_writable;
   // clkmgr has the clock of the block (by module name) off: an access to it never completes.
   std::function<bool(const std::string &block)> clock_off;
+  // rstmgr holds the block (by instance name) in software reset: an access to it never completes.
+  std::function<bool(const std::string &block)> held_in_reset;
 
   // ---- Verdict ----
   void finish(bool passed, const std::string &why) {
