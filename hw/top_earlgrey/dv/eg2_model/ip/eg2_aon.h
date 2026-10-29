@@ -368,13 +368,43 @@ class Eg2SensorCtrl : public Eg2IpModel {
  public:
   Eg2SensorCtrl(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
       : Eg2IpModel(n, d, base) {
+    alert_trig_ = reg("ALERT_TRIG");
+    fatal_en_ = reg("FATAL_ALERT_EN");
+    recov_alert_ = reg("RECOV_ALERT");
+    fatal_alert_ = reg("FATAL_ALERT");
+    for (unsigned i = 0; i < kAlertEvents; ++i) {
+      alert_en_[i] = reg(("ALERT_EN_" + std::to_string(i)).c_str());
+    }
     status_ = reg("STATUS");
+    set_modelled(recov_alert_);
+    set_modelled(fatal_alert_);
     set_modelled(status_);
     power_up();
   }
   void on_reset(Eg2ResetCause c) override {
     Eg2IpModel::on_reset(c);
     power_up();
+  }
+
+ protected:
+  void reg_write(uint16_t r, uint32_t, uint32_t, uint32_t) override {
+    if (r != alert_trig_) {
+      bool enable_write = false;
+      for (unsigned i = 0; i < kAlertEvents; ++i) enable_write |= r == alert_en_[i];
+      if (!enable_write) return;
+    }
+    // theory_of_operation.md: enabled AST events are recorded in RECOV_ALERT or FATAL_ALERT as
+    // selected by FATAL_ALERT_EN, then sent to the alert handler.
+    for (unsigned i = 0; i < kAlertEvents; ++i) {
+      if (!((value(alert_trig_) >> i) & 1) || (value(alert_en_[i]) & 0xf) != kMuBi4True) continue;
+      if ((value(fatal_en_) >> i) & 1) {
+        set_value(fatal_alert_, value(fatal_alert_) | (1u << i));
+        raise_alert("fatal_alert");
+      } else {
+        set_value(recov_alert_, value(recov_alert_) | (1u << i));
+        raise_alert("recov_alert");
+      }
+    }
   }
 
  private:
@@ -387,7 +417,8 @@ class Eg2SensorCtrl : public Eg2IpModel {
     }
     set_value(status_, all);
   }
-  uint16_t status_;
+  static constexpr unsigned kAlertEvents = 11;
+  uint16_t alert_trig_, alert_en_[kAlertEvents], fatal_en_, recov_alert_, fatal_alert_, status_;
 };
 
 }  // namespace eg2_model
