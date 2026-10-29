@@ -628,6 +628,16 @@ interface chip_if;
 `endif
   clk_rst_if io_div4_clk_rst_if(.clk(io_div4_clk), .rst_n(io_div4_rst_n));
 
+  // EG2: each UART's own reset (the life-cycle io_div4 reset: an escalation or a software reset, not
+  // an NDM reset). The UART agents have no reset pin; chip_sw_eg2_base_vseq holds an agent in its
+  // notional reset while its UART is in reset (2026-10-29, chip_cheriot_fi_meta).
+`ifdef GATE_LEVEL
+  wire [NUM_UARTS-1:0] uart_rst_n = '1;
+`else
+  wire [NUM_UARTS-1:0] uart_rst_n = {`UART_HIER(3).rst_ni, `UART_HIER(2).rst_ni,
+                                     `UART_HIER(1).rst_ni, `UART_HIER(0).rst_ni};
+`endif
+
 `ifdef GATE_LEVEL
   wire lc_ready = !`LC_CTRL_HIER.u_lc_ctrl_fsm.idle_o_BAR;
 `else

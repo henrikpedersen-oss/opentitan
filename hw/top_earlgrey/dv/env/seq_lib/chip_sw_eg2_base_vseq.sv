@@ -67,8 +67,27 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
       forward_dv_console();
       log_uart_lines(0);
       log_boot_profile();
+      uart_notional_reset();
     join_none
     super.body();
+  endtask
+
+  // The UART agents have no reset pin: a chip reset the chip makes itself (an escalation, a software
+  // reset) that cut a character off mid-bit made the monitor report "Expect uart_tx stable"
+  // (chip_cheriot_fi_meta, 2026-10-29). Each agent is in its notional reset while its UART is in
+  // reset; the checks the test configured stay as they are (re_enable_chk_mon 0).
+  protected task uart_notional_reset();
+    foreach (cfg.m_uart_agent_cfgs[i]) begin
+      automatic int idx = i;
+      fork
+        forever begin
+          wait (cfg.chip_vif.uart_rst_n[idx] === 1'b0);
+          cfg.m_uart_agent_cfgs[idx].reset_asserted();
+          wait (cfg.chip_vif.uart_rst_n[idx] === 1'b1);
+          cfg.m_uart_agent_cfgs[idx].reset_deasserted(.re_enable_chk_mon(1'b0));
+        end
+      join_none
+    end
   endtask
 
   // Where the simulated time before the test goes: each boot step as it completes, so a choice
