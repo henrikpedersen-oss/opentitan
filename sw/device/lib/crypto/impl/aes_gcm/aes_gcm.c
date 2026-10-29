@@ -273,8 +273,8 @@ static status_t aes_gcm_counter(const otcrypto_const_word32_buf_t *iv,
     HARDENED_TRY(hardened_memcpy(j0->data, iv->data, iv->len));
     // Set the last word to 1 (as a big-endian integer).
     j0->data[kAesBlockNumWords - 1] = __builtin_bswap32(1);
-  } else if (iv->len != 0) {
-    // Any other IV length (SP 800-38D, 7.1): J0 = GHASH(H, IV || {0}^(s+64) ||
+  } else if (iv->len >= 4) {
+    // An IV of 128 bits or more (SP 800-38D, 7.1): J0 = GHASH(H, IV || {0}^(s+64) ||
     // [len(IV)]_64), where s zero bits complete the IV's last block (ghash_update
     // pads a partial last block with zeros itself) and [len(IV)]_64 is the IV's
     // length in bits as a 64-bit big-endian integer. For a 128-bit IV that is
@@ -321,7 +321,8 @@ static status_t aes_gcm_counter(const otcrypto_const_word32_buf_t *iv,
     hardened_xor_in_place(j0->data, enc_initial_counter_block.data,
                           kAesBlockNumWords);
   } else {
-    // An empty IV (SP 800-38D requires at least one bit).
+    // A shorter IV than 96 bits, or between 96 and 128: refused (the library takes 96 bits, or
+    // 128 and more; shorter IVs are weaker, and aes_gcm_functest checks they are refused).
     return OTCRYPTO_BAD_ARGS;
   }
 
