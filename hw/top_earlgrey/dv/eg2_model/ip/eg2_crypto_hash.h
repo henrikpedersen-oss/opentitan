@@ -123,9 +123,13 @@ class Eg2Hmac : public Eg2IpModel {
     } else if (r == wipe_) {
       // WIPE_SECRET: "the value is used to clear some internal variables such as the secret key,
       // intermediate hash results, digest" (hmac.hjson): the key and the digest take the value.
+      // The running hash state (the intermediate results an operation in progress continues
+      // from) is overwritten too. Whether an operation in progress then stops is not documented:
+      // it continues, from the wiped state, so it cannot produce the digest it would have.
       uint32_t v = wdata & wmask;
       for (unsigned i = 0; i < 32; ++i) set_value(key_[i], v);
       for (unsigned i = 0; i < 16; ++i) set_value(digest_[i], v);
+      for (auto &s : ctx_.state) s = (uint64_t(v) << 32) | v;
     } else if (r == cmd_) {
       uint32_t c = wdata & wmask & 0xf;
       // With a sideloaded key "CMD.hash_stop and CMD.hash_continue are rejected, and ERR_CODE
