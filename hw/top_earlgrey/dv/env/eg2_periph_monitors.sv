@@ -480,6 +480,11 @@ class eg2_i2c_monitor extends i2c_monitor;
   protected bit [31:0] ctrl;
   protected bit [31:0] fmt_hold[$];
   protected i2c_item   cur;
+  // A transfer is open on the bus (a START seen, no STOP yet); one the block's reset cut is dropped
+  // from the pin side (drop_cut), as the expected side drops it (chip_sw_eg2_pbf_periph_fault,
+  // 2026-10-29: "fault ip_reset after 1 byte", then the cut transfer "S 52 w 09" was compared with
+  // the recovery transfer).
+  protected bit        bus_open, drop_cut;
   eg2_i2c_fifo_cg      fifo_cg;
 
   function void create_cov(string path);
@@ -517,6 +522,7 @@ class eg2_i2c_monitor extends i2c_monitor;
             fork
               tl_thread();
               reset_thread();
+              bus_thread();
             join
           end
         join
@@ -612,6 +618,12 @@ class eg2_i2c_monitor extends i2c_monitor;
     forever begin
       i2c_item it;
       pin_fifo.get(it);
+      if (drop_cut) begin
+        drop_cut = 1'b0;
+        `uvm_info(`gfn, $sformatf("EG2 %s: the transfer the block's reset cut is not compared: %s",
+                                  inst, it.sprint(uvm_default_line_printer)), UVM_LOW)
+        continue;
+      end
       // A NACK on the bus is stimulus the bench may give on purpose: announced (logged and covered;
       // the scoreboard makes what was queued after it optional), need not mismatch.
       if (it.addr_ack == i2c_pkg::NACK || (it.bus_op == BusOpWrite && i2c_pkg::NACK inside {it.data_ack_q})) begin
@@ -633,9 +645,19 @@ class eg2_i2c_monitor extends i2c_monitor;
     end
   endtask
 
+  // START: SDA falls while SCL is high; STOP: SDA rises while SCL is high.
+  protected task bus_thread();
+    forever begin
+      @(cfg.vif.sda_i);
+      if (cfg.vif.scl_i === 1'b1 && !$isunknown(cfg.vif.sda_i)) bus_open = (cfg.vif.sda_i == 1'b0);
+    end
+  endtask
+
   protected task reset_thread();
     forever begin
       @(negedge tl_vif.rst_n);
+      // The open transfer ends without its STOP: its pin item comes later and is not compared.
+      if (bus_open) drop_cut = 1'b1;
       ctrl = '0;
       fmt_hold.delete();
       cur = null;
@@ -798,7 +820,11 @@ class eg2_gpio_monitor extends uvm_monitor;
   endfunction
 
   protected function void sample_pads();
-    bit [31:0] a_oe, a_out, a_known;
+    // A GPIO no pad carries is not observed: it counts as known, so that routing it (a MIO_OUTSEL
+    // write that changes nothing on the pads) is no new item. Left 0, every routing write emitted an
+    // item the expected side has no partner for, and the pairing ran one item ahead
+    // (chip_sw_gpio_smoketest_eg2sb, 2026-10-29: "routed 00000001" against "routed ffffffff").
+    bit [31:0] a_oe = '0, a_out = '0, a_known = '1;
     for (int g = 0; g < 32; g++) begin
       logic o, v;
       if (pad_of[g] < 0) continue;
