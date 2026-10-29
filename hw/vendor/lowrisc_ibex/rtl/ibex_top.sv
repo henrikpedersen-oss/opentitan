@@ -1289,6 +1289,28 @@ module ibex_top import ibex_pkg::*; import ibex_cheriot_pkg::*; #(
       .out_o(lockstep_alert_major_bus)
     );
 
+`ifdef SIMULATION
+`ifndef VERILATOR
+    // In DV simulations prim_lfsr replaces its DefaultSeed by a random value per instance (unless
+    // +prim_lfsr_use_default_seed=1), so the two cores' dummy-instruction LFSRs started from
+    // different seeds: once software enabled dummy instructions the shadow core inserted them
+    // elsewhere and fell out of step (EG2 chip_sw_eg2_testrig_seq, NoMemResponseWithoutPendingAccess
+    // in u_shadow_core, 2026-10-29). In silicon both take RndCnstLfsrSeed. The shadow core takes the
+    // main core's seed at time 0, as prim_double_lfsr does for its pair; the reset loads it.
+    if (DummyInstructions) begin : gen_shadow_lfsr_seed
+      initial begin
+        wait (!$isunknown(
+          u_ibex_core.if_stage_i.gen_dummy_instr.dummy_instr_i.lfsr_i.DefaultSeedLocal));
+        wait (!$isunknown(u_ibex_lockstep.u_shadow_core.if_stage_i.gen_dummy_instr.dummy_instr_i
+                          .lfsr_i.DefaultSeedLocal));
+        u_ibex_lockstep.u_shadow_core.if_stage_i.gen_dummy_instr.dummy_instr_i.lfsr_i
+          .DefaultSeedLocal =
+            u_ibex_core.if_stage_i.gen_dummy_instr.dummy_instr_i.lfsr_i.DefaultSeedLocal;
+      end
+    end
+`endif
+`endif
+
   end else begin : gen_no_lockstep
     assign lockstep_alert_major_internal = 1'b0;
     assign lockstep_alert_major_bus      = 1'b0;
