@@ -15,11 +15,11 @@
  *
  * Encryption: the ciphertext and the first Taglen bytes of the 128-bit tag equal the NIST values.
  * Decryption: the plaintext equals the NIST value and the tag authenticates; a vector the file
- * marks FAIL does not. The 96- and 1024-bit IVs run; the files' 8-bit IVs are reported not run:
- * the library takes IVs in whole 32-bit words (aes_gcm.h), where SP 800-38D allows any length.
+ * marks FAIL does not. The 96-bit IVs run; the files' 1024- and 8-bit IVs are reported not run:
+ * the library takes 96 or 128 bits only (aes_gcm.h), where SP 800-38D allows any length.
  * Decryption with a tag of 104, 112 or 120 bits is skipped and reported: the library compares the
  * tag in whole 32-bit words, so it cannot verify a tag truncated inside a word (SP 800-38D allows
- * them). Both limits are the library's interface (word buffers), a question for the crypto library
+ * them). Both limits are the library's interface, a decision for the crypto library
  * owners (dv_tickets.md F52), as aes_kwp's short plaintexts in eg2_nist_aes_kw.c.
  *
  * With EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail.
@@ -45,7 +45,7 @@ EG2_TEST_PARAMS(NIST_AES_GCM_PARAMS);
 
 enum {
   kMaxText = 64,     // bytes: the longest plaintext in the files is 408 bits (51 bytes)
-  kMaxIvWords = 32,  // 1024 bits: the longest IV in the files (the library takes whole words)
+  kMaxIvWords = 4,  // 96 or 128 bits: all the library takes
   kTagWords = 4,
 };
 

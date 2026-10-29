@@ -273,12 +273,9 @@ static status_t aes_gcm_counter(const otcrypto_const_word32_buf_t *iv,
     HARDENED_TRY(hardened_memcpy(j0->data, iv->data, iv->len));
     // Set the last word to 1 (as a big-endian integer).
     j0->data[kAesBlockNumWords - 1] = __builtin_bswap32(1);
-  } else if (iv->len >= 4) {
-    // An IV of 128 bits or more (SP 800-38D, 7.1): J0 = GHASH(H, IV || {0}^(s+64) ||
-    // [len(IV)]_64), where s zero bits complete the IV's last block (ghash_update
-    // pads a partial last block with zeros itself) and [len(IV)]_64 is the IV's
-    // length in bits as a 64-bit big-endian integer. For a 128-bit IV that is
-    // IV || {0}^120 || 0x80.
+  } else if (iv->len == 4) {
+    // If the IV is 128 bits, then J0 = GHASH(H, IV || {0}^120 || 0x80), where
+    // {0}^120 means 120 zero bits (15 0x00 bytes).
 
     // As the encrypted initial counter block S only can be computed AFTER
     // aes_gcm_counter(), set S0 and S1 to random.
@@ -305,15 +302,12 @@ static status_t aes_gcm_counter(const otcrypto_const_word32_buf_t *iv,
     otcrypto_const_byte_buf_t iv_byte_buf = otcrypto_make_const_byte_buf(
         (const uint8_t *)iv->data, iv->len * sizeof(uint32_t));
     HARDENED_TRY(ghash_update(ctx, &iv_byte_buf));
-    uint8_t len_block[kAesBlockNumBytes];
-    memset(len_block, 0, kAesBlockNumBytes);
-    uint64_t iv_bits = (uint64_t)iv->len * sizeof(uint32_t) * 8;
-    for (size_t i = 0; i < sizeof(iv_bits); ++i) {
-      len_block[kAesBlockNumBytes - 1 - i] = (uint8_t)(iv_bits >> (8 * i));
-    }
-    otcrypto_const_byte_buf_t len_buf = OTCRYPTO_MAKE_BUF(
-        otcrypto_const_byte_buf_t, len_block, kAesBlockNumBytes);
-    HARDENED_TRY(ghash_update(ctx, &len_buf));
+    uint8_t padding[kAesBlockNumBytes];
+    memset(padding, 0, kAesBlockNumBytes);
+    padding[kAesBlockNumBytes - 1] = 0x80;
+    otcrypto_const_byte_buf_t padding_buf = OTCRYPTO_MAKE_BUF(
+        otcrypto_const_byte_buf_t, padding, kAesBlockNumBytes);
+    HARDENED_TRY(ghash_update(ctx, &padding_buf));
     HARDENED_TRY(ghash_final(ctx, j0->data));
     // In the masking scheme, the GHASH function now actually XORs the initial
     // counter block S to the output. As we do not want to have this for J0,
@@ -321,8 +315,7 @@ static status_t aes_gcm_counter(const otcrypto_const_word32_buf_t *iv,
     hardened_xor_in_place(j0->data, enc_initial_counter_block.data,
                           kAesBlockNumWords);
   } else {
-    // A shorter IV than 96 bits, or between 96 and 128: refused (the library takes 96 bits, or
-    // 128 and more; shorter IVs are weaker, and aes_gcm_functest checks they are refused).
+    // Should not happen; invalid IV length.
     return OTCRYPTO_BAD_ARGS;
   }
 
