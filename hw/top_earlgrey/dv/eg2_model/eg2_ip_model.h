@@ -9,7 +9,8 @@
 //   Interrupts  INTR_STATE, INTR_ENABLE, INTR_TEST (OpenTitan's comportability specification):
 //               an event-type interrupt is set by the IP (set_intr) or by INTR_TEST and cleared by
 //               software writing 1 to INTR_STATE; a status-type interrupt follows its source
-//               (set_intr_level), and INTR_TEST on it is a one-cycle pulse that only rv_plic sees.
+//               (set_intr_level) or-ed with its INTR_TEST bit, which stays until the next INTR_TEST
+//               write (prim_intr_hw "Status": test_q, INTR_STATE = event | test_q).
 //               Each interrupt's line, state & enable, drives its rv_plic source.
 //   Alerts      a 1 written to an ALERT_TEST bit raises that alert; raise_alert raises one from
 //               the IP's behaviour.
@@ -59,6 +60,7 @@ class Eg2IpModel : public Eg2RegBlock {
       if (std::string(module()) == a) aon_ = true;
     }
     status_level_ = 0;
+    status_test_ = 0;
     sys_.add(this);
   }
 
@@ -81,7 +83,7 @@ class Eg2IpModel : public Eg2RegBlock {
     status_level_ = level ? (status_level_ | (1u << bit)) : (status_level_ & ~(1u << bit));
     if (intr_state_ < 0) return;
     uint32_t mask = status_mask();
-    uint32_t v = (value(uint16_t(intr_state_)) & ~mask) | (status_level_ & mask);
+    uint32_t v = (value(uint16_t(intr_state_)) & ~mask) | ((status_level_ | status_test_) & mask);
     set_value(uint16_t(intr_state_), v);
     update_irqs();
   }
@@ -139,6 +141,7 @@ class Eg2IpModel : public Eg2RegBlock {
     if (aon_ && cause != Eg2ResetCause::kPor) return;
     reset();
     status_level_ = 0;
+    status_test_ = 0;
     sys_.unschedule(this);
     update_irqs();
   }
@@ -207,12 +210,14 @@ class Eg2IpModel : public Eg2RegBlock {
       if (intr_state_ >= 0 && (t & ~st)) {
         set_value(uint16_t(intr_state_), value(uint16_t(intr_state_)) | (t & ~st));
       }
-      // A test of a status-type interrupt lasts one cycle: rv_plic latches it, INTR_STATE does not
-      // keep it.
-      for (uint8_t i = 0; i < irq_->nintrs; ++i) {
-        if (irq_->intrs[i].status && ((t >> irq_->intrs[i].bit) & 1)) {
-          drive_irq(i, true);
-        }
+      // A status-type interrupt keeps its test bit until the next INTR_TEST write replaces it, and
+      // shows it in INTR_STATE (prim_intr_hw "Status": test_q). It was a one-cycle pulse here, so
+      // INTR_STATE read 0 after the test (2026-10-29: plic_all_irqs_test_0/10/20, adc_ctrl,
+      // i3c0 and spi_host0, "Actual interrupt status = 0").
+      status_test_ = t & st;
+      if (intr_state_ >= 0) {
+        set_value(uint16_t(intr_state_), (value(uint16_t(intr_state_)) & ~st) |
+                                             ((status_level_ | status_test_) & st));
       }
       update_irqs();
     } else if (int(r) == alert_test_) {
@@ -222,7 +227,7 @@ class Eg2IpModel : public Eg2RegBlock {
     } else if (int(r) == intr_state_) {
       // Status-type bits follow their source: a write of 1 does not clear them.
       uint32_t st = status_mask();
-      set_value(r, (value(r) & ~st) | (status_level_ & st));
+      set_value(r, (value(r) & ~st) | ((status_level_ | status_test_) & st));
       update_irqs();
     } else if (int(r) == intr_enable_) {
       update_irqs();
@@ -231,6 +236,7 @@ class Eg2IpModel : public Eg2RegBlock {
   }
 
   uint32_t status_level_;
+  uint32_t status_test_;  // status-type INTR_TEST bits, held until the next INTR_TEST write
   mutable std::string window_;
 };
 
