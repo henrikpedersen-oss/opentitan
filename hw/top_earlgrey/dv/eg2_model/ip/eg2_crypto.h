@@ -8,7 +8,7 @@
 //   eg2_crypto_entropy.h  entropy_src, csrng (CTR_DRBG), edn0 / edn1 (endpoint API Eg2Edn::get)
 //   eg2_crypto_aes.h      aes
 //   eg2_crypto_hash.h     hmac, kmac (application interface Eg2Kmac::app_kmac / app_cshake)
-//   eg2_crypto_keymgr.h   keymgr_dpe, otbn (register interface only)
+//   eg2_crypto_keymgr.h   keymgr_dpe, otbn (its processor: eg2_otbn.h)
 //
 // Reference code reused (compiled in by the model's Makefile): hw/ip/aes/model/aes.c (lowRISC,
 // Apache-2.0), hw/ip/hmac/dv/cryptoc_dpi/sha{256,384,512}.c (Google CryptoC, Apache-2.0),
