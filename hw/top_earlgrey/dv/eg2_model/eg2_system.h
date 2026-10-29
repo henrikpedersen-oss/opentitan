@@ -260,6 +260,9 @@ class Eg2System {
   // Asked by the core when it executes WFI: whether pwrmgr starts a low-power entry (the core then
   // sleeps until pwrmgr wakes the chip through a reset).
   std::function<bool()> low_power_requested;
+  // rv_core_ibex.cfg MCOUNTEREN_WRITABLE is MuBi4True (the core's mcounteren_writable_i): software
+  // writes to mcounteren take effect only then (the hjson). Unset: writable.
+  std::function<bool()> mcounteren_writable;
 
   // ---- Verdict ----
   void finish(bool passed, const std::string &why) {

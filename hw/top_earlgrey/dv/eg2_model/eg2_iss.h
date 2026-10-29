@@ -26,6 +26,7 @@ struct Eg2Handover {
   uint32_t pc, mtvec, mepc, mstatus, mie, mcause, mtval, misa;
   uint32_t gpr[16];
   uint32_t cpuctrlsts = 0;  // bits 7:0: the same CSR in both modes, carried over
+  uint32_t mcounteren = 0;  // the same CSR in both modes, carried over
 };
 
 // cpuctrlsts.ic_scr_key_valid (bit 8): a FENCE.I fetches a new icache scrambling key, which arrives

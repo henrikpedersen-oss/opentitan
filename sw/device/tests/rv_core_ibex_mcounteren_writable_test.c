@@ -16,6 +16,11 @@
 #define MCOUNTERS_DISABLE (0x0)
 #define MCOUNTERS_ENABLE (0x5)
 
+// EG2, CHERIoT mode: the boot stage leaves the REQ_SOC_08 locks open for this test
+// (sw/device/lib/testing/eg2/cheriot/eg2_cheriot_start.S step 0b): it checks
+// MCOUNTEREN_WRITABLE_REGWEN's reset value and the register it guards.
+const volatile uint8_t eg2_cheriot_boot_locks_open __attribute__((used)) = 1;
+
 OTTF_DEFINE_TEST_CONFIG();
 
 // Helper functions for accessing the mcounteren CSR

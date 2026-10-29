@@ -538,6 +538,8 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
   Eg2RvCoreIbexCfg(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
       : Eg2IpModel(n, d, base) {
     ena_ = reg("CHERIOT_ENA");
+    mcw_ = reg("MCOUNTEREN_WRITABLE");
+    sys_.mcounteren_writable = [this] { return (value(mcw_) & 0xf) == kMuBi4True; };
     lock_ = reg("CHERIOT_LOCK");
     recov_ = reg("SW_RECOV_ERR");
     fatal_ = reg("SW_FATAL_ERR");
@@ -683,7 +685,7 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     if (line & ~nmi_line_) sys_.nmi = true;
     nmi_line_ = line;
   }
-  uint16_t ena_, lock_, recov_, fatal_, rnd_data_, rnd_status_, nmi_enable_, nmi_state_,
+  uint16_t mcw_, ena_, lock_, recov_, fatal_, rnd_data_, rnd_status_, nmi_enable_, nmi_state_,
       err_status_;
   int dv_;
   bool locked_ = false, cheriot_ = false, switch_error_ = false;

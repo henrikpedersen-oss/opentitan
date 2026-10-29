@@ -83,6 +83,7 @@ void Eg2SpikeCpu::leave_cheriot() {
   h.mcause = uint32_t(processor_->get_csr(CSR_MCAUSE));
   h.mtval = uint32_t(processor_->get_csr(CSR_MTVAL));
   h.cpuctrlsts = uint32_t(processor_->get_csr(CSR_CPUCTRLSTS)) & 0xff;
+  h.mcounteren = uint32_t(processor_->get_csr(CSR_MCOUNTEREN));
   for (int r = 1; r < 16; ++r) h.gpr[r] = uint32_t(s->XPR[r]);
   if (!cheriot_iss_->take_back(&h)) {
     request_stop(std::string("fault cheriot_ena_low: ") + cheriot_iss_->name() +
@@ -99,6 +100,7 @@ void Eg2SpikeCpu::leave_cheriot() {
   processor_->put_csr(CSR_MCAUSE, h.mcause);
   processor_->put_csr(CSR_MTVAL, h.mtval);
   processor_->put_csr(CSR_CPUCTRLSTS, h.cpuctrlsts);
+  processor_->put_csr(CSR_MCOUNTEREN, h.mcounteren);
   processor_->get_mmu()->flush_tlb();
   processor_->get_mmu()->flush_icache();
   cheriot_ = false;
@@ -214,6 +216,7 @@ void Eg2SpikeCpu::handover() {
   // In CHERIoT mode misa has E=1, I=0 (REQ_SOC_03); the other bits are Ibex's, as in RISC-V mode.
   h.misa = (uint32_t(processor_->get_csr(CSR_MISA)) & ~(1u << 8)) | (1u << 4);
   h.cpuctrlsts = uint32_t(processor_->get_csr(CSR_CPUCTRLSTS)) & 0xff;
+  h.mcounteren = uint32_t(processor_->get_csr(CSR_MCOUNTEREN));
   for (int r = 1; r < 16; ++r) h.gpr[r] = uint32_t(s->XPR[r]);
   cheriot_iss_->handover(h);
   cheriot_ = true;
@@ -354,7 +357,13 @@ bool Eg2SpikeCpu::step_spike() {
     processor_->get_mmu()->flush_tlb();
     processor_->get_mmu()->flush_icache();
   }
+  // A CSR instruction on mcounteren (0x306) while rv_core_ibex's MCOUNTEREN_WRITABLE is not
+  // MuBi4True reads but does not write it (Eg2System::mcounteren_writable).
+  bool mc_locked = (insn & 0x7f) == 0x73 && ((insn >> 12) & 3) != 0 && (insn >> 20) == 0x306 &&
+                   sys.mcounteren_writable && !sys.mcounteren_writable();
+  reg_t mc_old = mc_locked ? processor_->get_csr(CSR_MCOUNTEREN) : 0;
   processor_->step(1);
+  if (mc_locked) processor_->put_csr(CSR_MCOUNTEREN, mc_old);
   if (deny) {
     fetch_denied_ = false;
     processor_->get_mmu()->flush_tlb();

@@ -192,6 +192,7 @@ void Eg2MpactCpu::handover(const Eg2Handover &s) {
   h.mtval = s.mtval;
   h.misa = s.misa;
   cpuctrlsts_ = s.cpuctrlsts & 0xff;
+  mcounteren_ = s.mcounteren & kMcounterenMask;
   std::memcpy(h.gpr, s.gpr, sizeof h.gpr);
   eg2_mpact_handover(m_, &h);
 }
@@ -234,6 +235,26 @@ bool Eg2MpactCpu::step() {
     eg2_mpact_step_emulated(m_, 4, 0, 0);
     return true;
   }
+  // mcounteren on Earl Grey, as Ibex's cs_registers.rst gives it (MPACT keeps only bit 0): the
+  // implemented bits (kMcounterenMask), and writes only while rv_core_ibex's MCOUNTEREN_WRITABLE is
+  // MuBi4True (Eg2System::mcounteren_writable). Not modelled: its gating of U-mode counter reads.
+  unsigned c_f3 = (last_insn_ >> 12) & 7, c_rd = (last_insn_ >> 7) & 31;
+  unsigned c_rs1 = (last_insn_ >> 15) & 31;
+  if (!board_ && (last_insn_ & 0x7f) == 0x73 && (c_f3 & 3) != 0 && (last_insn_ >> 20) == 0x306 &&
+      c_rd < 16 && (c_f3 >= 5 || c_rs1 < 16)) {
+    Eg2System &sys = Eg2System::get();
+    uint32_t src = c_f3 >= 5 ? c_rs1 : eg2_mpact_gpr(m_, c_rs1), v = mcounteren_;
+    switch (c_f3 & 3) {
+      case 1: v = src; break;                          // csrrw
+      case 2: if (c_rs1) v = mcounteren_ | src; break;   // csrrs
+      case 3: if (c_rs1) v = mcounteren_ & ~src; break;  // csrrc
+    }
+    uint32_t old = mcounteren_;
+    if (!sys.mcounteren_writable || sys.mcounteren_writable()) mcounteren_ = v & kMcounterenMask;
+    eg2_mpact_step_emulated(m_, 4, c_rd, old);
+    last_emulated_ = true;
+    return true;
+  }
   if ((!board_ || cfg_.ibex_csrs) && (last_insn_ & 3) == 3 && ibex_csr(last_insn_)) {
     last_emulated_ = true;
     return true;
@@ -260,6 +281,7 @@ bool Eg2MpactCpu::take_back(Eg2Handover *s) {
   eg2_mpact_csr(m_, "mcause", &s->mcause);
   eg2_mpact_csr(m_, "mtval", &s->mtval);
   s->cpuctrlsts = cpuctrlsts_;
+  s->mcounteren = mcounteren_;
   return true;
 }
 

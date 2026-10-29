@@ -106,6 +106,9 @@ class Eg2MpactCpu : public Eg2Iss {
   Eg2Memory *meta_ = nullptr;
   uint32_t cpuctrlsts_ = 0;
   uint32_t key_wait_ = 0;  // instructions until the icache key is valid again (kIcKeyRenewInsns)
+  uint32_t mcounteren_ = 0;  // Earl Grey: kept here (MPACT keeps only bit 0)
+  // mcounteren's implemented bits (Ibex cs_registers.rst): CY 0, IR 2, HPM3-4 (MHPMCounterNum 2).
+  static constexpr uint32_t kMcounterenMask = 0x1d;
   uint32_t last_pc_ = 0, last_insn_ = 0;
   bool last_fetch_fault_ = false, last_fence_i_ = false, last_emulated_ = false;
 };
