@@ -82,6 +82,7 @@ void Eg2SpikeCpu::leave_cheriot() {
   h.mie = uint32_t(processor_->get_csr(CSR_MIE));
   h.mcause = uint32_t(processor_->get_csr(CSR_MCAUSE));
   h.mtval = uint32_t(processor_->get_csr(CSR_MTVAL));
+  h.cpuctrlsts = uint32_t(processor_->get_csr(CSR_CPUCTRLSTS)) & 0xff;
   for (int r = 1; r < 16; ++r) h.gpr[r] = uint32_t(s->XPR[r]);
   if (!cheriot_iss_->take_back(&h)) {
     request_stop(std::string("fault cheriot_ena_low: ") + cheriot_iss_->name() +
@@ -97,6 +98,7 @@ void Eg2SpikeCpu::leave_cheriot() {
   processor_->put_csr(CSR_MIE, h.mie);
   processor_->put_csr(CSR_MCAUSE, h.mcause);
   processor_->put_csr(CSR_MTVAL, h.mtval);
+  processor_->put_csr(CSR_CPUCTRLSTS, h.cpuctrlsts);
   processor_->get_mmu()->flush_tlb();
   processor_->get_mmu()->flush_icache();
   cheriot_ = false;
@@ -211,6 +213,7 @@ void Eg2SpikeCpu::handover() {
   h.mtval = uint32_t(processor_->get_csr(CSR_MTVAL));
   // In CHERIoT mode misa has E=1, I=0 (REQ_SOC_03); the other bits are Ibex's, as in RISC-V mode.
   h.misa = (uint32_t(processor_->get_csr(CSR_MISA)) & ~(1u << 8)) | (1u << 4);
+  h.cpuctrlsts = uint32_t(processor_->get_csr(CSR_CPUCTRLSTS)) & 0xff;
   for (int r = 1; r < 16; ++r) h.gpr[r] = uint32_t(s->XPR[r]);
   cheriot_iss_->handover(h);
   cheriot_ = true;

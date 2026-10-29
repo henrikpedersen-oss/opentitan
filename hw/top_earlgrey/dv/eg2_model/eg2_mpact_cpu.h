@@ -29,13 +29,18 @@
 // CHERIoT mode ends an eg2sim run there); code changed after it ran once (MPACT's decode cache
 // keeps the old instruction).
 //
+// Ibex's custom CSRs, which MPACT has not, are executed by eg2sim: cpuctrlsts (0x7c0; bits 7:0
+// written, 8 ic_scr_key_valid reads 1, carried over at the handover in both directions) and
+// secureseed (0x7c1; reads 0), CSRRW/S/C and their immediate forms. PCC's
+// permit-access-system-registers is not checked for those two: MPACT's interface exposes no PCC
+// permissions. Not modelled: the bits the hardware sets (6 sync_exc_seen, 7 double_fault_seen).
+// (2026-10-29: on Earl Grey they were left to MPACT, which logs every read of a CSR it lacks;
+// rv_core_ibex_icache_invalidate_test_cheriot ran to the instruction limit and wrote 10 GB of log.)
+//
 // Another board (Eg2MpactConfig; the RTOS test SoC, rtos_soc/) gives its own tag map, the load
 // barrier (MPACT's own, eg2_mpact_create_revocation: a CLC of a tagged, non-sealing capability whose
 // base's revocation bit is set clears the tag, the bitmap read through the board's port), and
-// whether eg2sim executes Ibex's custom CSRs, which MPACT has not: cpuctrlsts (0x7c0; bits 7:0
-// written, 8 ic_scr_key_valid reads 1) and secureseed (0x7c1; reads 0), CSRRW/S/C and their
-// immediate forms. PCC's permit-access-system-registers is not checked for those two: MPACT's
-// interface exposes no PCC permissions.
+// whether eg2sim executes the Ibex CSRs above.
 
 #ifndef EG2_MODEL_EG2_MPACT_CPU_H_
 #define EG2_MODEL_EG2_MPACT_CPU_H_
@@ -61,7 +66,7 @@ struct Eg2MpactConfig {
   uint32_t heap_base = 0;
   // The bitmap byte at offset; false for a failed lookup (the capability is then revoked).
   std::function<bool(uint32_t offset, uint8_t *byte)> revbm;
-  bool ibex_csrs = false;                // eg2sim executes cpuctrlsts and secureseed
+  bool ibex_csrs = false;                // eg2sim executes cpuctrlsts, secureseed (EG: always)
 };
 
 class Eg2MpactCpu : public Eg2Iss {

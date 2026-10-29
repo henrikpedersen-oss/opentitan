@@ -159,8 +159,8 @@ int Eg2MpactCpu::revbm_cb(void *user, uint32_t offset, uint8_t *byte) {
   return self->cfg_.revbm(offset, byte) ? 0 : 1;
 }
 
-// cpuctrlsts and secureseed (Ibex doc/03_reference/cs_registers.rst), for a board whose firmware
-// uses them (the RTOS test SoC's boot stub enables the ICache: csrsi cpuctrlsts, 1).
+// cpuctrlsts and secureseed (Ibex doc/03_reference/cs_registers.rst): on Earl Grey, and on a board
+// whose firmware uses them (the RTOS test SoC's boot stub enables the ICache: csrsi cpuctrlsts, 1).
 bool Eg2MpactCpu::ibex_csr(uint32_t insn) {
   uint32_t f3 = (insn >> 12) & 7, csr = insn >> 20;
   if ((insn & 0x7f) != 0x73 || f3 == 0 || f3 == 4 || (csr != 0x7c0 && csr != 0x7c1)) return false;
@@ -191,6 +191,7 @@ void Eg2MpactCpu::handover(const Eg2Handover &s) {
   h.mcause = s.mcause;
   h.mtval = s.mtval;
   h.misa = s.misa;
+  cpuctrlsts_ = s.cpuctrlsts & 0xff;
   std::memcpy(h.gpr, s.gpr, sizeof h.gpr);
   eg2_mpact_handover(m_, &h);
 }
@@ -231,7 +232,7 @@ bool Eg2MpactCpu::step() {
     eg2_mpact_step_emulated(m_, 4, 0, 0);
     return true;
   }
-  if (board_ && cfg_.ibex_csrs && (last_insn_ & 3) == 3 && ibex_csr(last_insn_)) {
+  if ((!board_ || cfg_.ibex_csrs) && (last_insn_ & 3) == 3 && ibex_csr(last_insn_)) {
     last_emulated_ = true;
     return true;
   }
@@ -256,6 +257,7 @@ bool Eg2MpactCpu::take_back(Eg2Handover *s) {
   eg2_mpact_csr(m_, "mie", &s->mie);
   eg2_mpact_csr(m_, "mcause", &s->mcause);
   eg2_mpact_csr(m_, "mtval", &s->mtval);
+  s->cpuctrlsts = cpuctrlsts_;
   return true;
 }
 

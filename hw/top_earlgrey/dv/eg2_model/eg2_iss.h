@@ -19,11 +19,13 @@
 #include <tlm>
 
 // The state the core hands over at the CHERIoT lock (REQ_SOC_07), from Spike: the next PC, the trap
-// CSRs, x1-x15 (gpr[0] unused). The ISS makes PCC, MTCC and MEPCC executable roots at pc, mtvec and
-// mepc, MTDC the memory root, MScratchC the sealing root, x1-x15 integers (tag 0), x16-x31 null.
+// CSRs, Ibex's cpuctrlsts, x1-x15 (gpr[0] unused). The ISS makes PCC, MTCC and MEPCC executable
+// roots at pc, mtvec and mepc, MTDC the memory root, MScratchC the sealing root, x1-x15 integers
+// (tag 0), x16-x31 null.
 struct Eg2Handover {
   uint32_t pc, mtvec, mepc, mstatus, mie, mcause, mtval, misa;
   uint32_t gpr[16];
+  uint32_t cpuctrlsts = 0;  // bits 7:0: the same CSR in both modes, carried over
 };
 
 class Eg2Iss {
