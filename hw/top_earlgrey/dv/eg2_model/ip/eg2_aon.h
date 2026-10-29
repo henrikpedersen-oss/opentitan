@@ -29,7 +29,7 @@ namespace eg2_model {
 // cause (POR, LOW_POWER_EXIT, SW_RESET, HW_REQ) and keeps it through resets until software clears
 // it; a power-on reset sets POR alone. A reset requested while the chip is in low power records
 // LOW_POWER_EXIT with its own cause (theory_of_operation.md "Reset Information"). The per-IP
-// software resets (SW_RST_CTRL_N) are storage only.
+// software resets (SW_RST_CTRL_N) reset their block's model when written 0.
 //
 // Crash dump (doc/theory_of_operation.md "Crash Dump Information"): with ALERT_INFO_CTRL.EN set, a
 // reset captures the alert handler's crash dump (its alert_dump input, Eg2System::alert_crashdump);
@@ -47,6 +47,9 @@ class Eg2Rstmgr : public Eg2IpModel {
     alert_attr_ = reg("ALERT_INFO_ATTR");
     alert_info_ = reg("ALERT_INFO");
     for (uint16_t r : {info_, alert_ctrl_, alert_attr_, alert_info_}) set_modelled(r);
+    for (unsigned i = 0; i < kSwResets; ++i) {
+      sw_rst_[i] = reg(("SW_RST_CTRL_N_" + std::to_string(i)).c_str());
+    }
   }
 
   void before_reset(Eg2ResetCause c) override {
@@ -87,6 +90,13 @@ class Eg2Rstmgr : public Eg2IpModel {
     if (r == req_ && (value(req_) & 0xf) == kMuBi4True) {
       sys_.request_reset(Eg2ResetCause::kSoftware, "software reset (rstmgr RESET_REQ)");
     }
+    // A peripheral's software reset: SW_RST_CTRL_N_<i> written 0 holds the block in reset (its
+    // registers back to their reset values) until it is written 1 (theory_of_operation.md
+    // "Software Controlled Resets").
+    for (unsigned i = 0; i < kSwResets; ++i) {
+      if (r != sw_rst_[i] || (value(r) & 1) || !*kSwResetBlocks[i]) continue;
+      if (Eg2IpModel *m = sys_.model(kSwResetBlocks[i])) m->on_reset(Eg2ResetCause::kSoftware);
+    }
   }
   void reg_before_read(uint16_t r) override {
     if (r == alert_attr_) {
@@ -101,6 +111,12 @@ class Eg2Rstmgr : public Eg2IpModel {
 
  private:
   uint16_t req_, info_, alert_ctrl_, alert_attr_, alert_info_;
+  // SW_RST_CTRL_N_<i>: the blocks in the order of rstmgr.hjson's SW_RST countermeasures (usbdev_aon
+  // has no model of its own).
+  static constexpr unsigned kSwResets = 10;
+  static constexpr const char *kSwResetBlocks[kSwResets] = {
+      "spi_device", "spi_host0", "spi_host1", "usbdev", "", "i2c0", "i2c1", "i2c2", "i3c0", "i3c1"};
+  uint16_t sw_rst_[kSwResets];
   std::vector<uint32_t> alert_dump_;  // the last capture
 };
 
