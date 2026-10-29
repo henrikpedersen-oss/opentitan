@@ -305,9 +305,13 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
   // reset the fault must escalate to (`diverges`; a stop no reset ends fails the run). A fault
   // that changes nothing the core sees is not an error (must_detect 0). Four mismatches: the
   // instructions the model compared before the stop took effect. 2026-10-28, chip_cheriot_fi_meta.
+  // Also to the chip's TL-UL scoreboard ("chip_tl"): its monitor sees the request before the
+  // corruption, so the memory's error response to the corrupted request is not in its prediction
+  // (2026-10-29, chip_cheriot_fi_meta: a data-integrity flip at cheriot_mem_sys.cored_tl_d_i).
   protected function void announce_fault(string path, string kind);
-    last_fault = eg2_inject_registry::announce({"bench fault at ", path}, "insn", kind, $realtime,
-                                               eg2_inject_registry::UntilConsumed, 1'b0, 4, 1'b1);
+    last_fault = eg2_inject_registry::announce({"bench fault at ", path}, "insn,chip_tl", kind,
+                                               $realtime, eg2_inject_registry::UntilConsumed, 1'b0,
+                                               4, 1'b1);
   endfunction
 
   // One clock of the core's clock domain.
