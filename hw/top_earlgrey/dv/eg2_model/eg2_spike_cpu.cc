@@ -46,7 +46,10 @@ Eg2SpikeCpu::Eg2SpikeCpu(sc_core::sc_module_name name, const Eg2CoreConfig &cfg,
   }
   Eg2System &sys = Eg2System::get();
   sys.clock = [this] { return now_ps(); };
+  // In CHERIoT mode the CHERIoT-mode model does not give these fields: the dump reads zeros there (a
+  // model limit) rather than the last RISC-V-mode state.
   sys.cpu_crashdump = [this] {
+    if (cheriot_) return std::vector<uint32_t>(8, 0);
     return std::vector<uint32_t>{dump_mtval_,      dump_mepc_,      dump_daddr_,
                                  dump_npc_,        dump_pc_,        dump_prev_mtval_,
                                  dump_prev_mepc_,  uint32_t(dump_prev_valid_)};
