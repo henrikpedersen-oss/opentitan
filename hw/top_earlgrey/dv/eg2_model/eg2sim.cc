@@ -507,6 +507,12 @@ int sc_main(int argc, char **argv) {
       targets.emplace_back(m);
     }
   }
+  // The revocation bitmap window is the base of the meta SRAM (Eg2Memory::share_start_of).
+  auto revbm = sys.memories.find("cheriot_mem_sys.revbm");
+  auto meta = sys.memories.find("sram_ctrl_meta.ram");
+  if (revbm != sys.memories.end() && meta != sys.memories.end()) {
+    revbm->second->share_start_of(*meta->second);
+  }
   std::map<std::string, uint32_t> syms;
   if (!load_elf(rom, mems) || (!test.empty() && !load_elf(test, mems, &syms))) return 1;
   if (!otp.empty() && !load_otp(otp, blocks)) return 1;

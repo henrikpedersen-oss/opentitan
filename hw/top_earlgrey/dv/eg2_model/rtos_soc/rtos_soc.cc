@@ -7,7 +7,8 @@
 //
 //   eg2sim --board rtos_soc --boot <sim_boot_stub> --test <firmware ELF> [--log-dir <dir>]
 //          [--max-cycles N] [--uart-idle-cycles N] [--max-insns N] [--spike-log <file>]
-//          [--default-rsp-error] [--mutate barrier_none|tbre_no_inval]
+//          [--default-rsp-error] [--mutate barrier_none|tbre_no_inval|dbg_lock_open]
+//          [--slow-memories <code>:<data>]
 //
 // The images load as the SoC's run script loads them (dv/scripts/cheriot_rtos_*_run.sh,
 // util/elf_to_vmem.py): every loadable segment at its physical address, the boot stub and the
@@ -21,7 +22,16 @@
 //
 // --mutate breaks one check, as the SoC's +cheriot_rtos_mutate does (README "Mutation check"), to
 // show that a suite notices: barrier_none, the load barrier never revokes; tbre_no_inval, the TBRE
-// sweeps but never clears a tag.
+// sweeps but never clears a tag; dbg_lock_open, the debug-access gate lets the debug module's
+// system bus access through while debug access is disabled.
+//
+// --slow-memories <code>:<data> stands in for the SoC's +code_mem_latency and +data_mem_latency
+// (the revocation stress runs), which the model cannot give: its core takes one clock per
+// instruction whatever the memories do. Instead the core runs at 1 / (1 + code) of the clock, as
+// if every fetch waited <code> cycles, and the TBRE takes 2 * (1 + data) cycles per capability, as
+// if its two SRAM reads waited <data> cycles each; the timer, UART and PLIC keep the clock. It
+// shifts the core against the timer and the sweep, as the stress runs do; it does not slow the
+// core's loads and stores apart from its fetches.
 //
 // Exit: 0 the run ended on the exit string or "All tests finished" (the verdict is the script's),
 // 2 it ended otherwise (a failure line, UART idle, the cycle limit, the model stopped), 1 an error.
@@ -50,7 +60,7 @@ namespace {
 
 // rv_core_ibex of the SoC: Ibex, opentitan configuration, CHERIoT mode from reset. Spike never
 // runs (the core is in CHERIoT mode from reset); its configuration only has to be valid.
-Eg2CoreConfig rtos_soc_core() {
+Eg2CoreConfig rtos_soc_core(unsigned slow_code) {
   Eg2CoreConfig c{};
   c.isa = "rv32imc_Zba_Zbb_Zbc_Zbs_Zbkb_Zbkx_Zcb_Zcmp";
   c.boot_addr = kSramBase;
@@ -61,7 +71,7 @@ Eg2CoreConfig rtos_soc_core() {
   c.icache = true;
   c.dm_start = 0xb0000000;
   c.dm_end = 0xb0000fff;
-  c.clock_hz = kClockHz;
+  c.clock_hz = kClockHz / (1 + slow_code);  // one instruction per core clock (--slow-memories)
   // Ibex's CHERIoT reset state (ibex_cs_registers.sv; doc/03_reference/cheriot.rst): PCC the
   // executable root at boot_addr + 0x80; MTCC (mtvec_cap) and MEPCC the executable root, MTDC the
   // memory root, MScratchC the sealing root; every register null. mtvec: boot_addr, direct mode in
@@ -93,6 +103,7 @@ const eg2_irqs::Intr kTbreIntrs[] = {{"tbre_done", 0, Eg2System::kNoPlicSource, 
 int rtos_soc_main(int argc, char **argv,
                   bool (*load_elf)(const std::string &, std::vector<Eg2Memory *> &)) {
   std::string boot, test, spike_log, mutate;
+  unsigned slow_code = 0, slow_data = 0;
   uint64_t max_insns = 0;
   bool rsp_error = false;
   RtosRunMonitor monitor;
@@ -110,18 +121,23 @@ int rtos_soc_main(int argc, char **argv,
     else if (a == "--spike-log" && has) spike_log = argv[++i];
     else if (a == "--mutate" && has) mutate = argv[++i];
     else if (a == "--default-rsp-error") rsp_error = true;
-    else {
+    else if (a == "--slow-memories" && has &&
+             std::sscanf(argv[++i], "%u:%u", &slow_code, &slow_data) == 2) {
+    } else {
       std::fprintf(stderr, "eg2sim --board rtos_soc: unknown option %s\n", a.c_str());
       return 1;
     }
   }
   if (boot.empty() || test.empty() ||
-      !(mutate.empty() || mutate == "barrier_none" || mutate == "tbre_no_inval")) {
+      !(mutate.empty() || mutate == "barrier_none" || mutate == "tbre_no_inval" ||
+        mutate == "dbg_lock_open") ||
+      slow_code > 64 || slow_data > 64) {
     std::fprintf(stderr,
                  "usage: eg2sim --board rtos_soc --boot <sim_boot_stub> --test <firmware> "
                  "[--log-dir <dir>] [--max-cycles N] [--uart-idle-cycles N] [--max-insns N] "
                  "[--spike-log <file>] [--default-rsp-error] "
-                 "[--mutate barrier_none|tbre_no_inval]\n");
+                 "[--mutate barrier_none|tbre_no_inval|dbg_lock_open] "
+                 "[--slow-memories <code>:<data>, each 0-64]\n");
     return 1;
   }
 
@@ -138,10 +154,11 @@ int rtos_soc_main(int argc, char **argv,
       {"sram", kSramBase, kSramSize},       {"revbm", kRevbmBase, kRevbmSize},
       {"code_ram", kCodeBase, kCodeSize},   {"rev_ctl", kRevCtlBase, kRevCtlSize},
       {"rv_timer", kTimerBase, kTimerSize}, {"uart0", kUart0Base, kUart0Size},
-      {"rv_plic", kPlicBase, kPlicSize},    {"default", 0, 0},
+      {"rv_plic", kPlicBase, kPlicSize},    {"perf", RtosPerfDev::kBase, RtosPerfDev::kSize},
+      {"default", 0, 0},
   };
   Eg2Router bus("bus", windows);
-  Eg2SpikeCpu cpu("cpu", rtos_soc_core(), max_insns, spike_log);
+  Eg2SpikeCpu cpu("cpu", rtos_soc_core(slow_code), max_insns, spike_log);
   cpu.socket.bind(bus.socket);
 
   // The meta SRAM, starting all-zero (cheriot_mem_subsys.sv): no tag set, nothing revoked.
@@ -173,6 +190,7 @@ int rtos_soc_main(int argc, char **argv,
   eg2_model::Eg2Uart uart("t_uart0", block(kBlocks, std::size(kBlocks), "uart0"), kUart0Base);
   eg2_model::Eg2RvPlic plic("t_rv_plic", block(kBlocks, std::size(kBlocks), "rv_plic"), kPlicBase,
                             /*msip=*/false);
+  RtosPerfDev perf("t_perf");
   RtosDefaultRsp dflt("t_default");
   dflt.error_mode = rsp_error;
   bus.to(0).bind(sram.socket);
@@ -182,7 +200,8 @@ int rtos_soc_main(int argc, char **argv,
   bus.to(4).bind(clint.socket);
   bus.to(5).bind(uart.socket);
   bus.to(6).bind(plic.socket);
-  bus.to(7).bind(dflt.socket);
+  bus.to(7).bind(perf.socket);
+  bus.to(8).bind(dflt.socket);
   sys.memories["sram"] = &sram;
   sys.memories["code_ram"] = &code;
   // Instruction fetch reaches the two memories only (rtl/cheriot_rtos_xbar.sv; the debug memory
@@ -204,9 +223,34 @@ int rtos_soc_main(int argc, char **argv,
                     {kCodeBase, kCodeBase + kCodeSize, kMetaCodeTags, &code.data()}};
   layout.cheriot = [] { return true; };  // cheri_en_i tied 1
   layout.clk = kClk;
+  layout.cycles_per_cap = 2 * (1 + slow_data);  // --slow-memories
   memsys.configure(layout);
   memsys.no_invalidate = mutate == "tbre_no_inval";
   revctl.attach(&memsys);
+
+  // The perf device's DMA reaches what the core's data host reaches: here the two memories (its
+  // own FIFO it takes itself). The debug module's system bus access reaches the same two.
+  auto in_mem = [&sram, &code](uint32_t a) -> Eg2Memory * {
+    for (Eg2Memory *m : {&sram, &code}) {
+      if (!(a & 3) && a >= m->base() && uint64_t(a - m->base()) + 4 <= m->size()) return m;
+    }
+    return nullptr;
+  };
+  perf.dma_read = [in_mem](uint32_t a, uint32_t *w) {
+    Eg2Memory *m = in_mem(a);
+    if (m) std::memcpy(w, &m->data()[a - m->base()], 4);
+    return m != nullptr;
+  };
+  perf.dma_write = [in_mem](uint32_t a, uint32_t w) {
+    Eg2Memory *m = in_mem(a);
+    return m && m->write(a, reinterpret_cast<const uint8_t *>(&w), 4);
+  };
+  RtosDbgHost dbg;
+  dbg.mems = {&sram, &code};
+  dbg.gate_open = mutate == "dbg_lock_open";
+  monitor.dbg_host = [&dbg](uint32_t op, uint32_t slot, uint32_t value, uint32_t flag) {
+    dbg.serve(op, slot, value, flag);
+  };
 
   std::vector<Eg2Memory *> mems = {&sram, &code};
   if (!load_elf(boot, mems) || !load_elf(test, mems)) return 1;
@@ -222,6 +266,10 @@ int rtos_soc_main(int argc, char **argv,
   std::printf("eg2sim: board rtos_soc (Ibex CHERIoT RTOS test SoC), %zu windows, %s%s\n",
               windows.size(), test.c_str(),
               mutate.empty() ? "" : (" (mutation " + mutate + ")").c_str());
+  if (slow_code || slow_data) {
+    std::printf("eg2sim: slow memories %u:%u: the core at 1/%u of the clock, the TBRE %u cycles per "
+                "capability\n", slow_code, slow_data, 1 + slow_code, 2 * (1 + slow_data));
+  }
   auto t0 = std::chrono::steady_clock::now();
   sc_core::sc_start();
   double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();

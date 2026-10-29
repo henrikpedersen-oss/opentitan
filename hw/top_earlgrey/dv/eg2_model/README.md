@@ -24,7 +24,7 @@ eg2_top_verification).
 | `eg2_model_irqs.h` | Generated: every interrupt with its PLIC ID, every alert with its ID, the always-on modules (`scripts/gen_eg2_model_irqs.py`) |
 | `dpi/eg2_sysmodel.{h,cc}` | `libeg2sysmodel.so`: the platform without an instruction-set model, as a C (DPI-C) library for the chip bench (build mode `en_eg2_model`, `env/eg2_sysmodel.sv`): the bench drives the bus, gives time and the agents' inputs, pulls the output items |
 | `dpi/eg2_sysmodel_replay.cc` | Drives the library from an `eg2sim --spike-log` trace as the bench would, and checks the items against eg2sim's |
-| `rtos_soc/rtos_soc.h` | The second board, Ibex's CHERIoT RTOS test SoC: its address map, timer (CLINT), rev_ctl and the shim to the TBRE, revocation bitmap window, default responder, and the testbench's run monitor |
+| `rtos_soc/rtos_soc.h` | The second board, Ibex's CHERIoT RTOS test SoC: its address map, timer (CLINT), rev_ctl and the shim to the TBRE, revocation bitmap window, perf device and its DMA, default responder, the debug module's system bus access as the testbench drives it, and the testbench's run monitor |
 | `rtos_soc/rtos_soc.cc` | `eg2sim --board rtos_soc`: that platform, its image loading and its run |
 | `rtos_soc/rtos_soc_regs.h` | Generated: the board's register blocks from Sonata's hjson, and its interrupt table (`scripts/gen_rtos_soc_model_regs.py --sonata <sonata-system>`) |
 
@@ -129,10 +129,16 @@ CHERIoT RTOS suites, whose UART output is their verdict, judge the model on thei
 
 The core is MPACT-CHERIoT from Ibex's CHERIoT reset state (no RISC-V phase), with the SoC's tags
 and its load barrier; the UART, rv_plic and the TBRE are the models above, the timer, rev_ctl, the
-bitmap window and the default responder the board's own (`rtos_soc/rtos_soc.h`). `<dir>/uart0.log`
+bitmap window, the perf device (the performance tests' FIFO and DMA) and the default responder the
+board's own (`rtos_soc/rtos_soc.h`). The debug module is not modelled; its system bus access is,
+as the testbench drives it for the debug host test (a `DBGHOST REQ` line on UART0 is served: a bus
+write that leaves the capability tags as they are, refused while debug access is disabled). `<dir>/uart0.log`
 is UART0's raw bytes, as uartdpi writes them; the run ends where the testbench ends it, and prints
-its lines. `--mutate barrier_none|tbre_no_inval` breaks the load barrier or the TBRE's invalidation,
-to show that the revocation suite notices. Earl Grey 2 stays the default board (`--board earlgrey`).
+its lines. `--mutate barrier_none|tbre_no_inval|dbg_lock_open` breaks the load barrier, the TBRE's
+invalidation or the debug-access gate, to show that the suites notice. `--slow-memories
+<code>:<data>` stands in for the SoC's memory latencies in the revocation stress runs: the core at
+1 / (1 + code) of the clock and the TBRE at 2 * (1 + data) cycles a capability (the model cannot
+delay a memory access). Earl Grey 2 stays the default board (`--board earlgrey`).
 
 `eg2sim --otp-out <file>` writes the OTP at the end of the run as a `.24.vmem` image (16 data
 bits and 6 ECC bits per word), which a later run can load with `--otp`.

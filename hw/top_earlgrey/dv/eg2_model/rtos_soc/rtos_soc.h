@@ -13,8 +13,10 @@
 //   0x8000_a000  rev_ctl, in front of the subsystem's TBRE         RtosRevCtl -> Eg2CheriotMemSys
 //   0x8004_0000  timer (CLINT mtime / mtimecmp)                    RtosClint
 //   0x8010_0000  UART0                                             Eg2Uart
-//   0x8800_0000  rv_plic, 32 sources (1 revoker, 8 UART0)          Eg2RvPlic
+//   0x8050_0000  perf device and its DMA, 4 KiB (the perf tests)   RtosPerfDev
+//   0x8800_0000  rv_plic, 32 sources (1 revoker, 8 UART0, 30 perf) Eg2RvPlic
 //   anything else: the default responder (reads 0, writes dropped) RtosDefaultRsp
+//   the debug module's system bus access, as the testbench drives it  RtosDbgHost
 //
 // Reused where the hardware is the same: the UART (OpenTitan uart, the version Sonata vendors: the
 // register map Sonata's hjson gives, rtos_soc_regs.h, matches EG2's but for ALERT_TEST), rv_plic
@@ -38,7 +40,9 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -376,18 +380,181 @@ class RtosDefaultRsp : public sc_core::sc_module {
   }
 };
 
+// The perf device (rtl/cheriot_rtos_perf_dev.sv, whose header is its specification; the SoC's
+// performance tests, sw/tests/perf_test, not Sonata or OpenTitan): a stand-in for a hash engine's
+// message FIFO, and a DMA that can feed it. Its registers, word offsets in a 4 KiB window:
+//   0x00 FIFO       W: absorb a word (COUNT + 1, CHECKSUM = rotl(CHECKSUM, 1) ^ word)
+//   0x04 COUNT      R: words absorbed; W: clear COUNT and CHECKSUM
+//   0x08 CHECKSUM   R
+//   0x10 DMA_SRC    RW byte address, word aligned; increments
+//   0x14 DMA_DST    RW byte address, word aligned; increments unless DMA_CTRL.dst_fixed
+//   0x18 DMA_LEN    RW bytes, a multiple of 4
+//   0x1c DMA_CTRL   W: bit 0 start (ignored while busy), bit 1 dst_fixed
+//   0x20 DMA_STATUS R: bit 0 busy, bit 1 done, bit 2 error; W: 1 to bit 1 clears done
+//   0x24 DMA_WORDS  R: words moved by the last transfer
+//   0x28 DMA_CYCLES R: cycles the last transfer was busy, from start to done
+// The DMA moves one word at a time, a read then a write, through its own bus host (dma_read,
+// dma_write: the data host's devices). done stays set until cleared and is the interrupt (PLIC
+// source 30, the perf board's PerfDmaInterrupt). A bus error stops the transfer with done and
+// error set. Where the header is silent: an access that is not a whole word, or to an offset with
+// no register, answers an error (the RTL's register adapter takes any offset; the firmware makes
+// none). The model moves the whole transfer at its end, two cycles a word (the core sleeps on the
+// interrupt meanwhile); it does not time the memories, so DMA_CYCLES says nothing about the RTL's.
+class RtosPerfDev : public sc_core::sc_module {
+ public:
+  static constexpr uint32_t kBase = 0x80500000, kSize = 0x1000;
+  static constexpr uint16_t kPlicSource = 30;
+  tlm_utils::simple_target_socket<RtosPerfDev> socket;
+  std::function<bool(uint32_t addr, uint32_t *word)> dma_read;
+  std::function<bool(uint32_t addr, uint32_t word)> dma_write;
+
+  explicit RtosPerfDev(sc_core::sc_module_name n) : sc_core::sc_module(n), socket("socket") {
+    socket.register_b_transport(this, &RtosPerfDev::b_transport);
+  }
+
+ private:
+  void absorb(uint32_t w) {
+    ++count_;
+    checksum_ = ((checksum_ << 1) | (checksum_ >> 31)) ^ w;
+  }
+  void b_transport(tlm::tlm_generic_payload &t, sc_core::sc_time &) {
+    uint32_t off = uint32_t(t.get_address()), v = 0;
+    bool ok = t.get_data_length() == 4 && !(off & 3) && !t.get_byte_enable_ptr();
+    if (ok && t.is_read()) {
+      switch (off) {
+        case 0x04: v = count_; break;
+        case 0x08: v = checksum_; break;
+        case 0x10: v = src_; break;
+        case 0x14: v = dst_; break;
+        case 0x18: v = len_; break;
+        case 0x20: v = (busy_ ? 1u : 0u) | (done_ ? 2u : 0u) | (err_ ? 4u : 0u); break;
+        case 0x24: v = words_; break;
+        case 0x28: v = cycles_; break;
+        case 0x00: case 0x1c: break;
+        default: ok = false;
+      }
+      if (ok) std::memcpy(t.get_data_ptr(), &v, 4);
+    } else if (ok) {
+      std::memcpy(&v, t.get_data_ptr(), 4);
+      switch (off) {
+        case 0x00: absorb(v); break;
+        case 0x04: count_ = checksum_ = 0; break;
+        case 0x10: src_ = v; break;
+        case 0x14: dst_ = v; break;
+        case 0x18: len_ = v; break;
+        case 0x1c: if ((v & 1) && !busy_) start(v & 2); break;
+        case 0x20: if (v & 2) set_done(false); break;
+        case 0x08: case 0x24: case 0x28: break;
+        default: ok = false;
+      }
+    }
+    t.set_response_status(ok ? tlm::TLM_OK_RESPONSE : tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  }
+  void start(bool dst_fixed) {
+    Eg2System &sys = Eg2System::get();
+    busy_ = true;
+    err_ = false;
+    set_done(false);
+    uint32_t n = len_ / 4;
+    uint64_t c0 = sys.clock_cycles(kClk, sys.now_ps());
+    sys.at(sys.clock_time_of_cycle(kClk, c0 + 2 * uint64_t(n ? n : 1)), [this, n, dst_fixed] {
+      uint32_t moved = 0;
+      for (; moved < n; ++moved) {
+        uint32_t w = 0, d = dst_ + (dst_fixed ? 0 : 4 * moved);
+        if (!dma_read || !dma_read(src_ + 4 * moved, &w)) break;
+        if (d >= kBase && d < kBase + kSize) {
+          if (d - kBase != 0) break;  // only the FIFO takes a DMA write
+          absorb(w);
+        } else if (!dma_write || !dma_write(d, w)) {
+          break;
+        }
+      }
+      err_ = moved < n;
+      words_ = moved;
+      cycles_ = 2 * (n ? n : 1);
+      busy_ = false;
+      set_done(true);
+    });
+  }
+  void set_done(bool d) {
+    done_ = d;
+    Eg2System::get().set_plic_source(kPlicSource, d);
+  }
+  uint32_t count_ = 0, checksum_ = 0, src_ = 0, dst_ = 0, len_ = 0, words_ = 0, cycles_ = 0;
+  bool busy_ = false, done_ = false, err_ = false;
+};
+
+// The debug module's system bus access (SBA) as the testbench drives it for sw/tests/dbg_host_test
+// (dv/tb/cheriot_rtos_dbg_host.sv, whose header is its specification; the SoC has the debug
+// module but the model does not: this plays both). The firmware prints "DBGHOST REQ <op> <slot>
+// <value> <flag>" (RtosRunMonitor hands it here); then:
+//   op 1 (tag clear): debug access enabled; an SBA write of <value> to the word at <slot>.
+//   op 2 (locked):    debug access disabled; the same write, which the SoC's debug-access gate
+//                     (rtl/cheriot_rtos_dbg_gate.sv, OpenTitan rv_dm's tlul_lc_gate) refuses
+//                     with a bus error, sbcs.sberror = 2.
+// Then, with debug access enabled, an SBA read of <slot> and an SBA write of
+//   0xDB60_0000 | op << 12 | sberror << 8 | readback << 4 | 1
+// to <flag>, readback 1 if the read returned <value>. SBA reaches the SRAM and the code RAM
+// (rtl/cheriot_rtos_xbar.sv), any other address answers an error; and its writes do not pass the
+// memory subsystem's tag filter, so they leave the capability tags as they were (opentitan
+// hw/ip/cheriot_mem_sys/doc/theory_of_operation.md, "System Bus Access": debug accesses in CHERIoT
+// mode are to go through the core). gate_open is the SoC's dbg_lock_open mutation: the gate lets
+// every SBA access through.
+class RtosDbgHost {
+ public:
+  std::vector<Eg2Memory *> mems;
+  bool gate_open = false;
+
+  void serve(uint32_t op, uint32_t slot, uint32_t value, uint32_t flag) {
+    bool enabled = op == 1 || gate_open;
+    uint32_t sberror = enabled && write(slot, value) ? 0 : 2, back = 0;
+    bool readback = read(slot, &back) && back == value;
+    uint32_t done = 0xdb600000u | (op & 0xf) << 12 | sberror << 8 | (readback ? 1u : 0u) << 4 | 1u;
+    bool flagged = write(flag, done);
+    std::printf("eg2sim: [cheriot_rtos_dbg_host] op %u: SBA write of 0x%08x to 0x%08x with debug "
+                "access %s: sberror %u, readback %u; flag 0x%08x to 0x%08x%s\n",
+                op, value, slot, enabled ? "enabled" : "disabled", sberror, readback ? 1 : 0,
+                done, flag, flagged ? "" : " FAILED (not in a memory)");
+  }
+
+ private:
+  bool write(uint32_t a, uint32_t v) {
+    uint8_t b[4];
+    std::memcpy(b, &v, 4);
+    for (Eg2Memory *m : mems) {
+      if (!(a & 3) && m->write(a, b, 4)) return true;
+    }
+    return false;
+  }
+  bool read(uint32_t a, uint32_t *v) {
+    for (Eg2Memory *m : mems) {
+      if (!(a & 3) && a >= m->base() && uint64_t(a - m->base()) + 4 <= m->size()) {
+        std::memcpy(v, &m->data()[a - m->base()], 4);
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
 // The testbench's part (dv/tb/cheriot_rtos_tb.sv), on the bytes UART0 sends: uartdpi's log (every
 // byte, raw, to uart0.log) and its exit string (the RTOS's "Safe to exit simulator." and eight
 // bytes, platform-simulation_exit.hh), which ends the run; the line watch: a line with "Test failure
 // in test runner" or "One or more tests failed" ends the run 200 character times later (FIRMWARE
 // FAILURE), "All tests finished" ends it 1,000,000 cycles later unless a failure line comes first
 // (FIRMWARE DONE: a build without the exit string); no byte for idle_cycles after the first ends it
-// (UART IDLE); and max_cycles ends it (TIMEOUT). Its lines are the testbench's, so that
+// (UART IDLE); and max_cycles ends it (TIMEOUT). A line with "DBGHOST REQ <op> <slot> <value>
+// <flag>" (sw/tests/dbg_host_test) goes to dbg_host kDbgHostCycles later, as the testbench serves
+// it over the debug module (RtosDbgHost). Its lines are the testbench's, so that
 // cheriot_rtos_verdict.sh reads a model run as it reads a simulation.
 class RtosRunMonitor {
  public:
   uint64_t max_cycles = 4800000000ull, idle_cycles = 200000000ull;
   static constexpr uint64_t kDoneWaitCycles = 1000000, kFailWaitCycles = 43 * 200;
+  // The testbench's DMI and SBA accesses take a few thousand cycles; the firmware polls its flag
+  // once a scheduler tick.
+  static constexpr uint64_t kDbgHostCycles = 2000;
+  std::function<void(uint32_t op, uint32_t slot, uint32_t value, uint32_t flag)> dbg_host;
 
   RtosRunMonitor() : sys_(Eg2System::get()) {}
   ~RtosRunMonitor() { close(); }
@@ -431,6 +598,22 @@ class RtosRunMonitor {
           failing_ = true;
           line("FIRMWARE FAILURE at cycle " + std::to_string(cycle()) + ": \"" + cur_ + "\"");
           sys_.at(time_of(cycle() + kFailWaitCycles), [this] { end(false, "firmware failure"); });
+        }
+      }
+      size_t req = cur_.find("DBGHOST REQ ");
+      if (req != std::string::npos && dbg_host) {
+        const char *p = cur_.c_str() + req + 12;
+        char *e = nullptr;
+        uint32_t f[4] = {};
+        int n = 0;
+        for (; n < 4; ++n, p = e) {
+          f[n] = uint32_t(std::strtoul(p, &e, 0));
+          if (e == p) break;
+        }
+        if (n == 4) {
+          line("debug host request at cycle " + std::to_string(cycle()) + ": \"" +
+               cur_.substr(req) + "\"");
+          sys_.at(time_of(cycle() + kDbgHostCycles), [this, f] { dbg_host(f[0], f[1], f[2], f[3]); });
         }
       }
       if (cur_.find("All tests finished") != std::string::npos && !done_seen_) {
