@@ -61,6 +61,7 @@ class Eg2Hmac : public Eg2IpModel {
     len_lo_ = reg("MSG_LENGTH_LOWER");
     len_hi_ = reg("MSG_LENGTH_UPPER");
     for (unsigned i = 0; i < 32; ++i) key_[i] = reg(("KEY_" + std::to_string(i)).c_str());
+    wipe_ = reg("WIPE_SECRET");
     for (unsigned i = 0; i < 16; ++i) {
       digest_[i] = reg(("DIGEST_" + std::to_string(i)).c_str());
       set_modelled(digest_[i]);
@@ -119,6 +120,12 @@ class Eg2Hmac : public Eg2IpModel {
       } else if (!(value(cfg_) & 2) && (old & 2)) {
         for (unsigned i = 0; i < 16; ++i) set_value(digest_[i], 0);  // sha_en off clears it
       }
+    } else if (r == wipe_) {
+      // WIPE_SECRET: "the value is used to clear some internal variables such as the secret key,
+      // intermediate hash results, digest" (hmac.hjson): the key and the digest take the value.
+      uint32_t v = wdata & wmask;
+      for (unsigned i = 0; i < 32; ++i) set_value(key_[i], v);
+      for (unsigned i = 0; i < 16; ++i) set_value(digest_[i], v);
     } else if (r == cmd_) {
       uint32_t c = wdata & wmask & 0xf;
       // With a sideloaded key "CMD.hash_stop and CMD.hash_continue are rejected, and ERR_CODE
@@ -303,7 +310,8 @@ class Eg2Hmac : public Eg2IpModel {
     }
   }
 
-  uint16_t cfg_, cmd_, status_, err_code_, intr_, len_lo_, len_hi_, key_[32], digest_[16], fifo_;
+  uint16_t cfg_, cmd_, status_, err_code_, intr_, len_lo_, len_hi_, key_[32], digest_[16], fifo_,
+      wipe_;
   HASH_CTX ctx_{};
   bool busy_ = false, side_valid_ = false, forced_ = false;
   uint32_t cfg_saved_ = 0;
