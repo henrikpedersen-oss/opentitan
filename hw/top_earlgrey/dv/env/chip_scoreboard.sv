@@ -139,22 +139,20 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       end
       return 1;
     end
-    begin
-      bit predicted = super.predict_tl_err(item, channel, ral_name);
-      // A bench fault behind this monitor (chip_sw_eg2_rand_vseq::announce_fault, target "chip_tl"):
-      // the memory answers the corrupted request with an error that the monitor's clean copy of the
-      // request does not explain (2026-10-29, chip_cheriot_fi_meta: a data-integrity flip at
-      // cheriot_mem_sys.cored_tl_d_i). Consulted only for an error the prediction above misses.
-      if (!predicted && channel == DataChannel && item.d_error && eg2_inject_registry::in_use()) begin
-        string src = eg2_inject_registry::consult("chip_tl");
-        if (src != "") begin
-          `uvm_info(`gfn, $sformatf("TL-UL error at 0x%08x EXPECTED (injected by %s)", item.a_addr,
-                                    src), UVM_LOW)
-          predicted = 1'b1;
-        end
+    // A bench fault behind this monitor (chip_sw_eg2_rand_vseq::announce_fault, target "chip_tl"):
+    // the memory answers the corrupted request with an error that the monitor's clean copy of the
+    // request does not explain (2026-10-29, chip_cheriot_fi_meta: a data-integrity flip at
+    // cheriot_mem_sys.cored_tl_d_i). Decided before the base prediction, which compares d_error
+    // itself and reports the mismatch inside (48bd34e111 asked afterwards, too late).
+    if (channel == DataChannel && item.d_error && eg2_inject_registry::in_use()) begin
+      string src = eg2_inject_registry::consult("chip_tl");
+      if (src != "") begin
+        `uvm_info(`gfn, $sformatf("TL-UL error at 0x%08x EXPECTED (injected by %s)", item.a_addr,
+                                  src), UVM_LOW)
+        return 1'b1;
       end
-      return predicted;
     end
+    return super.predict_tl_err(item, channel, ral_name);
   endfunction
 
 endclass
