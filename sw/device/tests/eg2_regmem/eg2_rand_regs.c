@@ -41,6 +41,11 @@
 #include "sw/device/tests/eg2_regmem/eg2_regmem.h"
 #include "sw/device/tests/eg2_regmem/eg2_regmem_tables.h"
 
+// CHERIoT mode: the boot stage leaves the REQ_SOC_08 locks open for this test (eg2_cheriot_start.S
+// step 0b): it checks every register's reset value and access, the locks among them;
+// chip_sw_cheriot_periph_lock checks that boot closes them.
+const volatile uint8_t eg2_cheriot_boot_locks_open __attribute__((used)) = 1;
+
 EG2_TEST_CONFIG();
 
 #define RAND_REGS_PARAMS(X)                                 \

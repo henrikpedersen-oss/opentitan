@@ -76,7 +76,8 @@ typedef struct aes_gcm_context {
  * AES-GCM authenticated encryption as defined in NIST SP800-38D, algorithm 4.
  *
  * The key is represented as two shares which are XORed together to get the
- * real key value. The IV must be either 96 or 128 bits.
+ * real key value. The IV is any whole number of 32-bit words, at least one
+ * (SP 800-38D allows any length; 96 bits avoids a GHASH of the IV).
  *
  * If the key is a sideloaded key, it is the caller's responsibility to load
  * and clear it.
@@ -110,7 +111,8 @@ status_t aes_gcm_encrypt(const aes_key_t key,
  * AES-GCM authenticated decryption as defined in NIST SP800-38D, algorithm 5.
  *
  * The key is represented as two shares which are XORed together to get the
- * real key value. The IV must be either 96 or 128 bits.
+ * real key value. The IV is any whole number of 32-bit words, at least one
+ * (SP 800-38D allows any length; 96 bits avoids a GHASH of the IV).
  *
  * If the key is a sideloaded key, it is the caller's responsibility to load
  * and clear it.

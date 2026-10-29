@@ -80,6 +80,10 @@
 #error "chip_sw_sram_ctrl_execution_main_cheriot is a CHERIoT-mode test"
 #endif
 
+// CHERIoT mode: the boot stage leaves the REQ_SOC_08 locks open for this test (eg2_cheriot_start.S
+// step 0b): it checks sram_ctrl's EXEC and EXEC_REGWEN themselves.
+const volatile uint8_t eg2_cheriot_boot_locks_open __attribute__((used)) = 1;
+
 EG2_TEST_CONFIG();
 EG2_CHK_INJECT_FAIL_DEFINE;
 

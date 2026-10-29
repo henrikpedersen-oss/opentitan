@@ -31,6 +31,33 @@ static inline void init_nvm(uint32_t nvm_default_cfg) {
 }
 #endif
 
+#if defined(OPENTITAN_IS_EARLGREY)
+#include "hw/top/dt/sram_ctrl.h"
+#include "hw/top/sram_ctrl_regs.h"
+
+/**
+ * Earl Grey 2: the meta SRAM, which holds the capability tags and the revocation bitmap, zeroed
+ * through sram_ctrl_meta's hardware initialisation (SecZeroInit: a new scrambling key, then INIT),
+ * on every boot. CHERIoT mode needs defined tags from its first store, and a reset must not leave
+ * the previous software's tags behind (earlgrey-internal-tracker#1035, dv_tickets.md F11; the
+ * EG2 framework's CHERIoT start-up code does the same).
+ */
+static void init_meta_sram(void) {
+  const uintptr_t base = dt_sram_ctrl_primary_reg_block(kDtSramCtrlMeta);
+  uint32_t ctrl = bitfield_bit32_write(0, SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT, true);
+  ctrl = bitfield_bit32_write(ctrl, SRAM_CTRL_CTRL_INIT_BIT, true);
+  abs_mmio_write32(base + SRAM_CTRL_CTRL_REG_OFFSET, ctrl);
+  uint32_t status;
+  do {
+    status = abs_mmio_read32(base + SRAM_CTRL_STATUS_REG_OFFSET);
+    CHECK(!bitfield_bit32_read(status, SRAM_CTRL_STATUS_INIT_ERROR_BIT),
+          "meta SRAM initialisation failed");
+  } while (!bitfield_bit32_read(status, SRAM_CTRL_STATUS_INIT_DONE_BIT));
+}
+#else
+static inline void init_meta_sram(void) {}
+#endif
+
 #ifdef HAS_RETENTION_RAM
 #include "sw/device/silicon_creator/lib/drivers/retention_sram.h"
 #endif
@@ -200,6 +227,8 @@ bool rom_test_main(void) {
 
   // Initial sec_mmio, required by bootstrap and its dependencies.
   sec_mmio_init();
+
+  init_meta_sram();
 
   init_pinmux();
 

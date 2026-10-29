@@ -149,7 +149,8 @@ status_t csrng_testutils_kat_generate(
   }
 
   if (expected_output != NULL) {
-    TRY_CHECK(memcmp(got, expected_output, output_len) == 0);
+    // output_len counts 32-bit words; memcmp takes bytes.
+    TRY_CHECK(memcmp(got, expected_output, output_len * sizeof(uint32_t)) == 0);
   }
 
   // Check the internal state.

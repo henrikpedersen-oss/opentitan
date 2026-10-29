@@ -15,15 +15,14 @@
  *
  * Encryption: the ciphertext and the first Taglen bytes of the 128-bit tag equal the NIST values.
  * Decryption: the plaintext equals the NIST value and the tag authenticates; a vector the file
- * marks FAIL does not. The 96-bit IVs run; the files' 1024- and 8-bit IVs are reported not run:
- * the library takes 96 or 128 bits only (aes_gcm.h), where SP 800-38D allows any length. Decryption with a
- * tag of 104, 112 or 120 bits is skipped and reported: the library compares the tag in whole
- * 32-bit words, so it cannot verify a tag truncated inside a word (SP 800-38D allows them; a
- * finding for the crypto library owners, F52, as aes_kwp's short plaintexts in eg2_nist_aes_kw.c).
+ * marks FAIL does not. The 96- and 1024-bit IVs run; the files' 8-bit IVs are reported not run:
+ * the library takes IVs in whole 32-bit words (aes_gcm.h), where SP 800-38D allows any length.
+ * Decryption with a tag of 104, 112 or 120 bits is skipped and reported: the library compares the
+ * tag in whole 32-bit words, so it cannot verify a tag truncated inside a word (SP 800-38D allows
+ * them). Both limits are the library's interface (word buffers), a question for the crypto library
+ * owners (dv_tickets.md F52), as aes_kwp's short plaintexts in eg2_nist_aes_kw.c.
  *
- * `model_gaps` 1 (eg2sim only) skips every vector: the crypto library's AES driver waits for
- * rv_core_ibex's RND_STATUS.RND_DATA_VALID, which the SystemC model never sets. With
- * EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail.
+ * With EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail.
  */
 
 #include "sw/device/lib/base/hardened.h"
@@ -46,16 +45,13 @@ EG2_TEST_PARAMS(NIST_AES_GCM_PARAMS);
 
 enum {
   kMaxText = 64,     // bytes: the longest plaintext in the files is 408 bits (51 bytes)
-  kMaxIvWords = 4,  // 96 or 128 bits: all the library takes
+  kMaxIvWords = 32,  // 1024 bits: the longest IV in the files (the library takes whole words)
   kTagWords = 4,
 };
 
 static const uint32_t kZeroShare[8] = {0};
 
 static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
-  if (EG2_PARAM(model_gaps)) {
-    return eg2_nist_skip(v, "model_gap: rv_core_ibex RND_STATUS never valid in the SystemC model");
-  }
   bool dec = v->flags & kEg2NistDecrypt, must_fail = v->flags & kEg2NistFail;
   uint32_t klen = eg2_nist_len(v, kEg2NistKey), ivlen = eg2_nist_len(v, kEg2NistIv);
   uint32_t n = eg2_nist_len(v, kEg2NistIn), alen = eg2_nist_len(v, kEg2NistAad);
@@ -142,7 +138,7 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 bool eg2_test_main(void) {
   // The crypto library's AES driver takes masks and random orders from rv_core_ibex's RND (as in
   // eg2_nist_aes_kw.c): EDN0 in auto mode first, or wait_rnd_valid can spin for ever.
-  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+  if (!status_ok(entropy_testutils_auto_mode_init())) {
     eg2_puts("NIST aes_gcm: entropy complex not in auto mode\r\n");
     return false;
   }

@@ -241,6 +241,7 @@ cc_library(
             "//hw/top:otp_ctrl_c_regs",
             "//hw/top/dt:otp_ctrl",
         ],
+        "sram_ctrl": ["//hw/top/dt:sram_ctrl"],
         "flash_ctrl": ["//sw/device/lib/testing:nvm_testutils"],
         "rram_ctrl": ["//sw/device/lib/testing:nvm_testutils"],
     }),

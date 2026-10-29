@@ -63,6 +63,10 @@
 #include "sw/device/tests/eg2_cib/eg2_isa_decode.h"
 #include "sw/device/tests/eg2_mem/eg2_chk.h"
 
+// CHERIoT mode: the boot stage enables execution from main and sec SRAM before it locks sram_ctrl
+// (eg2_cheriot_start.S step 0b, REQ_SOC_08); this test runs code there.
+const volatile uint8_t eg2_cheriot_boot_sram_exec __attribute__((used)) = 1;
+
 EG2_TEST_CONFIG();
 EG2_CHK_INJECT_FAIL_DEFINE;
 

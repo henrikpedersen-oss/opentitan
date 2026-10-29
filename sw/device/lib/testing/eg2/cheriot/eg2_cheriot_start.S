@@ -7,6 +7,7 @@
  * CHERIoT mode locked and purecap C ready to run (EG2 spec REQ_STE_02).
  *
  *  0. Zero the meta SRAM (tags, revocation bitmap) through sram_ctrl_meta's hardware init.
+ *     Then close the software locks of the blocks REQ_SOC_08 names (step 0b).
  *  1. Switch to CHERIoT mode and lock it, as `cheriot_smoketest.S` does: the trap vector armed
  *     first, CHERIOT_ENA read back before the once-only lock. Any trap from here on ends the
  *     test with `CTRAP <mcause> <mtval> <mepc>` and the failure word in the DV status window.
@@ -27,6 +28,8 @@
  * from it. Only x0-x15 are used, as CHERIoT mode has no others.
  */
 
+#include "hw/top/lc_ctrl_regs.h"       // Generated.
+#include "hw/top/otp_ctrl_regs.h"      // Generated.
 #include "hw/top/rv_core_ibex_regs.h"  // Generated.
 #include "hw/top/sram_ctrl_regs.h"     // Generated.
 #include "hw/top/top_memory.h"         // Generated.
@@ -175,6 +178,35 @@ _ottf_start:
   andi   t2, t1, (1 << SRAM_CTRL_STATUS_INIT_DONE_BIT)
   beqz   t2, .L_meta_init_wait
 
+  // 0b. The registers the ePMP guarded in ePMP mode, locked before the switch (REQ_SOC_08; RFC
+  // CHERIoT in OpenTitan p2 "end of the boot stage"): every software lock (REGWEN, rw0c) of
+  // otp_ctrl, lc_ctrl, the four sram_ctrl register blocks and rv_core_ibex.cfg, closed by writing
+  // 0. ast and cheriot_mem_sys.regs have none (dv_tickets.md F29). A test that must reconfigure
+  // one of those blocks in CHERIoT mode defines `eg2_cheriot_boot_locks_open` (a weak reference
+  // here: 0 when no object defines it) and says why next to it.
+  // Execution from main and sec SRAM is the boot stage's to decide before it locks: an image that
+  // runs code there defines `eg2_cheriot_boot_sram_exec`, and sram_ctrl's EXEC is set first.
+  .weak  eg2_cheriot_boot_sram_exec
+  la_abs t0, eg2_cheriot_boot_sram_exec
+  beqz   t0, .L_sram_exec_done
+  addi   t1, x0, MULTIBIT_ASM_BOOL4_TRUE
+  li     t0, TOP_SRAM_CTRL_MAIN_REGS_BASE_ADDR
+  sw     t1, SRAM_CTRL_EXEC_REG_OFFSET(t0)
+  li     t0, TOP_SRAM_CTRL_SEC_REGS_BASE_ADDR
+  sw     t1, SRAM_CTRL_EXEC_REG_OFFSET(t0)
+.L_sram_exec_done:
+  .weak  eg2_cheriot_boot_locks_open
+  la_abs t0, eg2_cheriot_boot_locks_open
+  bnez   t0, .L_locks_done
+  la_abs t0, .L_boot_locks
+  la_abs t2, .L_boot_locks_end
+.L_lock_next:
+  lw     t1, 0(t0)
+  sw     x0, 0(t1)
+  addi   t0, t0, 4
+  bne    t0, t2, .L_lock_next
+.L_locks_done:
+
   // 1. The mode switch, with integer addresses while still in RISC-V mode.
   addi   t0, x0, MULTIBIT_ASM_BOOL4_TRUE
   sw     t0, RV_CORE_IBEX_CHERIOT_ENA_REG_OFFSET(s1)
@@ -261,3 +293,23 @@ _ottf_start:
 
   .option pop
   .size _ottf_start, . - _ottf_start
+
+// The software locks step 0b closes: each the address of a REGWEN. The same 16 that
+// chip_sw_cheriot_periph_lock checks (eg2_lock_policy.c).
+  .section .rodata.eg2_boot_locks, "a", @progbits
+  .balign 4
+.L_boot_locks:
+  .word TOP_OTP_CTRL_CORE_BASE_ADDR + OTP_CTRL_CHECK_TRIGGER_REGWEN_REG_OFFSET
+  .word TOP_OTP_CTRL_CORE_BASE_ADDR + OTP_CTRL_CHECK_REGWEN_REG_OFFSET
+  .word TOP_LC_CTRL_REGS_BASE_ADDR + LC_CTRL_CLAIM_TRANSITION_IF_REGWEN_REG_OFFSET
+  .irp base, TOP_SRAM_CTRL_MAIN_REGS_BASE_ADDR, TOP_SRAM_CTRL_SEC_REGS_BASE_ADDR, \
+             TOP_SRAM_CTRL_RET_REGS_BASE_ADDR, TOP_SRAM_CTRL_META_REGS_BASE_ADDR
+  .word \base + SRAM_CTRL_EXEC_REGWEN_REG_OFFSET
+  .word \base + SRAM_CTRL_CTRL_REGWEN_REG_OFFSET
+  .endr
+  .word TOP_RV_CORE_IBEX_CFG_BASE_ADDR + RV_CORE_IBEX_IBUS_REGWEN_0_REG_OFFSET
+  .word TOP_RV_CORE_IBEX_CFG_BASE_ADDR + RV_CORE_IBEX_IBUS_REGWEN_1_REG_OFFSET
+  .word TOP_RV_CORE_IBEX_CFG_BASE_ADDR + RV_CORE_IBEX_DBUS_REGWEN_0_REG_OFFSET
+  .word TOP_RV_CORE_IBEX_CFG_BASE_ADDR + RV_CORE_IBEX_DBUS_REGWEN_1_REG_OFFSET
+  .word TOP_RV_CORE_IBEX_CFG_BASE_ADDR + RV_CORE_IBEX_MCOUNTEREN_WRITABLE_REGWEN_REG_OFFSET
+.L_boot_locks_end:

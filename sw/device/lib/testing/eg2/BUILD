@@ -61,6 +61,8 @@ cc_library(
     target_compatible_with = ["//toolchain:isa_cheriot"],
     deps = [
         ":status",
+        "//hw/top:lc_ctrl_c_regs",
+        "//hw/top:otp_ctrl_c_regs",
         "//hw/top:rv_core_ibex_c_regs",
         "//hw/top:sram_ctrl_c_regs",
         "//hw/top:top_lib",

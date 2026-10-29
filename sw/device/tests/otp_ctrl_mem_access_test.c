@@ -33,6 +33,11 @@ static const uint32_t kTestData[] = {
     kLastWriteValue,
 };
 
+// EG2, CHERIoT mode: the boot stage leaves the REQ_SOC_08 locks open for this test
+// (sw/device/lib/testing/eg2/cheriot/eg2_cheriot_start.S step 0b): it configures otp_ctrl's
+// checks, which a compliant boot locks before the switch.
+const volatile uint8_t eg2_cheriot_boot_locks_open __attribute__((used)) = 1;
+
 OTTF_DEFINE_TEST_CONFIG();
 
 typedef struct partition_data {
