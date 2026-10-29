@@ -10,8 +10,8 @@
 //              little-endian counter that only a power-on reset clears. Each seed is distinct and a
 //              run is reproducible. Health tests always pass. Routed to firmware
 //              (CONF.ENTROPY_DATA_REG_ENABLE and ENTROPY_CONTROL.ES_ROUTE true) the seeds are read
-//              through ENTROPY_DATA; otherwise they go to csrng. Firmware override (FW_OV_*) is not
-//              modelled.
+//              through ENTROPY_DATA; otherwise they go to csrng. Firmware override: insert (FW_OV_WR_DATA
+//              through the SHA3 conditioner); observe (FW_OV_RD_DATA) is not modelled.
 // csrng        NIST SP 800-90A CTR_DRBG, AES-256, no derivation function, seedlen 384, as the
 //              theory of operation specifies, with the block cipher from hw/ip/aes/model/aes.c.
 //              Three instances: edn0 (0), edn1 (1), software (2). Byte order as in the programmer's
@@ -134,6 +134,9 @@ class Eg2EntropySrc : public Eg2IpModel {
     main_sm_state_ = reg("MAIN_SM_STATE");
     debug_status_ = reg("DEBUG_STATUS");
     health_test_windows_ = reg("HEALTH_TEST_WINDOWS");
+    fw_ov_control_ = reg("FW_OV_CONTROL");
+    fw_ov_sha3_start_ = reg("FW_OV_SHA3_START");
+    fw_ov_wr_data_ = reg("FW_OV_WR_DATA");
     set_modelled(entropy_data_);
     set_modelled(main_sm_state_);
     set_modelled(debug_status_);
@@ -160,11 +163,39 @@ class Eg2EntropySrc : public Eg2IpModel {
     if (c == Eg2ResetCause::kPor) counter_ = 0;
     startup_seed_ = true;
     fw_words_.clear();
+    sha3_started_ = false;
+    inserted_.clear();
     update();
   }
 
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t, uint32_t) override {
+    // Firmware override, insert (theory_of_operation.md "Firmware Override"): with FW_OV_CONTROL
+    // in override and insert mode, FW_OV_WR_DATA words go into the SHA3 conditioner while
+    // FW_OV_SHA3_START is MuBi4True; setting it MuBi4False finishes SHA3-384 and the 384-bit
+    // result leaves as a seed would (also after a start and stop with nothing written).
+    if (r == fw_ov_wr_data_ && inserting() && sha3_started_) {
+      uint32_t w = value(fw_ov_wr_data_);
+      for (int i = 0; i < 4; ++i) inserted_.push_back(uint8_t(w >> (8 * i)));
+    }
+    if (r == fw_ov_sha3_start_) {
+      bool start = mubi4_true(value(fw_ov_sha3_start_));
+      if (start && !sha3_started_) inserted_.clear();
+      if (!start && sha3_started_) {
+        digestpp::sha3 h(384);
+        h.absorb(inserted_.data(), inserted_.size());
+        uint8_t seed[48];
+        h.digest(seed, 48);
+        // Word i is digest bytes 4i to 4i+3, little-endian (the known answer of
+        // entropy_src_kat_impl.c fixes the order).
+        for (unsigned i = 0; i < 12; ++i) {
+          fw_words_.push_back(uint32_t(seed[4 * i]) | uint32_t(seed[4 * i + 1]) << 8 |
+                              uint32_t(seed[4 * i + 2]) << 16 | uint32_t(seed[4 * i + 3]) << 24);
+        }
+        inserted_.clear();
+      }
+      sha3_started_ = start;
+    }
     if (r == module_enable_ && !enabled()) fw_words_.clear();
     if (r == module_enable_ && !enabled()) startup_seed_ = true;
     update();
@@ -216,8 +247,12 @@ class Eg2EntropySrc : public Eg2IpModel {
       std::memcpy(seed, raw.data(), 48);
     }
   }
+  bool inserting() const {
+    uint32_t c = value(fw_ov_control_);
+    return mubi4_true(c & 0xf) && mubi4_true((c >> 4) & 0xf);
+  }
   void refill() {
-    if (!enabled() || !to_firmware() || !fw_words_.empty()) return;
+    if (!enabled() || !to_firmware() || !fw_words_.empty() || inserting()) return;
     uint8_t seed[48];
     next_seed(seed);
     for (unsigned i = 0; i < 12; ++i) fw_words_.push_back(nist_word(seed, 48, i));
@@ -231,7 +266,9 @@ class Eg2EntropySrc : public Eg2IpModel {
     if (!fw_words_.empty()) set_intr("es_entropy_valid");
   }
   uint16_t module_enable_, conf_, entropy_control_, entropy_data_, main_sm_state_, debug_status_;
-  uint16_t health_test_windows_;
+  uint16_t health_test_windows_, fw_ov_control_, fw_ov_sha3_start_, fw_ov_wr_data_;
+  bool sha3_started_ = false;
+  std::vector<uint8_t> inserted_;
   bool startup_seed_ = true;
   uint64_t counter_ = 0;
   std::deque<uint32_t> fw_words_;
