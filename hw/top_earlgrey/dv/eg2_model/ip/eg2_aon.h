@@ -27,7 +27,9 @@ namespace eg2_model {
 
 // rstmgr: RESET_REQ written with MuBi4True is a software reset. RESET_INFO records every reset's
 // cause (POR, LOW_POWER_EXIT, SW_RESET, HW_REQ) and keeps it through resets until software clears
-// it; a power-on reset sets POR alone. The per-IP software resets (SW_RST_CTRL_N) are storage only.
+// it; a power-on reset sets POR alone. A reset requested while the chip is in low power records
+// LOW_POWER_EXIT with its own cause (theory_of_operation.md "Reset Information"). The per-IP
+// software resets (SW_RST_CTRL_N) are storage only.
 //
 // Crash dump (doc/theory_of_operation.md "Crash Dump Information"): with ALERT_INFO_CTRL.EN set, a
 // reset captures the alert handler's crash dump (its alert_dump input, Eg2System::alert_crashdump);
@@ -75,6 +77,7 @@ class Eg2Rstmgr : public Eg2IpModel {
       case Eg2ResetCause::kNdm: bit = 1u << (3 + 4); break;
       default: break;
     }
+    if (c != Eg2ResetCause::kLowPowerExit && sys_.reset_in_low_power()) bit |= 1u << 1;
     set_value(info_, value(info_) | bit);
     set_value(req_, kMuBi4False);
   }
@@ -124,9 +127,11 @@ class Eg2Pwrmgr : public Eg2IpModel {
     sys_.esc_receiver(3, [this](bool level) {
       if (!level) return;
       set_value(esc_status_, 1);
+      bool asleep = low_power_;
       exit_low_power();
       sys_.note("pwrmgr: escalation reset request (esc_rst)");
-      sys_.request_reset(Eg2ResetCause::kEscalation, "alert escalation reset (pwrmgr esc_rst)");
+      sys_.request_reset(Eg2ResetCause::kEscalation, "alert escalation reset (pwrmgr esc_rst)", -1,
+                         asleep);
     });
     control_ = reg("CONTROL");
     cdc_ = reg("CFG_CDC_SYNC");
@@ -164,9 +169,10 @@ class Eg2Pwrmgr : public Eg2IpModel {
   void reset_request(unsigned src) {
     if (!((value(reset_en_) >> src) & 1)) return;
     set_value(reset_status_, value(reset_status_) | (1u << src));
+    bool asleep = low_power_;
     exit_low_power();
     sys_.request_reset(Eg2ResetCause::kHwRequest,
-                       "peripheral reset request " + std::to_string(src), int(src));
+                       "peripheral reset request " + std::to_string(src), int(src), asleep);
   }
 
   bool low_power() const { return low_power_; }

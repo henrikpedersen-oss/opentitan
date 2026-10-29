@@ -229,16 +229,22 @@ class Eg2System {
   const std::vector<std::string> &faults_applied() const { return faults_applied_; }
 
   // ---- Reset and low power ----
-  // hw_req: for kHwRequest, the request's index in rstmgr's RESET_INFO.HW_REQ.
-  void request_reset(Eg2ResetCause cause, const std::string &why, int hw_req = -1) {
+  // hw_req: for kHwRequest, the request's index in rstmgr's RESET_INFO.HW_REQ. in_low_power: the
+  // request came while the chip was in low power, so rstmgr records the low-power exit too (rstmgr
+  // theory_of_operation.md "Reset Information": all allowed causes are recorded, "a security
+  // escalation during low power transition for example").
+  void request_reset(Eg2ResetCause cause, const std::string &why, int hw_req = -1,
+                     bool in_low_power = false) {
     if (!reset_pending_) {
       reset_pending_ = true;
       reset_cause_ = cause;
       reset_why_ = why;
       reset_hw_req_ = hw_req;
+      reset_in_low_power_ = in_low_power;
     }
   }
   int reset_hw_req() const { return reset_hw_req_; }
+  bool reset_in_low_power() const { return reset_in_low_power_; }
   bool reset_pending() const { return reset_pending_; }
   Eg2ResetCause reset_cause() const { return reset_cause_; }
   const std::string &reset_why() const { return reset_why_; }
@@ -372,6 +378,7 @@ class Eg2System {
   bool reset_pending_ = false;
   Eg2ResetCause reset_cause_ = Eg2ResetCause::kPor;
   int reset_hw_req_ = -1;
+  bool reset_in_low_power_ = false;
   std::string reset_why_;
   bool finished_ = false, passed_ = false;
   std::string verdict_;

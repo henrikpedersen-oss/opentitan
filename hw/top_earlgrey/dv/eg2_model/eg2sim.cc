@@ -257,6 +257,89 @@ bool save_otp(const std::string &path, std::vector<Eg2RegBlock *> &blocks) {
   return true;
 }
 
+// The initial bytes of a symbol of a 32-bit ELF (its value in the file's loadable segments): false
+// if there is no such symbol or its bytes are not in the file.
+bool elf_symbol_bytes(const std::string &path, const std::string &symbol, size_t len,
+                      std::vector<uint8_t> *out) {
+  std::ifstream f(path, std::ios::binary);
+  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
+  auto rd = [&](size_t off, unsigned n) {
+    uint32_t v = 0;
+    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
+    return v;
+  };
+  if (elf.size() < 52) return false;
+  uint32_t shoff = rd(32, 4), shentsize = rd(46, 2), shnum = rd(48, 2), addr = 0;
+  bool found = false;
+  for (uint32_t i = 0; i < shnum && !found; ++i) {
+    size_t sh = shoff + size_t(i) * shentsize;
+    if (rd(sh + 4, 4) != 2) continue;  // SHT_SYMTAB
+    uint32_t off = rd(sh + 16, 4), size = rd(sh + 20, 4), link = rd(sh + 24, 4);
+    uint32_t stroff = rd(shoff + size_t(link) * shentsize + 16, 4);
+    for (uint32_t e = 0; e + 16 <= size && !found; e += 16) {
+      uint32_t name = rd(off + e, 4);
+      if (name == 0 || stroff + name >= elf.size()) continue;
+      const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
+      if (symbol == std::string(n, strnlen(n, elf.size() - (stroff + name)))) {
+        addr = rd(off + e + 4, 4);
+        found = true;
+      }
+    }
+  }
+  if (!found) return false;
+  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
+  for (uint32_t i = 0; i < phnum; ++i) {
+    size_t ph = phoff + size_t(i) * phentsize;
+    uint32_t type = rd(ph, 4), offset = rd(ph + 4, 4), va = rd(ph + 8, 4), filesz = rd(ph + 16, 4);
+    if (type != 1 || addr < va || addr - va + len > filesz) continue;
+    size_t at = size_t(offset) + (addr - va);
+    if (at + len > elf.size()) return false;
+    out->assign(elf.begin() + at, elf.begin() + at + len);
+    return true;
+  }
+  return false;
+}
+
+// Stimulus values may name bytes the bench takes from the test image, as the chip bench's
+// sequences do (they write data into the image with sw_symbol_backdoor_overwrite and then send the
+// same bytes): {sym:<name>:<length>} is the symbol's initial bytes, {rep:<hex byte>:<count>} a byte
+// repeated. They become C escapes in a UART's text (uart<N>.*) and hex bytes everywhere else
+// (ip/eg2_periph_stim.h). False, with a message, if a symbol is missing.
+bool expand_stim(const std::string &test) {
+  for (auto &kv : eg2_model::Eg2PeriphStim::all()) {
+    std::string &v = kv.second;
+    std::string out;
+    bool text = kv.first.rfind("uart", 0) == 0;
+    size_t pos = 0;
+    while (pos < v.size()) {
+      size_t open = v.find('{', pos), close = v.find('}', open);
+      if (open == std::string::npos || close == std::string::npos) break;
+      out += v.substr(pos, open - pos);
+      std::string tok = v.substr(open + 1, close - open - 1);
+      size_t c1 = tok.find(':'), c2 = tok.rfind(':');
+      std::vector<uint8_t> bytes;
+      if (c1 != std::string::npos && c2 > c1) {
+        std::string kind = tok.substr(0, c1), arg = tok.substr(c1 + 1, c2 - c1 - 1);
+        size_t n = std::stoul(tok.substr(c2 + 1), nullptr, 0);
+        if (kind == "rep") bytes.assign(n, uint8_t(std::stoul(arg, nullptr, 16)));
+        if (kind == "sym" && !elf_symbol_bytes(test, arg, n, &bytes)) {
+          std::fprintf(stderr, "eg2sim: --stim %s: the test image has no %zu bytes at %s\n",
+                       kv.first.c_str(), n, arg.c_str());
+          return false;
+        }
+      }
+      char hex[8];
+      for (uint8_t b : bytes) {
+        std::snprintf(hex, sizeof hex, text ? "\\x%02x" : "%02x", b);
+        out += hex;
+      }
+      pos = close + 1;
+    }
+    v = out + v.substr(pos);
+  }
+  return true;
+}
+
 // The load address of run-time address vaddr in a 32-bit ELF: a symbol of an initialised data
 // section (.data) lives at its run-time address only after the start-up code has copied it from
 // its load image, so a write before the run must go to the load image (p_paddr). vaddr unchanged if
@@ -384,6 +467,8 @@ int sc_main(int argc, char **argv) {
     std::fprintf(stderr, "eg2sim: --cheriot-iss %s: mpact or none\n", cheriot_iss.c_str());
     return 1;
   }
+  // Before the peripheral models read their stimulus.
+  if (!expand_stim(test)) return 1;
 
   std::vector<Eg2Router::Window> windows;
   for (const Window &w : kWindows) windows.push_back({w.name, w.base, w.size});

@@ -21,6 +21,10 @@
 //   i2c<N>.nack=<addr>     the 7-bit address the I2C peer does not acknowledge
 //   spi_host<N>.rx=<hex>   bytes the SPI peer returns on read segments (default 0xff, an idle bus)
 //   spi_host<N>.peer=echo  the SPI peer answers with the bytes it was sent, in order
+//
+// Byte values may take bytes from the test image, as the chip bench's sequences send data they
+// wrote into it: {sym:<symbol>:<length>} is the symbol's initial bytes, {rep:<hex byte>:<count>} a
+// byte repeated (eg2sim.cc expand_stim; for example uart0.rx={sym:kExpUartRxData:64}{rep:55:65}).
 
 #ifndef EG2_MODEL_IP_EG2_PERIPH_STIM_H_
 #define EG2_MODEL_IP_EG2_PERIPH_STIM_H_
