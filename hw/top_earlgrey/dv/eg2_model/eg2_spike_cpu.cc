@@ -20,6 +20,29 @@ constexpr uint64_t kQuantum = 1000;
 constexpr uint32_t kWfi = 0x10500073;
 // Model events a sleeping core sits through before the run is declared stuck.
 constexpr uint64_t kMaxSleepEvents = 1000000;
+
+// Ibex performance_counters.rst, "Controlling the counters from software": mcountinhibit bits 0
+// and 2 control mcycle and minstret, and bit X controls each implemented mhpmcounterX.
+// This Spike has no mcountinhibit of its own, so the bits read back as Ibex documents them but
+// setting one does not stop its counter in the model.
+class IbexMcountinhibitCsr : public csr_t {
+ public:
+  IbexMcountinhibitCsr(processor_t *processor, uint32_t mhpm_counter_num)
+      : csr_t(processor, CSR_MCOUNTINHIBIT),
+        mask_(0x5 | (((uint32_t{1} << mhpm_counter_num) - 1) << 3)) {}
+
+  reg_t read() const noexcept override { return value_; }
+
+ protected:
+  bool unlogged_write(reg_t value) noexcept override {
+    value_ = value & mask_;
+    return true;
+  }
+
+ private:
+  const uint32_t mask_;
+  uint32_t value_ = 0;
+};
 }  // namespace
 
 Eg2SpikeCpu::Eg2SpikeCpu(sc_core::sc_module_name name, const Eg2CoreConfig &cfg,
@@ -176,6 +199,8 @@ void Eg2SpikeCpu::ibex_reset() {
   s->mtvec->write(cfg_.boot_addr | 1);
   s->csrmap[CSR_MARCHID] =
       std::make_shared<const_csr_t>(processor_.get(), CSR_MARCHID, kIbexMarchid);
+  s->csrmap[CSR_MCOUNTINHIBIT] =
+      std::make_shared<IbexMcountinhibitCsr>(processor_.get(), cfg_.mhpm_counter_num);
   uint32_t misa = processor_->get_csr(CSR_MISA);
   if (cfg_.isa.find("Zb") != std::string::npos) misa |= 1 << 1;
   s->csrmap[CSR_MISA] = std::make_shared<const_csr_t>(processor_.get(), CSR_MISA, misa);
