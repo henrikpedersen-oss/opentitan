@@ -99,8 +99,6 @@ create_power_switch SW_MAIN \
 # whose OFF encoding needs 1 (chip_earlgrey_asic_nonzero_upf_vals.tcl).
 ################################################################################################
 
-source [file join [file dirname [info script]] chip_earlgrey_asic_nonzero_upf_vals.tcl]
-
 set_isolation ISO_MAIN_OUT_0 \
   -domain PD_MAIN \
   -applies_to outputs \
@@ -110,19 +108,24 @@ set_isolation ISO_MAIN_OUT_0 \
   -isolation_sense high \
   -location parent
 
-# The more specific strategy wins for these sinks (IEEE 1801 precedence of -elements).
-# ASSUMPTION: these are pins inside PD_AON (where OpenTitan's partner flow named them), not the
-# partition's boundary ports; if a tool accepts only boundary ports, name the matching
-# earlgrey_pd_aon input ports instead.
+# The life-cycle enables whose OFF encoding is not all zeros (lc_tx_t Off = 4'b1010:
+# chip_earlgrey_asic_nonzero_upf_vals.tcl, which names the always-on sinks of bits 3 and 1) are
+# clamped to 1 on those bits, at the main partition's output ports (an isolation element must be a
+# port of the domain's boundary: Xcelium dropped the strategy on the sink pins, *SE,NOISELE).
+# Clamping at the port covers every always-on consumer (pinmux, aon_timer and sram_ctrl_ret, which
+# also takes lc_escalate_en). The more specific strategy wins over ISO_MAIN_OUT_0 for these bits.
 set_isolation ISO_LC_OFF_CLAMP1 \
-  -domain PD_AON \
-  -elements $UPF_ISO_LC_OFF_PORTS_CLAMP1 \
-  -applies_to inputs \
+  -domain PD_MAIN \
+  -elements {top_earlgrey/earlgrey_pd_main/lc_ctrl_lc_escalate_en_o[3] \
+             top_earlgrey/earlgrey_pd_main/lc_ctrl_lc_escalate_en_o[1] \
+             top_earlgrey/earlgrey_pd_main/lc_ctrl_lc_check_byp_en_o[3] \
+             top_earlgrey/earlgrey_pd_main/lc_ctrl_lc_check_byp_en_o[1]} \
+  -applies_to outputs \
   -clamp_value 1 \
   -isolation_supply_set SS_AON \
   -isolation_signal top_earlgrey/earlgrey_pd_aon/pwrmgr_pwr_ast_req.pwr_clamp_env \
   -isolation_sense high \
-  -location self
+  -location parent
 
 # Inputs of the main partition driven from the always-on domain need no isolation: the always-on
 # domain is on whenever main is.
