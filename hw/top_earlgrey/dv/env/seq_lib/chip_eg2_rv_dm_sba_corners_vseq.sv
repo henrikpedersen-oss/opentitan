@@ -306,13 +306,24 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     cheriot = rvfi.cheriot_ena === 1'b1;
     expect_bus_err("bus error (in-window hole)", 1'b0, HoleAddr);
     expect_bus_err("unmapped address", 1'b0, GapAddr);
-    case_integrity();
     case_busy();
     case_autoinc();
     case_sizes();
     case_race();
     case_revbm_tag();
     case_mem_sys();
+    // Last: one integrity error on an SBA response stays in rv_dm's TL-UL host until rv_dm is
+    // reset (tlul_adapter_host intg_err_o "is permanent once detected"; rv_dm's documentation does
+    // not say so: GAP-RTLREQ-9), so every later SBA access ends with sberror 7. A power-on reset
+    // clears it, so that the done word can be written over SBA after the software's next boot.
+    case_integrity();
+    begin
+      int unsigned b0 = boots, r0 = readies;
+      assert_por_reset();
+      wait_boot_ready(b0, r0, ok);
+      if (!ok) return;
+      cfg.debugger.set_dmactive(1);
+    end
     finish(32'h14);
   endtask
 
