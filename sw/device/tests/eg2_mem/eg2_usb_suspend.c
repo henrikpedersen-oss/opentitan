@@ -12,16 +12,23 @@
  *      (usbdev theory_of_operation "Link State"; >3 ms of idle bus);
  *   3. normal sleep: the AON wake module armed (WAKE_CONTROL.suspend_req, WAKE_EVENTS.module_active),
  *      pwrmgr's normal sleep with the USB wake-up (pinmux_usb_wkup_req, wake-up 3) and an
- *      aon_timer wake-up enabled. Every low-power exit goes through a reset (pwrmgr
- *      theory_of_operation; the SystemC model does the same), so the test runs twice: before the
- *      sleep it writes a marker and the device address it was given into the last words of
- *      retention SRAM, which keeps its contents across the low-power exit;
- *   4. after the wake-up (the reset reason the test ROM keeps in retention SRAM: LOW_POWER_EXIT;
- *      the marker found): the bus stayed idle, so
- *      the USB wake-up must not have fired: WAKE_INFO holds reason 4 (aon_timer) alone,
- *      WAKE_EVENTS.bus_not_idle is clear, the AON module still active (it is always-on), and
- *      WAKE_CONTROL.wake_ack releases it (module_active clear). The device address kept in
- *      retention SRAM is the one the host assigned (the "enumerated information" software keeps).
+ *      aon_timer wake-up enabled. Normal sleep does not reset the chip: every power domain stays
+ *      on ("All power domains are kept on for fast resume", pwrmgr theory_of_operation.md
+ *      "Normal Sleep") and software "continues executing the instruction after the
+ *      wait-for-interrupt invocation" (programmers_guide.md "Exiting from Normal Sleep";
+ *      pwrmgr_fsm.sv FastPwrStateLowPowerPrep asserts the non-always-on domains' resets only as
+ *      ~main_pd_ni; OpenTitan's pwrmgr_normal_sleep_all_wake_ups continues after the WFI; the
+ *      SystemC model does the same). The core leaves the WFI on pwrmgr's wake-up interrupt,
+ *      enabled at the PLIC and in mie (mstatus.MIE 0: no trap). pwrmgr's CONTROL is written
+ *      read-modify-write, so USB_CLK_EN_ACTIVE (reset value 1) keeps the USB clock on in the
+ *      active state: with it 0 the next usbdev access hangs;
+ *   4. after the WFI, in the same boot: no reset (rstmgr's RESET_INFO has no low-power exit, the
+ *      reset reason the test ROM recorded is unchanged), the mode (misa) is the build's; the bus
+ *      stayed idle, so the USB wake-up must not have fired: WAKE_INFO holds reason 4 (aon_timer)
+ *      alone, WAKE_EVENTS.bus_not_idle is clear, the AON module still active (it is always-on),
+ *      and WAKE_CONTROL.wake_ack releases it (module_active clear). usbdev kept the device
+ *      address the host assigned (USBCTRL.DEVICE_ADDRESS as before the sleep: the "enumerated
+ *      information" is kept). A boot after the sleep (a low-power exit reset) fails.
  *
  * Not checked, and why (gaps against the testpoint):
  *   - "Resume the device through pinmux and check the link_resume interrupt", and data again
@@ -37,9 +44,7 @@
  * | Skipped with model_gaps = 1                  | Why                                          |
  * |----------------------------------------------|----------------------------------------------|
  * | 1, 2 and 4: enumeration, data, Suspend       | eg2sim's usbdev has no USB host (no packets, |
- * |                                              |   no link states)                            |
- * | 4: the AON wake module still active after    | eg2sim resets usbdev's AON wake state with   |
- * |   the low-power exit                         |   the chip (model finding: it is always-on)  |
+ * |   (the device address stays 0)               |   no link states)                            |
  *
  * Built with EG2_USB_SUSPEND_INJECT_FAIL the first value check expects bit 0 flipped: the run must
  * fail with `MEM FAIL`.
@@ -52,6 +57,7 @@
 #include "hw/top/aon_timer_regs.h"  // Generated.
 #include "hw/top/pwrmgr_regs.h"     // Generated.
 #include "hw/top/rstmgr_regs.h"     // Generated.
+#include "hw/top/rv_plic_regs.h"    // Generated.
 #include "hw/top/usbdev_regs.h"     // Generated.
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "sw/device/lib/dif/dif_pinmux.h"
@@ -174,17 +180,38 @@ static bool enumerate_and_suspend(usb_ctx_t *u) {
   return ok;
 }
 
-// The marker and the device address in the last words of retention SRAM, across the low-power
-// exit.
-enum {
-  kMarker = 0x5a5b1eef,
-  kRetMarker = TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR + TOP_EARLGREY_SRAM_CTRL_RET_RAM_SIZE_BYTES -
-               8,
-  kRetAddr = kRetMarker + 4,
-};
+/** pwrmgr's wake-up interrupt at the PLIC and in mie, mstatus.MIE 0: it ends the WFI, no trap. */
+static void wake_irq(bool on) {
+  const uint32_t id = kTopEarlgreyPlicIrqIdPwrmgrWakeup;
+  const uint32_t ie = RV_PLIC_IE0_0_REG_OFFSET + 4 * (id / 32);
+  const uint32_t meie = 1u << 11;
+  eg2_chk_irq_off();
+  if (on) {
+    eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_PRIO_0_REG_OFFSET + 4 * id, 1);
+    eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_THRESHOLD0_REG_OFFSET, 0);
+    eg2_dev_write32(kEg2DevRvPlic, ie, eg2_dev_read32(kEg2DevRvPlic, ie) | (1u << (id % 32)));
+    pwr_wr(PWRMGR_INTR_ENABLE_REG_OFFSET, 1u << PWRMGR_INTR_ENABLE_WAKEUP_BIT);
+    __asm__ volatile("csrs mie, %0" : : "r"(meie));
+  } else {
+    __asm__ volatile("csrc mie, %0" : : "r"(meie));
+    pwr_wr(PWRMGR_INTR_ENABLE_REG_OFFSET, 0);
+    eg2_dev_write32(kEg2DevRvPlic, ie, eg2_dev_read32(kEg2DevRvPlic, ie) & ~(1u << (id % 32)));
+    eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_PRIO_0_REG_OFFSET + 4 * id, 0);
+  }
+}
 
-/** Step 3: arm the AON wake module and the aon_timer, enter normal sleep. Does not return. */
-static bool sleep_enter(uint32_t dev_addr) {
+/** The reset reasons the test ROM recorded for this boot (it moves RESET_INFO there and clears
+ * the register). */
+static uint32_t recorded_reset_reason(void) {
+  return eg2_chk_rd32(TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR +
+                      offsetof(retention_sram_t, creator.reset_reasons));
+}
+
+/**
+ * Steps 3 and 4: arm the AON wake module and the aon_timer, enter normal sleep, and after the
+ * WFI (the same boot) check what the sleep kept.
+ */
+static bool sleep_and_wake(uint32_t dev_addr) {
   bool ok = true;
   usb_wr(USBDEV_WAKE_CONTROL_REG_OFFSET, 1u << USBDEV_WAKE_CONTROL_SUSPEND_REQ_BIT);
   uint32_t ev = 0;
@@ -207,49 +234,55 @@ static bool sleep_enter(uint32_t dev_addr) {
   eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_THOLD_HI_REG_OFFSET, 0);
   eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_CTRL_REG_OFFSET,
                   1u << AON_TIMER_WKUP_CTRL_ENABLE_BIT);
-  eg2_chk_wr32(kRetAddr, dev_addr);
-  eg2_chk_wr32(kRetMarker, kMarker);
+  uint32_t reason = recorded_reset_reason();
   pwr_wr(PWRMGR_WAKE_INFO_REG_OFFSET, 0xffffffffu);
   pwr_wr(PWRMGR_WAKEUP_EN_REG_OFFSET, (1u << kUsbWake) | (1u << kAonWake));
-  // Normal sleep: the main power domain stays on, the clocks stop.
-  pwr_wr(PWRMGR_CONTROL_REG_OFFSET,
-         (1u << PWRMGR_CONTROL_LOW_POWER_HINT_BIT) | (1u << PWRMGR_CONTROL_MAIN_PD_N_BIT));
+  // Normal sleep: the main power domain stays on, the clocks stop. Read-modify-write: only the
+  // hint and MAIN_PD_N change; USB_CLK_EN_ACTIVE stays as it is (1 after reset).
+  const uint32_t kHint = 1u << PWRMGR_CONTROL_LOW_POWER_HINT_BIT;
+  const uint32_t kPdN = 1u << PWRMGR_CONTROL_MAIN_PD_N_BIT;
+  uint32_t control = pwr_rd(PWRMGR_CONTROL_REG_OFFSET) & ~kHint;
+  pwr_wr(PWRMGR_CONTROL_REG_OFFSET, control | kHint | kPdN);
   pwrmgr_sync();
   eg2_chk_step("normal sleep, wake-up after aon_timer ticks", EG2_PARAM(wake_ticks));
-  eg2_chk_irq_off();
-  for (uint32_t i = 0; i < 16; ++i) {
-    __asm__ volatile("wfi");
+  wake_irq(true);
+  __asm__ volatile("wfi");
+  // Here after the wake-up, in the same boot (step 4).
+  pwr_wr(PWRMGR_INTR_STATE_REG_OFFSET, 1u << PWRMGR_INTR_STATE_WAKEUP_BIT);
+  uint32_t claimed = eg2_dev_read32(kEg2DevRvPlic, RV_PLIC_CC0_REG_OFFSET);
+  if (claimed != 0) {
+    eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_CC0_REG_OFFSET, claimed);
   }
-  // Still here: no low-power entry, or no wake-up.
-  eg2_chk_wr32(kRetMarker, 0);
-  return eg2_chk_true("low-power entry and its exit through a reset", false);
-}
-
-/** Step 4: the boot after the low-power exit. */
-static bool after_wake(bool gaps) {
-  bool ok = true;
-  uint32_t dev_addr = eg2_chk_rd32(kRetAddr);
-  eg2_chk_wr32(kRetMarker, 0);
-  // The test ROM moves RESET_INFO into retention SRAM (creator.reset_reasons) and clears it.
-  uint32_t info = eg2_chk_rd32(TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR +
-                               offsetof(retention_sram_t, creator.reset_reasons));
-  ok = eg2_chk_eq("reset reason (low-power exit)", 1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT,
-                  info) &&
-       ok;
-  uint32_t wake = pwr_rd(PWRMGR_WAKE_INFO_REG_OFFSET) & PWRMGR_WAKE_INFO_REASONS_MASK;
+  wake_irq(false);
+  uint32_t wake = pwr_rd(PWRMGR_WAKE_INFO_REG_OFFSET);
   ok = eg2_chk_eq("WAKE_INFO (aon_timer only: no USB wake-up on an idle bus)", 1u << kAonWake,
                   wake) &&
        ok;
-  uint32_t ev = usb_rd(USBDEV_WAKE_EVENTS_REG_OFFSET);
+  ok = eg2_chk_eq("the WFI ended by pwrmgr's wake-up interrupt (PLIC claim)",
+                  kTopEarlgreyPlicIrqIdPwrmgrWakeup, claimed) &&
+       ok;
+  ok = eg2_chk_eq("rstmgr RESET_INFO: no low-power exit reset", 0,
+                  eg2_dev_read32(kEg2DevRstmgr, RSTMGR_RESET_INFO_REG_OFFSET) &
+                      (1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT)) &&
+       ok;
+  ok = eg2_chk_eq("the boot's recorded reset reason unchanged", reason, recorded_reset_reason()) &&
+       ok;
+  uint32_t misa;
+  __asm__ volatile("csrr %0, misa" : "=r"(misa));
+#ifdef __CHERIOT__
+  const uint32_t kMisaMode = 1u << 4;  // E: the CHERIoT build
+#else
+  const uint32_t kMisaMode = 1u << 8;  // I: the RISC-V build
+#endif
+  ok = eg2_chk_eq("mode after the wake-up (misa): unchanged", kMisaMode,
+                  misa & ((1u << 4) | (1u << 8))) &&
+       ok;
+  ev = usb_rd(USBDEV_WAKE_EVENTS_REG_OFFSET);
   ok = eg2_chk_eq("WAKE_EVENTS.bus_not_idle", 0, (ev >> USBDEV_WAKE_EVENTS_BUS_NOT_IDLE_BIT) & 1) &&
        ok;
-  if (gaps) {
-    eg2_chk_skip("AON wake module active after the exit (eg2sim resets usbdev's AON wake state)");
-  } else {
-    ok = eg2_chk_true("AON wake module still active after the exit",
-                      ev & (1u << USBDEV_WAKE_EVENTS_MODULE_ACTIVE_BIT)) &&
-         ok;
-  }
+  ok = eg2_chk_true("AON wake module still active after the wake-up",
+                    ev & (1u << USBDEV_WAKE_EVENTS_MODULE_ACTIVE_BIT)) &&
+       ok;
   usb_wr(USBDEV_WAKE_CONTROL_REG_OFFSET, 1u << USBDEV_WAKE_CONTROL_WAKE_ACK_BIT);
   for (uint32_t i = 0; i < kPolls; ++i) {
     ev = usb_rd(USBDEV_WAKE_EVENTS_REG_OFFSET);
@@ -260,17 +293,14 @@ static bool after_wake(bool gaps) {
   ok = eg2_chk_eq("module_active after wake_ack", 0,
                   ev & (1u << USBDEV_WAKE_EVENTS_MODULE_ACTIVE_BIT)) &&
        ok;
-  if (gaps) {
-    eg2_chk_skip("the device address the host assigned (no host in eg2sim)");
-  } else {
-    ok = eg2_chk_true("device address kept in retention SRAM", dev_addr != 0 && dev_addr < 128) &&
-         ok;
-  }
-  // Tidy up: the wake-up sources off, their causes and the expected reset reason cleared.
+  ok = eg2_chk_eq("USBCTRL.DEVICE_ADDRESS kept through the sleep", dev_addr,
+                  (usb_rd(USBDEV_USBCTRL_REG_OFFSET) >> USBDEV_USBCTRL_DEVICE_ADDRESS_OFFSET) &
+                      USBDEV_USBCTRL_DEVICE_ADDRESS_MASK) &&
+       ok;
+  // Tidy up: the wake-up sources off, CONTROL back as it was (hint clear), their causes cleared.
   pwr_wr(PWRMGR_WAKEUP_EN_REG_OFFSET, 0);
-  pwr_wr(PWRMGR_CONTROL_REG_OFFSET, 0);
+  pwr_wr(PWRMGR_CONTROL_REG_OFFSET, control);
   pwrmgr_sync();
-  pwr_wr(PWRMGR_INTR_STATE_REG_OFFSET, 1u << PWRMGR_INTR_STATE_WAKEUP_BIT);
   pwr_wr(PWRMGR_WAKE_INFO_REG_OFFSET, 0xffffffffu);
   eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_CTRL_REG_OFFSET, 0);
   eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_CAUSE_REG_OFFSET, 0);
@@ -285,13 +315,11 @@ bool eg2_test_main(void) {
     return false;
   }
   const bool gaps = EG2_PARAM(model_gaps) != 0;
-  // After a power-on reset the marker words are uninitialised retention SRAM (the test ROM skips
-  // its initialisation) and reading them is an integrity error on the chip (regr-vlt 2026-10-25).
-  // The reset reasons the test ROM stored (bit 0: power-on) decide first, without reading them.
-  uint32_t reasons = eg2_chk_rd32(TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR +
-                                  offsetof(retention_sram_t, creator.reset_reasons));
-  if ((reasons & 0x1u) == 0 && eg2_chk_rd32(kRetMarker) == kMarker) {
-    return after_wake(gaps) && eg2_chk_summary(gaps ? 4 : 6);
+  // A low-power exit reset means the normal sleep reset the chip: the test does not start over.
+  if (recorded_reset_reason() & (1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT)) {
+    eg2_chk_step("reset reasons", recorded_reset_reason());
+    return eg2_chk_true("no reset after the normal sleep (the wake-up reset the chip)", false) &&
+           eg2_chk_summary(1);
   }
   bool ok = true;
   uint32_t dev_addr = 0;
@@ -311,5 +339,6 @@ bool eg2_test_main(void) {
   if (!ok) {
     return eg2_chk_summary(1) && ok;
   }
-  return sleep_enter(dev_addr);
+  ok = sleep_and_wake(dev_addr) && ok;
+  return eg2_chk_summary(gaps ? 10 : 16) && ok;
 }

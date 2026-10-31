@@ -11,8 +11,17 @@
  * to turn the power off. This is the case when no write operation is in progress"; the top
  * connects pwrmgr.pwr_nvm to rram_ctrl.pwrmgr); pwrmgr theory of operation "Abort Handling" ("If
  * any module is active, the fast FSM aborts entry handling and returns the system to active
- * state"; WAKE_INFO.ABORT). A low-power exit restarts the chip through a reset recorded as
- * RESET_INFO.LOW_POWER_EXIT (pwrmgr programmer's guide, rstmgr).
+ * state"; WAKE_INFO.ABORT). The exit of the two sleeps (pwrmgr programmers_guide.md): a deep
+ * sleep (CONTROL.MAIN_PD_N 0) restarts the chip through a reset recorded as
+ * RESET_INFO.LOW_POWER_EXIT ("Exiting from Deep Sleep"); a normal sleep (MAIN_PD_N 1) does not
+ * reset, software "continues executing the instruction after the wait-for-interrupt invocation"
+ * ("Exiting from Normal Sleep"; theory_of_operation.md "Normal Sleep": "All power domains are
+ * kept on for fast resume"; pwrmgr_fsm.sv FastPwrStateLowPowerPrep asserts the non-always-on
+ * domains' resets only as ~main_pd_ni; OpenTitan's pwrmgr_normal_sleep_all_wake_ups and
+ * pwrmgr_lowpower_cancel_test continue after the WFI). The core leaves the WFI on an enabled
+ * interrupt (the aon timer's and pwrmgr's wake-up, at the PLIC and mie.MEIE; mstatus.MIE 0).
+ * CONTROL is written read-modify-write: only LOW_POWER_HINT and MAIN_PD_N change, so
+ * USB_CLK_EN_ACTIVE (reset value 1) keeps the USB clock on in the active state.
  *
  * Boot 1 (no LOW_POWER_EXIT in the recorded reset reason):
  *   - starts a controller write of `n_words` words (seed-determined data) to scratch pages;
@@ -21,11 +30,15 @@
  *     must abort (WAKE_INFO.ABORT), the core goes on after the wake-up interrupt, and the write is
  *     completed and read back;
  *   - then (and directly with `entry` 2, end) it requests low power with the controller idle: the
- *     entry must go through, and the chip restarts.
- * Boot 2 (LOW_POWER_EXIT): the aon timer is the wake-up reason; every written word reads back
- * through the controller with ECC on and no error (data and integrity both written); WAKE_INFO
- * is cleared. The test ROM records RESET_INFO in the retention SRAM and clears the register, so
- * the boot is told by the record and the status sweep sees a clean reset reason.
+ *     entry must go through. Deep sleep: the chip restarts into boot 2. Normal sleep: the core
+ *     continues after the WFI in this boot: WAKE_INFO is the aon timer alone (no abort, no
+ *     fall-through), rstmgr's RESET_INFO has no low-power exit and the recorded reset reason is
+ *     unchanged, the mode (misa) is the build's, and every written word reads back again.
+ * Boot 2 (LOW_POWER_EXIT, deep sleep only): the aon timer is the wake-up reason; every written
+ * word reads back through the controller with ECC on and no error (data and integrity both
+ * written); WAKE_INFO is cleared. The test ROM records RESET_INFO in the retention SRAM and clears
+ * the register, so the boot is told by the record and the status sweep sees a clean reset reason.
+ * A boot 2 after a normal sleep fails (the wake-up reset the chip).
  *
  * Not covered: an OTP write in flight at the low-power request (REQ_RRAM_26 names it too); an OTP
  * DAI write completes in a few microseconds, too soon to place a WFI inside it from software.
@@ -120,8 +133,8 @@ static void plic_drain(void) {
 /**
  * Requests low power with the aon timer as the wake-up and executes WFI with
  * interrupts off at mstatus (mie.MEIE wakes the core without a trap). Returns
- * when the core runs on: after an abort or a fall through (a low-power exit
- * restarts the chip instead).
+ * when the core runs on: after an abort, a fall through, or a normal sleep's
+ * wake-up (a deep sleep's exit restarts the chip instead).
  */
 static bool sleep_request(bool deep) {
   aon_wr(AON_TIMER_WKUP_CTRL_REG_OFFSET, 0);
@@ -129,13 +142,17 @@ static bool sleep_request(bool deep) {
   aon_wr(AON_TIMER_WKUP_COUNT_LO_REG_OFFSET, 0);
   aon_wr(AON_TIMER_WKUP_THOLD_HI_REG_OFFSET, 0);
   aon_wr(AON_TIMER_WKUP_THOLD_LO_REG_OFFSET, EG2_PARAM(wake_ticks));
+  // An earlier expiry's wake-up request withdrawn (it follows WKUP_CAUSE).
+  aon_wr(AON_TIMER_WKUP_CAUSE_REG_OFFSET, 0);
   aon_wr(AON_TIMER_INTR_STATE_REG_OFFSET,
          1u << AON_TIMER_INTR_STATE_WKUP_TIMER_EXPIRED_BIT);
   pw_wr(PWRMGR_WAKEUP_EN_REG_OFFSET, 1u << kAonWake);
   pw_wr(PWRMGR_WAKE_INFO_REG_OFFSET, 0xffffffffu);  // rw1c: a clean record
-  pw_wr(PWRMGR_CONTROL_REG_OFFSET,
-        1u << PWRMGR_CONTROL_LOW_POWER_HINT_BIT |
-            (deep ? 0 : 1u << PWRMGR_CONTROL_MAIN_PD_N_BIT));
+  // Read-modify-write: the other fields (USB_CLK_EN_ACTIVE, the clock enables) as they are.
+  const uint32_t kHint = 1u << PWRMGR_CONTROL_LOW_POWER_HINT_BIT;
+  const uint32_t kPdN = 1u << PWRMGR_CONTROL_MAIN_PD_N_BIT;
+  uint32_t control = pw(PWRMGR_CONTROL_REG_OFFSET) & ~(kHint | kPdN);
+  pw_wr(PWRMGR_CONTROL_REG_OFFSET, control | kHint | (deep ? 0 : kPdN));
   bool ok = eg2_chk_true("pwrmgr CDC sync", pw_sync());
   plic_enable(kIrqAon, true);
   plic_enable(kIrqPwrmgr, true);
@@ -143,10 +160,11 @@ static bool sleep_request(bool deep) {
   __asm__ volatile("csrs mie, %0" ::"r"(1u << 11));  // MEIE
   aon_wr(AON_TIMER_WKUP_CTRL_REG_OFFSET, 1u << AON_TIMER_WKUP_CTRL_ENABLE_BIT);
   __asm__ volatile("wfi");
-  // Still running: the entry did not go through. Undo the request and the
-  // wake-up sources.
+  // Still running: the entry did not go through, or a normal sleep ended.
+  // Undo the request and the wake-up sources.
   aon_wr(AON_TIMER_WKUP_CTRL_REG_OFFSET, 0);
-  pw_wr(PWRMGR_CONTROL_REG_OFFSET, 1u << PWRMGR_CONTROL_MAIN_PD_N_BIT);
+  aon_wr(AON_TIMER_WKUP_CAUSE_REG_OFFSET, 0);
+  pw_wr(PWRMGR_CONTROL_REG_OFFSET, control | kPdN);
   ok = eg2_chk_true("pwrmgr CDC sync", pw_sync()) && ok;
   __asm__ volatile("csrc mie, %0" ::"r"(1u << 11));
   aon_wr(AON_TIMER_INTR_STATE_REG_OFFSET,
@@ -221,6 +239,9 @@ bool eg2_test_main(void) {
   if (info & (1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT)) {
     // Boot 2.
     eg2_chk_step("boot after the low-power exit, RESET_INFO", info);
+    ok = eg2_chk_true("a reset only after deep sleep (normal sleep continues after the WFI)",
+                      deep) &&
+         ok;
     uint32_t wake = pw(PWRMGR_WAKE_INFO_REG_OFFSET);
     ok = eg2_chk_eq("WAKE_INFO: the aon timer woke the chip", 1u << kAonWake,
                     wake) &&
@@ -276,11 +297,40 @@ bool eg2_test_main(void) {
   if (!ok) {
     return eg2_chk_summary(4) && ok;
   }
-  // Idle now: the entry goes through and the chip restarts into boot 2.
+  // Idle now: the entry goes through. Deep sleep restarts the chip into boot 2.
   eg2_chk_step("low-power request with the controller idle", 0);
-  sleep_request(deep);
-  // Still here: the entry did not go through.
-  ok = eg2_chk_true("low-power entry with the controller idle", false) && ok;
-  eg2_chk_step("WAKE_INFO", pw(PWRMGR_WAKE_INFO_REG_OFFSET));
-  return eg2_chk_summary(4) && ok;
+  ok = sleep_request(deep) && ok;
+  if (deep) {
+    // Still here: the entry did not go through.
+    ok = eg2_chk_true("deep sleep entry with the controller idle", false) && ok;
+    eg2_chk_step("WAKE_INFO", pw(PWRMGR_WAKE_INFO_REG_OFFSET));
+    return eg2_chk_summary(4) && ok;
+  }
+  // Normal sleep: here after the wake-up, in the same boot.
+  uint32_t wake = pw(PWRMGR_WAKE_INFO_REG_OFFSET);
+  ok = eg2_chk_eq("WAKE_INFO after the normal sleep: the aon timer alone (no abort, no "
+                  "fall-through)",
+                  1u << kAonWake, wake) &&
+       ok;
+  ok = eg2_chk_eq("rstmgr RESET_INFO: no low-power exit reset", 0,
+                  eg2_dev_read32(kEg2DevRstmgr, RSTMGR_RESET_INFO_REG_OFFSET) &
+                      (1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT)) &&
+       ok;
+  ok = eg2_chk_eq("the boot's recorded reset reason unchanged", info,
+                  eg2_chk_rd32(TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR + 4)) &&
+       ok;
+  uint32_t misa;
+  __asm__ volatile("csrr %0, misa" : "=r"(misa));
+#ifdef __CHERIOT__
+  const uint32_t kMisaMode = 1u << 4;  // E: the CHERIoT build
+#else
+  const uint32_t kMisaMode = 1u << 8;  // I: the RISC-V build
+#endif
+  ok = eg2_chk_eq("mode after the wake-up (misa): unchanged", kMisaMode,
+                  misa & ((1u << 4) | (1u << 8))) &&
+       ok;
+  ok = read_back() && ok;
+  pw_wr(PWRMGR_WAKE_INFO_REG_OFFSET, 0xffffffffu);
+  eg2_rram_region_off(region);
+  return eg2_chk_summary(9) && ok;
 }

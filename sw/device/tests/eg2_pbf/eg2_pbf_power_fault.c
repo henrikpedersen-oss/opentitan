@@ -11,11 +11,20 @@
  * power okay going low while main power should be on requests an internal reset, recorded in
  * rstmgr RESET_INFO.HW_REQ bit 5 "pwrmgr: main power glitch reset request"; the checks are valid
  * only in states where power should be on, so a glitch while main power is off in deep sleep
- * does nothing) and its programmer's guide (low-power exit through a reset, LOW_POWER_EXIT).
+ * does nothing) and its programmer's guide: deep sleep exits through a reset recorded as
+ * LOW_POWER_EXIT ("Exiting from Deep Sleep"); normal sleep does not reset, software "continues
+ * executing the instruction after the wait-for-interrupt invocation" ("Exiting from Normal
+ * Sleep"; theory_of_operation.md "Normal Sleep": "All power domains are kept on for fast
+ * resume"; pwrmgr_fsm.sv FastPwrStateLowPowerPrep asserts the non-always-on domains' resets only
+ * as ~main_pd_ni).
  *
- * Boot 0: the aon_timer wake-up after kSleepCycles, normal or deep sleep (`deep`), WFI. The bench
- * (chip_sw_eg2_pbf_power_fault_vseq) glitches vcmain_pok at `fault_point`: 0 the sleep entry
- * (core_sleeping rises), 1 during the sleep, 2 the exit (pwrmgr leaving low power).
+ * Boot 0: the aon_timer wake-up after kSleepCycles, normal or deep sleep (`deep`), WFI; for
+ * normal sleep pwrmgr's wake-up interrupt is enabled (PLIC, mie; mstatus.MIE 0), so the core
+ * leaves the WFI after the wake-up. The bench (chip_sw_eg2_pbf_power_fault_vseq) glitches
+ * vcmain_pok at `fault_point`: 0 the sleep entry (core_sleeping rises), 1 during the sleep, 2 the
+ * exit (pwrmgr leaving low power). Every glitch of a normal sleep resets the chip (main power
+ * should be on throughout), so on the chip boot 0 waits for that reset after a normal sleep's
+ * WFI and fails if it does not come.
  * Boot 1: the reset reason, by the documents:
  *   - entry, or the sleep of a normal sleep: the main power glitch (PowerUnstable) is set, and
  *     nothing but it and the low-power exit;
@@ -26,10 +35,13 @@
  * Boot 2: the low-power exit alone, WAKE_INFO the aon_timer alone: no half state.
  *
  * Knobs: deep 0-1, fault_point 0-2, model_gaps (0 on the chip; eg2sim has no bench, so no glitch:
- * it checks the clean behaviour and names the glitch checks it skips).
+ * it checks the clean behaviour and names the glitch checks it skips; a normal sleep there
+ * continues after the WFI, is checked in boot 0 (WAKE_INFO the aon_timer alone, no reset) and
+ * goes on to the clean cycle).
  *
- * Built with EG2_PBF_INJECT_FAIL the first value check (boot 1's LOW_POWER_HINT) expects bit 0
- * flipped: the run must fail with `PBF FAIL`.
+ * Built with EG2_PBF_INJECT_FAIL the first value check (boot 1's LOW_POWER_HINT; with `deep` 0 in
+ * the model, boot 0's WAKE_INFO after the normal sleep) expects bit 0 flipped: the run must fail
+ * with `PBF FAIL`.
  *
  * EG2_NEEDS_BENCH: the bench makes this test's stimulus, so regr_vlt.sh leaves it out of the Verilator runs.
  */
@@ -51,15 +63,54 @@ enum {
   kRetPhase = 0,
 };
 
+static bool clean_cycle(void);
+
 static bool sleep_now(bool deep) {
   if (!eg2_pbf_step("low-power entry armed (CFG_CDC_SYNC)",
                     sys_low_power_arm(1u << kSysWakeAonTimer, deep))) {
     return false;
   }
+  if (!deep) {
+    sys_wake_irq_on();
+  }
   sys_wkup_after(kSleepCycles);
   sys_wfi();
+  if (deep) {
+    // A deep sleep exits through a reset: the WFI returned on a fall-through or an abort.
+    sys_low_power_disarm();
+    return eg2_pbf_step("deep sleep entered (the WFI did not return)", false);
+  }
+  // Normal sleep: the core continues after the WFI (no reset of its own).
+  (void)sys_wake_irq_ack();
+  if (EG2_PARAM(model_gaps)) {
+    // No bench, no glitch: the normal sleep's own exit, then the clean cycle.
+    uint32_t reason = eg2_pbf_reset_reason();
+    bool ok = eg2_pbf_check("normal sleep without a glitch: WAKE_INFO the aon_timer alone",
+                            1u << kSysWakeAonTimer, sys_wake_info(true));
+    ok = eg2_pbf_check("normal sleep without a glitch: the boot's reset reason unchanged", reason,
+                       eg2_pbf_reset_reason()) &&
+         ok;
+    sys_low_power_disarm();
+    sys_wkup_clear();
+    if (!ok) {
+      return false;
+    }
+    return clean_cycle();
+  }
+  // On the chip the bench's glitch resets the chip (main power should be on): wait for it.
+  for (uint32_t i = 0; i < 100000; ++i) {
+    eg2_pbf_spin(10);
+  }
   sys_low_power_disarm();
-  return eg2_pbf_step("sleep entered (the WFI did not return)", false);
+  eg2_pbf_note("WAKE_INFO after the normal sleep", sys_wake_info(false));
+  return eg2_pbf_step("the main power glitch reset the chip", false);
+}
+
+/** The clean sleep cycle: deep sleep again, aon_timer wake-up (boot_2 checks it). */
+static bool clean_cycle(void) {
+  *eg2_pbf_ret(kRetPhase) = 2;
+  eg2_pbf_step("the clean sleep cycle follows", true);
+  return sleep_now(true);
 }
 
 static bool boot_1(void) {
@@ -93,8 +144,7 @@ static bool boot_1(void) {
   if (!ok) {
     return false;
   }
-  eg2_pbf_step("the clean sleep cycle follows", true);
-  return sleep_now(true);
+  return clean_cycle();
 }
 
 static bool boot_2(void) {
@@ -123,7 +173,8 @@ bool eg2_test_main(void) {
   if (boot == 1 && *eg2_pbf_ret(kRetPhase) == 1) {
     return boot_1();
   }
-  if (boot == 2 && *eg2_pbf_ret(kRetPhase) == 2) {
+  // Boot 1 when a normal sleep without a glitch (the model) went on to the clean cycle at once.
+  if ((boot == 2 || boot == 1) && *eg2_pbf_ret(kRetPhase) == 2) {
     return boot_2();
   }
   return eg2_pbf_step("no further boot expected", false);

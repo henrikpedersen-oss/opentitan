@@ -9,7 +9,13 @@
  * recoverable event is registered in RECOV_ALERT, raises recov_alert and is acknowledged; a fatal
  * one (FATAL_ALERT_EN) is registered in FATAL_ALERT, raises fatal_alert and is not acknowledged,
  * "so the alert is sent constantly until the system escalates"; events are aggregated into a
- * wake-up request) and pwrmgr's (WAKE_INFO, the low-power exit through a reset).
+ * wake-up request) and pwrmgr's (WAKE_INFO; normal sleep keeps every power domain on, "All power
+ * domains are kept on for fast resume", theory_of_operation.md "Normal Sleep", and on its exit
+ * software "continues executing the instruction after the wait-for-interrupt invocation",
+ * programmers_guide.md "Exiting from Normal Sleep": no reset; pwrmgr_fsm.sv
+ * FastPwrStateLowPowerPrep asserts the non-always-on domains' resets only as ~main_pd_ni;
+ * OpenTitan's pwrmgr_normal_sleep_all_wake_ups continues after the WFI too). The core leaves the
+ * WFI on pwrmgr's wake-up interrupt, enabled at the PLIC and in mie (mstatus.MIE 0: no trap).
  *
  * The event is raised with ALERT_TRIG (the AST event the trigger loops through the AST model).
  * sensor_ctrl's alerts go to class `alert_class` (A-C):
@@ -18,9 +24,11 @@
  *     alone, FATAL_ALERT nothing; the alert handler has recov_alert's cause and the class's
  *     accumulator counted it. Then normal sleep with the trigger still on, and pwrmgr's wake-up
  *     enables: `wake` 1 sensor_ctrl and the aon_timer, `wake` 0 the aon_timer alone (1 ms).
- *     Boot 1: WAKE_INFO is sensor_ctrl alone (wake 1) or the aon_timer alone (wake 0: the event
- *     must not wake the chip when not configured); the event is then acknowledged: RECOV_ALERT
- *     cleared, back to 0.
+ *     After the WFI, in the same boot: WAKE_INFO is sensor_ctrl alone (wake 1) or the aon_timer
+ *     alone (wake 0: the event must not wake the chip when not configured); the WFI was ended by
+ *     an interrupt; no reset (rstmgr RESET_INFO has no low-power exit, the boot's reset reason is
+ *     unchanged) and the mode (misa) is the build's; the event is then acknowledged: RECOV_ALERT
+ *     cleared, back to 0. A boot after the normal sleep fails (the wake-up reset the chip).
  *   fatal 1. Boot 0: the class escalates once its accumulator passes kFatalThresh, Phase0 asserting
  *     the escalation reset (no NMI: the CHERIoT start-up code ends the test on any trap); the crash
  *     dump is captured. Boot 1: the reset reason is the escalation alone; the crash dump holds
@@ -38,6 +46,7 @@
  * came back within the hour (regr-vlt 2026-10-26; see eg2_pbf_power_sb.c).
  */
 
+#include "hw/top/rstmgr_regs.h"       // Generated.
 #include "hw/top/sensor_ctrl_regs.h"  // Generated.
 #include "sw/device/tests/eg2_pbf/eg2_pbf.h"
 #include "sw/device/tests/eg2_pbf/eg2_pbf_system.h"
@@ -56,9 +65,16 @@ enum {
   kPolls = 20000,
   kAonFallback = 200,  // the aon_timer wake-up: 1 ms
   kFatalThresh = 3,    // escalate on the fatal alert's 4th arrival
-  kRetPhase = 0,
-  kRetRecovOk = 1,
+  kMisaE = 1u << 4,
+  kMisaI = 1u << 8,
+  kRetPhase = 0,       // 1 normal sleep entered, 2 fatal escalation armed
 };
+
+static uint32_t misa_mode(void) {
+  uint32_t misa;
+  __asm__ volatile("csrr %0, misa" : "=r"(misa));
+  return misa & (kMisaE | kMisaI);
+}
 
 static void sc_wr(uint32_t off, uint32_t v) { eg2_dev_write32(kEg2DevSensorCtrl, off, v); }
 static uint32_t sc_rd(uint32_t off) { return eg2_dev_read32(kEg2DevSensorCtrl, off); }
@@ -103,36 +119,25 @@ static bool recoverable_boot_0(eg2_pbf_class_t cls, uint32_t ev) {
   // event stays triggered through the sleep.
   eg2_pbf_class_clear(cls);
   eg2_status_clear_expected();
-  *eg2_pbf_ret(kRetRecovOk) = ok ? 1 : 0;
   return ok;
 }
 
-static bool sleep_with_event(uint32_t ev, bool event_on) {
-  uint32_t mask = 1u << kSysWakeAonTimer;
-  if (EG2_PARAM(wake) && event_on) {
-    mask = 1u << kSysWakeSensorCtrl;
-  }
-  *eg2_pbf_ret(kRetPhase) = 1;
-  if (!eg2_pbf_step("low-power entry armed (CFG_CDC_SYNC)", sys_low_power_arm(mask, false))) {
-    return false;
-  }
-  if (!EG2_PARAM(wake) || !event_on) {
-    sys_wkup_after(kAonFallback);
-  }
-  (void)ev;
-  sys_wfi();
-  sys_low_power_disarm();
-  return eg2_pbf_step("sleep entered (the WFI did not return)", false);
-}
-
-static bool recoverable_boot_1(uint32_t ev, bool event_on) {
+/** After the normal sleep's wake-up, in the same boot: `reason` is the boot's reset reason as it
+ * was before the sleep, `plic_id` what the PLIC claim gave after the WFI. */
+static bool recoverable_after_wake(uint32_t ev, bool event_on, uint32_t reason,
+                                   uint32_t plic_id) {
   uint32_t info = sys_wake_info(true);
   uint32_t want = (EG2_PARAM(wake) && event_on) ? 1u << kSysWakeSensorCtrl
                                                 : 1u << kSysWakeAonTimer;
-  bool ok = eg2_pbf_step("boot 0's event checks", *eg2_pbf_ret(kRetRecovOk) == 1 || !event_on);
-  ok = eg2_pbf_check("WAKE_INFO: the configured source alone", want, info) && ok;
-  ok = eg2_pbf_check("reset reason: the low-power exit alone", kSysRstLowPowerExit,
-                     eg2_pbf_reset_reason()) &&
+  bool ok = eg2_pbf_check("WAKE_INFO: the configured source alone", want, info);
+  ok = eg2_pbf_step("the WFI ended by an interrupt (PLIC claim)", plic_id != 0) && ok;
+  ok = eg2_pbf_check("rstmgr RESET_INFO: no low-power exit reset", 0,
+                     eg2_dev_read32(kEg2DevRstmgr, RSTMGR_RESET_INFO_REG_OFFSET) &
+                         (1u << RSTMGR_RESET_INFO_LOW_POWER_EXIT_BIT)) &&
+       ok;
+  ok = eg2_pbf_check("the boot's reset reason unchanged", reason, eg2_pbf_reset_reason()) && ok;
+  ok = eg2_pbf_check("mode after the wake-up (misa): unchanged",
+                     eg2_pbf_cheriot() ? kMisaE : kMisaI, misa_mode()) &&
        ok;
   sys_wkup_clear();
   // Acknowledge: the trigger off, the latch cleared once the event has gone down.
@@ -148,15 +153,46 @@ static bool recoverable_boot_1(uint32_t ev, bool event_on) {
   }
   if (event_on) {
     ok = eg2_pbf_step("the event acknowledged (RECOV_ALERT cleared)", cleared) && ok;
-    // The always-on event may have reached this boot's alert handler: the test's own cause.
+    // The event stayed on through the sleep, so recov_alert may have reached the alert handler
+    // again (sensor_ctrl sends it while the event is valid, sensor_ctrl.sv recov_event; no reset
+    // cleared the alert handler): the test's own cause, its class's count and interrupt.
     uint32_t recov = alert_id("sensor_ctrl_recov_alert");
     if (eg2_status_wait_alert(recov, 1)) {
       eg2_status_expect_alert(recov);
-      eg2_status_clear_expected();
     }
+    eg2_status_expect_intr(kEg2DevAlertHandler, 1u << (uint32_t)EG2_PARAM(alert_class));
+    eg2_pbf_class_clear((eg2_pbf_class_t)EG2_PARAM(alert_class));
+    eg2_status_clear_expected();
   }
   eg2_pbf_activity("sensor wake-up checks", ok ? 1 : 0);
   return ok;
+}
+
+/**
+ * Normal sleep with the event still on, then the wake-up checks in the same boot: pwrmgr's
+ * wake-up interrupt ends the WFI and execution continues after it (programmers_guide.md
+ * "Exiting from Normal Sleep").
+ */
+static bool sleep_with_event(uint32_t ev, bool event_on) {
+  uint32_t mask = 1u << kSysWakeAonTimer;
+  if (EG2_PARAM(wake) && event_on) {
+    mask = 1u << kSysWakeSensorCtrl;
+  }
+  *eg2_pbf_ret(kRetPhase) = 1;
+  uint32_t reason = eg2_pbf_reset_reason();
+  if (!eg2_pbf_step("low-power entry armed (CFG_CDC_SYNC)", sys_low_power_arm(mask, false))) {
+    return false;
+  }
+  sys_wake_irq_on();
+  if (!EG2_PARAM(wake) || !event_on) {
+    sys_wkup_after(kAonFallback);
+  }
+  sys_wfi();
+  // Here after the wake-up, in the same boot.
+  uint32_t plic_id = sys_wake_irq_ack();
+  sys_low_power_disarm();
+  *eg2_pbf_ret(kRetPhase) = 0;
+  return recoverable_after_wake(ev, event_on, reason, plic_id);
 }
 
 static bool fatal_boot_0(eg2_pbf_class_t cls, uint32_t ev) {
@@ -225,7 +261,8 @@ bool eg2_test_main(void) {
     return ok && sleep_with_event(ev, true);
   }
   if (boot == 1 && *eg2_pbf_ret(kRetPhase) == 1) {
-    return recoverable_boot_1(ev, events);
+    eg2_pbf_note("reset reason", eg2_pbf_reset_reason());
+    return eg2_pbf_step("no reset after a normal sleep (the wake-up reset the chip)", false);
   }
   if (boot == 1 && *eg2_pbf_ret(kRetPhase) == 2) {
     return fatal_boot_1(cls);
