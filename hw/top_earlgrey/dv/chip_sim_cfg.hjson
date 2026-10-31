@@ -322,7 +322,10 @@
     // Off by default; the eg2_top_verification Makefile adds it with UPF_ENABLE=1.
     {
       name: en_upf
-      build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf", "+define+EG2_UPF"]
+      // -lps_enable_assertion_ctrl: assertions in a powered-down domain are off (its corrupted values
+      // would fire them, e.g. tlul_rsp_intg_gen RspZero_A at time 0 before pwrmgr drives main_pd_n).
+      build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf", "+define+EG2_UPF",
+                   "-lps_enable_assertion_ctrl"]
     }
     // Build mode that configures a testbench in a manner suitable for pad
     // testing. For example, the testbench may need to have different agents
