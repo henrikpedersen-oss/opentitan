@@ -1,0 +1,56 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "pattgen_agent"
+  testpoints: [
+    {
+      name: channel_pattern
+      desc: '''For each pattern-generator channel, observe cfg.length bits on the configured PCL
+               edge. Check that one pattgen_item is emitted on that channel's port with data_q in
+               wire order after channel_done. Agent self-test: pattgen_agent_pattern_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: positive_clock_polarity
+      desc: '''Set polarity low and change PDA around positive PCL edges. Check that the monitor
+               samples only positive edges and fills data_q with the expected bits.
+               Agent self-test: pattgen_agent_polarity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: negative_clock_polarity
+      desc: '''Set polarity high and change PDA around negative PCL edges. Check that the monitor
+               samples only negative edges and fills data_q with the expected bits.
+               Agent self-test: pattgen_agent_polarity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: clock_predivider
+      desc: '''Enable chk_prediv and generate PCL edges separated by cfg.div core clocks. Check each
+               measured separation equals the configured divider, including consecutive edges.
+               Agent self-test: pattgen_agent_prediv_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: error_injected
+      desc: '''Raise error_injected for a channel during a pattern. Check the partial pattgen_item is
+               dropped, collection restarts after the flag clears, and the other channel continues.
+               Agent self-test: pattgen_agent_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_pattern
+      desc: '''Assert reset before the configured pattern length is reached. Check the partial item
+               is dropped and error_injected, length and channel_done state are cleared before a new
+               pattern is collected. Agent self-test: pattgen_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

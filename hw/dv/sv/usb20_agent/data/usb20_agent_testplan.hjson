@@ -1,0 +1,181 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "usb20_agent"
+  testpoints: [
+    {
+      name: connect
+      desc: '''Assert VBUS and check the monitor emits one EvConnect item with the event completed.
+               Agent self-test: usb20_agent_bus_event_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: disconnect
+      desc: '''Deassert VBUS and check the monitor emits one EvDisconnect item and releases the bus.
+               Agent self-test: usb20_agent_bus_event_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: bus_reset
+      desc: '''Drive full-speed SE0 for the USB reset interval. Check the monitor emits an
+               EvBusReset item when reset is first valid and another with m_ev_completed at its end,
+               both with duration. Agent self-test: usb20_agent_bus_event_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: suspend
+      desc: '''Hold the full-speed bus in idle for at least the suspend interval. Check the monitor
+               emits EvSuspend and no packet item. Agent self-test: usb20_agent_suspend_resume_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: resume
+      desc: '''Drive resume K signaling followed by the low-speed EOP. Check start and completion
+               EvResume items include duration and completion state and the waveform is validated.
+               Agent self-test: usb20_agent_suspend_resume_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: out_token
+      desc: '''Drive a full-speed OUT token. Check the token_pkt item contains PidTypeOutToken,
+               address, endpoint, CRC5 and packet validity fields.
+               Agent self-test: usb20_agent_token_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: in_token_and_response
+      desc: '''Drive a full-speed IN token and collect the device response. Check the request token
+               fields and that the response item is a DATA or handshake packet with timed_out set
+               only when no response arrived. Agent self-test: usb20_agent_token_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: setup_token
+      desc: '''Drive a SETUP token followed by a DATA0 request payload. Check the token address and
+               endpoint, the data bytes and CRC16, and the returned handshake.
+               Agent self-test: usb20_agent_control_transfer_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: start_of_frame
+      desc: '''Drive SOF with an 11-bit frame number. Check the monitor emits sof_pkt with
+               PidTypeSofToken, framenum, CRC5 and all validity fields.
+               Agent self-test: usb20_agent_sof_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: data_packet
+      desc: '''Drive and observe DATA0 and DATA1 packets from zero through 64 payload bytes. Check
+               data_pkt contains PID, byte array, CRC16, direction port and packet validity fields.
+               Agent self-test: usb20_agent_data_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: handshake_packet
+      desc: '''Drive and observe ACK, NAK, STALL and NYET. Check one handshake_pkt per packet with
+               the PID and direction on the correct request or response analysis port.
+               Agent self-test: usb20_agent_handshake_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: low_speed_preamble
+      desc: '''Drive PRE at full speed, the hub setup interval, then a low-speed packet. Check the
+               monitor switches sampling rate and marks the decoded item low_speed with all normal
+               packet fields. Agent self-test: usb20_agent_low_speed_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: pin_flip
+      desc: '''Exchange full-speed traffic with D+ and D- roles swapped. Check J, K, SE0, packet
+               contents and bus events decode identically with pinflip set.
+               Agent self-test: usb20_agent_pinflip_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: invalid_pid
+      desc: '''Drive a PID whose upper nibble is not the complement of its lower nibble. Check the
+               monitor preserves the PID, valid_pid returns false and length-based classification
+               does not turn it into a valid packet. Agent self-test: usb20_agent_packet_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: bad_token_crc5
+      desc: '''Drive a token or SOF with incorrect CRC5. Check address, endpoint or frame number are
+               still filled and valid_crc reports false. Agent self-test:
+               usb20_agent_packet_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: bad_data_crc16
+      desc: '''Drive a DATA packet with incorrect CRC16. Check the payload is preserved and
+               valid_crc reports false without changing the framing validity fields.
+               Agent self-test: usb20_agent_packet_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: invalid_sync
+      desc: '''Corrupt a selected SYNC bit and send a complete packet. Check the monitor sets
+               valid_sync false and still reports fields that can be decoded.
+               Agent self-test: usb20_agent_sync_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: bitstuff_violation
+      desc: '''Disable stuffing and transmit more than six consecutive ones. Check the monitor sets
+               valid_stuffing false, including a violation at the end of the packet.
+               Agent self-test: usb20_agent_bitstuff_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: invalid_eop
+      desc: '''Drive an EOP other than two SE0 bit times followed by J. Check the monitor sets
+               valid_eop false and recovers at the next valid SYNC.
+               Agent self-test: usb20_agent_eop_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: truncated_packet
+      desc: '''Stop a token or data packet after selected bits and omit EOP. Check valid_length and
+               valid_eop describe the fragment, no stale fields leak from an earlier packet, and
+               later traffic decodes normally. Agent self-test: usb20_agent_truncation_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: missing_host_handshake
+      desc: '''After a device IN DATA response, withhold the host handshake. Check the agent times
+               out cleanly and can observe or drive the next legal transaction without retaining a
+               pending response. Agent self-test: usb20_agent_missing_handshake_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_packet
+      desc: '''Assert DUT or agent reset during SYNC, PID, payload and EOP. Check partial collection
+               is discarded, bus ownership is released and the first complete packet after reset is
+               reported once. Agent self-test: usb20_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

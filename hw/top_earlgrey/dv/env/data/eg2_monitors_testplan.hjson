@@ -1,0 +1,226 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "eg2_monitors"
+  testpoints: [
+    {
+      name: tl_access_item
+      desc: '''Observe an accepted A request and its D response on each peripheral TL-UL port.
+               Check eg2_tl_access_item fills instance, operation, opcode, address, mask, data,
+               d_error, expected-error classification, reason and time for the peripheral log.
+               Agent self-test: eg2_monitors_tl_access_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: tl_error_classification
+      desc: '''Present one documented malformed or refused access and one unexpected d_error.
+               Check the monitor classifies EXPECTED_ERR, MISSING_ERR and UNEXPECTED_ERR from the
+               register model and TL-UL rules and records the reason in that peripheral's log.
+               Agent self-test: eg2_monitors_tl_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: uart_transmit_expected
+      desc: '''Write UART WDATA with TX enabled. Check eg2_uart_monitor builds an expected uart_item
+               containing data and configured parity and compares it with the pin item in
+               uart<N>.chip.log. Agent self-test: eg2_monitors_uart_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: uart_receive_expected
+      desc: '''Drive a UART RX byte, then read RDATA. Check the monitor queues an expected receive
+               item from the pin byte, builds the actual read item from TL d_data, and logs both
+               with FIFO order in uart<N>.chip.log. Agent self-test: eg2_monitors_uart_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: uart_loopback_and_fifo_reset
+      desc: '''Exercise system and line loopback plus RXRST and TXRST. Check expected bytes move to
+               the documented direction, reset markers flush only permitted pending items, and the
+               action appears in uart<N>.chip.log. Agent self-test: eg2_monitors_uart_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: spi_host_transmit_expected
+      desc: '''Write standard-speed SPI host TXDATA and COMMAND entries. Check eg2_spi_monitor builds
+               expected spi_items with ordered bytes and csb selection and compares them with pin
+               items in spi_host<N>.chip.log. Agent self-test: eg2_monitors_spi_host_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: spi_host_receive_expected
+      desc: '''Run standard RX and bidirectional segments and read RXDATA. Check bytes observed from
+               the agent are packed into expected receive words and compared with TL read responses
+               in spi_host<N>.chip.log. Agent self-test: eg2_monitors_spi_host_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: spi_host_unpredicted_segment
+      desc: '''Queue a dual, quad or dummy segment. Check the monitor inserts MarkUnpredicted at the
+               correct stream position and the log says NOT PREDICTED rather than silently passing
+               pin bytes. Agent self-test: eg2_monitors_spi_host_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: i2c_controller_expected
+      desc: '''Write I2C FDATA for a controller transfer. Check eg2_i2c_monitor builds one expected
+               i2c_item with address, direction and data, compares the bus item, and writes the
+               transaction to i2c<N>.chip.log. Agent self-test: eg2_monitors_i2c_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: i2c_controller_receive
+      desc: '''Let the chip controller read target bytes and read RDATA. Check pin data becomes the
+               expected receive stream, TL d_data becomes actual receive items, and byte order is
+               shown in i2c<N>.chip.log. Agent self-test: eg2_monitors_i2c_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: i2c_target_acquisition
+      desc: '''Let an external controller address the chip target, write data, use repeated START
+               and STOP, then read ACQDATA. Check expected items carry address byte and START,
+               RESTART, data and STOP signal fields and compare in i2c<N>.chip.log.
+               Agent self-test: eg2_monitors_i2c_target_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: i2c_nack_and_fifo_reset
+      desc: '''NACK a transfer and exercise FMTRST, RXRST, ACQRST and TXRST. Check NACK and flush
+               markers make only the documented pending items optional and the reason is logged.
+               Agent self-test: eg2_monitors_i2c_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: gpio_output_state
+      desc: '''Write GPIO direct, masked and per-pin output and output-enable registers. Check
+               eg2_gpio_monitor builds expected items with routed, oe, out and known and compares
+               pad state in gpio.chip.log. Agent self-test: eg2_monitors_gpio_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: gpio_pinmux_routing
+      desc: '''Write pinmux MIO_OUTSEL to route, unroute and duplicate GPIO selections. Check the
+               expected item maps only the first selected pad per GPIO and gpio.chip.log reflects
+               each externally visible state change. Agent self-test: eg2_monitors_gpio_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: spi_device_flash
+      desc: '''Run documented SPI device flash commands. Check eg2_spi_device_monitor builds one
+               item per CSB interval with opcode, address, direction, returned or uploaded bytes,
+               care mask and prediction source in spi_device.chip.log.
+               Agent self-test: eg2_monitors_spi_device_flash_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: spi_device_tpm
+      desc: '''Run TPM read and write transactions. Check items contain direction, locality/address
+               and bytes; TL FIFO and buffer reads form the receive comparison; and results appear
+               in spi_device.chip.log. Agent self-test: eg2_monitors_spi_device_tpm_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: spi_device_generic_and_passthrough
+      desc: '''Run generic mode and non-intercepted passthrough commands. Check generic bytes are
+               logged, commands without a documented prediction are marked NOT PREDICTED, and
+               intercepted output remains compared in spi_device.chip.log.
+               Agent self-test: eg2_monitors_spi_device_mode_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: usb_bus_items
+      desc: '''Generate connect, disconnect, reset and packets on the USB pads. Check eg2_usb_monitor
+               builds kind, direction, PID validity, token address and endpoint, data payload,
+               transition count and duration for usbdev.chip.log.
+               Agent self-test: eg2_monitors_usb_bus_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: usb_device_response
+      desc: '''Issue IN, OUT and SETUP tokens to enabled, stalled and unavailable endpoints. Check
+               eg2_usbdev_monitor predicts DATA, ACK, NAK or STALL from usbdev's TL-UL state with
+               payload care and race status, then compares it in usbdev.chip.log.
+               Agent self-test: eg2_monitors_usb_response_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: usb_receive_side
+      desc: '''Send OUT and SETUP data, then read RXFIFO and packet-buffer words. Check the monitor
+               builds UsbRxEntry and UsbBufRead expected and actual items with endpoint, setup,
+               size, buffer, offset, word and care in usbdev.chip.log.
+               Agent self-test: eg2_monitors_usb_receive_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: sysrst_ctrl_state
+      desc: '''Change documented sysrst_ctrl inputs and configuration. Check the system monitor
+               emits settled SysState items for bat_disable, ec_rst_l, pwrb_out, key outputs,
+               z3_wakeup, flash_wp_l and rst_req in sysrst_ctrl.chip.log.
+               Agent self-test: eg2_monitors_sysrst_ctrl_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: sysrst_ctrl_reads
+      desc: '''Read documented sysrst_ctrl status registers after input and combo events. Check
+               SysRead name, value and care compare the model and TL response in
+               sysrst_ctrl.chip.log. Agent self-test: eg2_monitors_sysrst_ctrl_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: adc_ctrl_state_and_reads
+      desc: '''Supply ADC samples for normal, low-power and one-shot filters. Check settled interrupt
+               and wake state items and ADC_INTR_STATUS, FILTER_STATUS and ADC_CHN_VAL SysRead items
+               with care masks in adc_ctrl.chip.log. Agent self-test: eg2_monitors_adc_ctrl_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: sensor_ctrl_events_and_reads
+      desc: '''Drive enabled AST sensor events and ALERT_TEST. Check recoverable and fatal SysEvent
+               items, repeated fatal behavior, and RECOV_ALERT, FATAL_ALERT, STATUS and INTR_STATE
+               reads in sensor_ctrl.chip.log. Agent self-test: eg2_monitors_sensor_ctrl_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: wakeup_state_and_reads
+      desc: '''Configure each pinmux wake detector for edge and level modes, with and without its
+               filter. Check the wake request state and WKUP_CAUSE and pwrmgr WAKE_INFO SysRead
+               items in wkup.chip.log. Agent self-test: eg2_monitors_wakeup_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: system_monitor_reset_and_race
+      desc: '''Reset each monitored block with expected items pending and change an input close to a
+               register write or timer boundary. Check reset markers flush state and care masks or
+               delayed comparison cover only the documented race window in that block's log.
+               Agent self-test: eg2_monitors_reset_race_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

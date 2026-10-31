@@ -1,0 +1,112 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "uart_agent"
+  testpoints: [
+    {
+      name: rx_8n1
+      desc: '''Drive one 8-N-1 frame, low start bit first and LSB-first data followed by a high
+               stop bit. Check that the RX monitor emits one uart_item with start_bit, data and
+               stop_bit filled. Agent self-test: uart_agent_rx_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: tx_8n1
+      desc: '''Observe one 8-N-1 frame from the DUT. Check that the TX monitor emits one uart_item
+               with start_bit, data and stop_bit filled and rejects a low stop bit.
+               Agent self-test: uart_agent_tx_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: even_parity
+      desc: '''Configure parity enabled and even, drive and observe a frame, and check the monitor
+               fills parity with the even-parity bit and accepts only the documented value.
+               Agent self-test: uart_agent_parity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: odd_parity
+      desc: '''Configure parity enabled and odd, drive and observe a frame, and check the monitor
+               fills parity with the odd-parity bit and accepts only the documented value.
+               Agent self-test: uart_agent_parity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: baud_rate
+      desc: '''For every baud_rate_e value, drive known bytes at the configured bit period and
+               check that both monitors recover the same data without accumulating sampling drift.
+               Agent self-test: uart_agent_baud_rate_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: back_to_back_frames
+      desc: '''Drive frames with no idle bit-time between the first stop bit and the next start bit.
+               Check that the monitor emits one ordered uart_item per frame with no merged or lost
+               byte. Agent self-test: uart_agent_back_to_back_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: parity_error
+      desc: '''Drive a frame whose parity bit is the inverse of the configured parity. Check that
+               the RX monitor detects the parity error while still filling data, parity and stop_bit
+               in the observed item. Agent self-test: uart_agent_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: framing_error
+      desc: '''Drive a zero stop bit after a complete byte. Check that the RX monitor detects the
+               framing error and emits an item containing the received data and stop_bit=0.
+               Agent self-test: uart_agent_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: input_glitches
+      desc: '''Glitch RX only near the start of each bit period, then leave the requested bit stable
+               across the legal sampling window. Check that the monitor recovers the requested byte
+               and reports no stability error. Agent self-test: uart_agent_glitch_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: clock_drift
+      desc: '''Transmit at the documented receiver tolerance on both faster and slower sides of the
+               nominal baud period. Check that the data is recovered and that a transition inside
+               the protected sampling window is detected. Agent self-test: uart_agent_drift_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: break_condition
+      desc: '''Hold RX low for at least one complete character time, including the stop-bit position.
+               Check that the agent produces the zero-data bad frame needed to test UART break
+               detection. Agent self-test: uart_agent_break_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: false_start
+      desc: '''Drive RX low for less than half a bit time and return it high. Check that no uart_item
+               is emitted because a valid start bit was not present at the centre sample.
+               Agent self-test: uart_agent_false_start_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_frame
+      desc: '''Assert the agent's notional reset while a frame is being driven and monitored. Check
+               that the partial item is dropped, RX returns high, and the first complete frame after
+               reset is decoded normally. Agent self-test: uart_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

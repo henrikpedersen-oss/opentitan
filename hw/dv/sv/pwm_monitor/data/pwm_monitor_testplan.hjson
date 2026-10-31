@@ -1,0 +1,64 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "pwm_monitor"
+  testpoints: [
+    {
+      name: active_high_pulse
+      desc: '''Configure active-high output and present one complete pulse cycle. Check the monitor
+               emits a pwm_item with monitor_id, invert=0, active_cnt, inactive_cnt, period and the
+               0.16 duty_cycle filled. Agent self-test: pwm_monitor_pulse_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: active_low_pulse
+      desc: '''Configure active-low output and present one complete pulse cycle. Check the monitor
+               treats low cycles as active and emits invert=1 with the correct counts and period.
+               Agent self-test: pwm_monitor_pulse_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: phase
+      desc: '''Assert the PWM output at selected phase-counter beats. Check pwm_item.phase is the
+               documented 16-bit phase after clk_div, resolution and output_delay are applied.
+               Agent self-test: pwm_monitor_phase_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: zero_duty_cycle
+      desc: '''Leave the output inactive for a full pulse_cycle_clks interval. Check the monitor
+               emits an item with active_cnt=0, duty_cycle=0 and PhaseUnknown until an activation
+               has occurred. Agent self-test: pwm_monitor_zero_duty_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: full_duty_by_inversion
+      desc: '''Use inversion and a zero programmed duty so the output remains asserted for a full
+               cycle. Check active_cnt equals period and the reported 0.16 duty fraction follows
+               the monitor's integer calculation. Agent self-test: pwm_monitor_full_duty_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: phase_configuration_change
+      desc: '''Pulse start_cntr with new clk_div and resolution values. Check elapsed time and first
+               activation state restart and subsequent period, duty and phase use only the new
+               configuration. Agent self-test: pwm_monitor_reconfigure_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: disable_and_reset
+      desc: '''Clear cfg.active and assert reset while monitoring. Check no partial pwm_item escapes,
+               ok_to_end becomes true, and the reset divider and resolution are replaced when the
+               next start_cntr arrives. Agent self-test: pwm_monitor_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

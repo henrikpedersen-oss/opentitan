@@ -1,0 +1,177 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "tl_agent"
+  testpoints: [
+    {
+      name: get
+      desc: '''Drive a legal TL-UL Get with aligned address, size, mask, source and a_user, and
+               return AccessAckData. Check the monitor's A item has every request field and its D
+               item adds d_opcode, d_data, d_size, d_source, d_error and d_user.
+               Agent self-test: tl_agent_smoke.'''
+      stage: V1
+      tests: ["tl_agent_smoke"]
+    }
+    {
+      name: put_full_data
+      desc: '''Drive legal PutFullData requests at byte, halfword and word sizes with every active
+               lane masked. Return AccessAck and check request and response fields in the monitor
+               item. Agent self-test: tl_agent_smoke.'''
+      stage: V1
+      tests: ["tl_agent_smoke"]
+    }
+    {
+      name: put_partial_data
+      desc: '''Drive legal PutPartialData requests with contiguous masks confined to active lanes.
+               Check the device memory updates only selected bytes and the monitor emits the exact
+               address, size, mask and data. Agent self-test: tl_agent_smoke.'''
+      stage: V1
+      tests: ["tl_agent_smoke"]
+    }
+    {
+      name: request_backpressure
+      desc: '''Delay a_ready from zero through the configured maximum while the host holds the A
+               payload stable. Check exactly one A item is emitted on acceptance and the request is
+               not duplicated. Agent self-test: tl_agent_backpressure_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: response_backpressure
+      desc: '''Delay d_ready while the device holds a legal D response stable. Check exactly one D
+               item is emitted on acceptance and remains paired to its A request.
+               Agent self-test: tl_agent_backpressure_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: multiple_outstanding
+      desc: '''Issue requests with distinct a_source values up to max_outstanding_req. Check every
+               accepted A item is held pending and each D response is paired by d_source.
+               Agent self-test: tl_agent_smoke.'''
+      stage: V2
+      tests: ["tl_agent_smoke"]
+    }
+    {
+      name: out_of_order_responses
+      desc: '''Return responses in a different source order from requests. Check the monitor and host
+               sequence pair each response with the matching request and release that source ID.
+               Agent self-test: tl_agent_smoke.'''
+      stage: V2
+      tests: ["tl_agent_smoke"]
+    }
+    {
+      name: same_cycle_response
+      desc: '''Accept an A request and produce its D response in the same cycle. Check the immediate
+               A port reports the request before the D item and the normal A port reports it on the
+               next edge. Agent self-test: tl_agent_same_cycle_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: request_retraction
+      desc: '''Present a legal A request, retract a_valid before a_ready, then retry or replace the
+               payload as TL-UL permits. Check no item is emitted for the retracted presentation and
+               the accepted request is reported once. Agent self-test: tl_agent_retraction_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: invalid_a_opcode
+      desc: '''Drive an A opcode other than Get, PutFullData or PutPartialData. Check the generated
+               protocol-error item predicts d_error and the device response and monitor preserve
+               the offending opcode. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: put_full_bad_mask
+      desc: '''Drive PutFullData without all active byte lanes set in a_mask. Check
+               get_error_PutFullData_mask_size_mismatched predicts d_error and the response reports
+               it. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: mask_outside_transfer
+      desc: '''Set an a_mask bit outside the lanes selected by address and size. Check
+               get_error_mask_not_in_active_lanes predicts d_error and the monitor records the
+               malformed mask. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: misaligned_address
+      desc: '''Drive an address not naturally aligned to 2^a_size bytes. Check
+               get_error_addr_size_misaligned predicts d_error and the response is paired with the
+               offending request. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: unsupported_size
+      desc: '''Drive a_size greater than two on the 32-bit TL-UL link. Check
+               get_error_size_over_max predicts d_error and the monitor fills both A and D size
+               fields. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: noncontiguous_partial_mask
+      desc: '''Drive a legal PutPartialData mask with separated active lanes, as base TL-UL permits.
+               Check the item retains the mask and only those bytes update. Agent self-test:
+               tl_agent_noncontiguous_mask_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: duplicate_source
+      desc: '''Accept a second A request with a_source equal to an outstanding request. Check the
+               monitor detects the source reuse and does not silently replace the first pending
+               request. Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: response_without_request
+      desc: '''Drive a D response whose source has no pending A request. Check the monitor detects
+               the spurious response and does not publish it as a valid transaction.
+               Agent self-test: tl_agent_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: bad_response_fields
+      desc: '''Return a D opcode, size or source that is not the required response to its A request.
+               Check the agent detects the mismatch and reports the complete A and D fields.
+               Agent self-test: tl_agent_response_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: request_integrity
+      desc: '''Drive correct and deliberately corrupted command and data integrity in a_user. Check
+               the agent computes the OpenTitan TL-UL integrity codes and distinguishes both error
+               classes. Agent self-test: tl_agent_integrity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: response_integrity
+      desc: '''Return correct and deliberately corrupted response and read-data integrity in d_user.
+               Check the agent detects the selected corruption while retaining response fields.
+               Agent self-test: tl_agent_integrity_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_with_pending_request
+      desc: '''Assert reset with accepted requests awaiting responses. Check pending request and
+               source queues clear, partial channel activity creates no item, and traffic after
+               reset pairs normally. Agent self-test: tl_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

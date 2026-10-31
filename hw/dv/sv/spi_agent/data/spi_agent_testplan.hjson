@@ -1,0 +1,161 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "spi_agent"
+  testpoints: [
+    {
+      name: mode0
+      desc: '''Use CPOL=0 and CPHA=0: idle SCK low, drive before the leading rising edge and sample
+               on it. Check host and device monitor items contain the bytes seen on their respective
+               data lines. Agent self-test: spi_agent_clock_mode_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: mode1
+      desc: '''Use CPOL=0 and CPHA=1: idle SCK low, drive on the leading rising edge and sample on
+               the trailing falling edge. Check the monitored host and device bytes.
+               Agent self-test: spi_agent_clock_mode_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: mode2
+      desc: '''Use CPOL=1 and CPHA=0: idle SCK high, drive before the leading falling edge and sample
+               on it. Check the monitored host and device bytes and idle polarity.
+               Agent self-test: spi_agent_clock_mode_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: mode3
+      desc: '''Use CPOL=1 and CPHA=1: idle SCK high, drive on the leading falling edge and sample on
+               the trailing rising edge. Check the monitored host and device bytes.
+               Agent self-test: spi_agent_clock_mode_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: generic_host_transaction
+      desc: '''Use the agent as host to assert one selected CSB and exchange one or more bytes.
+               Check host_analysis_port and device_analysis_port each emit ordered spi_items with
+               data and csb_sel filled. Agent self-test: spi_agent_generic_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: generic_device_transaction
+      desc: '''Use the agent as device and return programmed bytes while the external host clocks a
+               transaction. Check the monitor emits the host request and device response items and
+               the response driver releases SIO when CSB rises. Agent self-test:
+               spi_agent_generic_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: lsb_first
+      desc: '''Configure host_bit_dir and device_bit_dir for least-significant-bit first transfers.
+               Exchange asymmetric byte patterns and check both monitored data queues preserve the
+               configured bit order. Agent self-test: spi_agent_bit_order_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: partial_byte
+      desc: '''In generic host mode, transfer one item containing fewer than eight bits. Check the
+               exact requested number of clocks and the partial host and device values reported by
+               the monitor. Agent self-test: spi_agent_partial_byte_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: standard_dual_quad
+      desc: '''In flash mode, perform separate read commands with one, two and four data lanes.
+               Check opcode and address remain single-lane and the monitor fills opcode, address_q,
+               num_lanes, dummy_cycles and payload_q. Agent self-test: spi_agent_flash_lane_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: flash_write
+      desc: '''Drive a registered flash write opcode, its configured three- or four-byte address and
+               payload. Check the monitor emits one completed spi_item with write_command=1,
+               opcode, address_q and payload_q. Agent self-test: spi_agent_flash_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: flash_read
+      desc: '''Drive a registered flash read through address, dummy and read-pipeline phases, then
+               collect the device response. Check read_size, num_lanes, dummy_cycles,
+               read_pipeline_mode and payload_q. Agent self-test: spi_agent_flash_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: tpm_write
+      desc: '''As SPI host, send a TPM write command, three-byte address and payload after the device
+               asserts START. Check the monitor item contains write_command, address_q and data.
+               Agent self-test: spi_agent_tpm_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: tpm_read
+      desc: '''As SPI host, send a TPM read command and address, poll WAIT until START, and collect
+               the requested bytes. Check the monitor item contains read_size, address_q and the
+               returned data. Agent self-test: spi_agent_tpm_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: multiple_chip_selects
+      desc: '''Select each supported CSB in turn with different CPOL and CPHA settings. Check only
+               the selected line is asserted and every monitor item reports the correct csb_sel.
+               Agent self-test: spi_agent_csb_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: sck_without_csb
+      desc: '''Toggle SCK while every CSB is inactive. Check no normal transaction item is emitted
+               and the next selected transaction is decoded from its first bit.
+               Agent self-test: spi_agent_malformed_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: csb_without_sck
+      desc: '''Assert and deassert CSB without a clock edge. Check no data item is emitted and the
+               interface returns to its idle clock and high-impedance data state.
+               Agent self-test: spi_agent_malformed_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: incomplete_opcode
+      desc: '''In flash or TPM host mode, terminate CSB after three to seven opcode bits. Check the
+               monitor does not turn the fragment into a completed command and recovers for the next
+               command. Agent self-test: spi_agent_malformed_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: inter_edge_and_word_delay
+      desc: '''Insert configured random delay between SCK edges and between words while CSB remains
+               active. Check byte contents and boundaries are unchanged and the device response
+               remains aligned. Agent self-test: spi_agent_delay_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_transaction
+      desc: '''Assert reset during opcode, address, dummy and payload phases. Check partial items are
+               dropped, CSB returns inactive, SIO is released and a following transaction decodes
+               normally. Agent self-test: spi_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

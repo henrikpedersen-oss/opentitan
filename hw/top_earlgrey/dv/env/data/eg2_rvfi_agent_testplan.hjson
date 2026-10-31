@@ -1,0 +1,153 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "eg2_rvfi_agent"
+  testpoints: [
+    {
+      name: reset_item
+      desc: '''Deassert core reset. Check the first item has reset=1, boot_addr and reset_start and
+               contains no retired instruction; subscribers receive it before normal retirement.
+               Agent self-test: eg2_rvfi_reset_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: retired_instruction
+      desc: '''Retire an instruction with no register or memory result. Check one item contains
+               order, insn, trap, halt, intr, mode, pc and pc_next and produces one rvfi.chip.log
+               line. Agent self-test: eg2_rvfi_retire_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: integer_register_write
+      desc: '''Retire an instruction writing an integer register. Check rd_addr and rd_wdata are
+               filled, x0 is treated as no architectural write in the log, and order is preserved.
+               Agent self-test: eg2_rvfi_register_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: capability_register_write
+      desc: '''In CHERIoT mode retire an instruction writing a tagged and an untagged capability.
+               Check cheriot, rd_addr, rd_wdata and the full raw rd_wcap including tag are filled.
+               Agent self-test: eg2_rvfi_capability_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: load
+      desc: '''Retire byte, halfword and word loads. Check mem_addr, mem_rmask, mem_rdata and the
+               matched mem_acc entry's address, byte enables, response data, error, privilege and
+               response time. Agent self-test: eg2_rvfi_memory_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: store
+      desc: '''Retire byte, halfword and word stores. Check mem_addr, mem_wmask, mem_wdata and the
+               matched mem_acc entry's store flag, address, byte enables, write data, error and
+               privilege. Agent self-test: eg2_rvfi_memory_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: capability_memory_access
+      desc: '''Retire capability loads and stores. Check mem_is_cap, mem_rcap, mem_wcap and the bus
+               accesses are attached to the same instruction while tag and payload remain intact.
+               Agent self-test: eg2_rvfi_capability_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: misaligned_memory_access
+      desc: '''Retire a load or store split into two bus transactions. Check mem_acc contains both in
+               bus order with misaligned_first, misaligned_second and first_saw_error fields and
+               only one retired-instruction item is emitted. Agent self-test:
+               eg2_rvfi_misaligned_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: data_bus_error
+      desc: '''Return an error on a data-side response, including a trapping access whose RVFI mask
+               is zero. Check the response attaches to the correct load or store and sets mem_error
+               from mem_acc.err. Agent self-test: eg2_rvfi_bus_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: instruction_bus_error
+      desc: '''Let an instruction leave ID with fetch error, including the plus-two halfword case.
+               Check the error is pruned on a writeback flush or attached by order with iside_err
+               and the correct word address. Agent self-test: eg2_rvfi_bus_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: interrupt_only_item
+      desc: '''Assert ext_irq_valid without retirement. Check one irq_only item is emitted with order
+               and interrupt context, no instruction is logged, and post_mip identifies the pending
+               interrupt. Agent self-test: eg2_rvfi_interrupt_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: interrupt_nmi_and_debug_context
+      desc: '''Retire at interrupt, internal NMI and debug boundaries. Check pre_mip, post_mip, nmi,
+               nmi_int, nmi_int_mtval, debug_req, debug_mode and rf_wr_suppress are copied to the
+               correct item. Agent self-test: eg2_rvfi_event_context_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: trap_csr_context
+      desc: '''Retire trapping instructions in both modes. Check trap, csr_mcause, csr_mtval,
+               mcounteren and mcounteren_writable are sampled with the instruction for reference
+               model comparison. Agent self-test: eg2_rvfi_trap_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: counters_and_icache_context
+      desc: '''Retire instructions while counters change and the instruction-cache scrambling key
+               becomes valid. Check mcycle, all mhpmcounter low/high halves and ic_scr_key_valid are
+               filled on every item. Agent self-test: eg2_rvfi_counter_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: expanded_instruction
+      desc: '''Present a multi-operation expanded instruction. Check more_ops is set on every
+               non-last, non-trapping micro-operation and cleared on the last or trapping item.
+               Agent self-test: eg2_rvfi_expanded_instruction_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: response_without_request
+      desc: '''Present dside_rvalid with no pending request. Check the monitor detects the protocol
+               error and does not create or attach a fabricated data-side access.
+               Agent self-test: eg2_rvfi_protocol_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_with_pending_access
+      desc: '''Assert reset with data and instruction-side events pending. Check all queues clear,
+               no pre-reset access attaches after reset, and the new reset item precedes subsequent
+               retirement. Agent self-test: eg2_rvfi_reset_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: end_of_run_pending_accesses
+      desc: '''End collection with zero, one, two and more than two data-side accesses after the last
+               retirement. Check up to MaxInFlight are reported informationally and a larger count
+               is an error naming the first access. Agent self-test: eg2_rvfi_end_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

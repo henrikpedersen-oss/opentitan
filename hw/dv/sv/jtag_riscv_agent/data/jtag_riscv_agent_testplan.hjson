@@ -1,0 +1,131 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "jtag_riscv_agent"
+  testpoints: [
+    {
+      name: tap_reset
+      desc: '''Drive at least five TCK cycles with TMS high or assert TRST, then enter
+               Run-Test/Idle. Check the jtag_agent monitor resets its TAP model and no partial IR or
+               DR item escapes. Agent self-test: jtag_riscv_tap_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: instruction_scan
+      desc: '''Traverse Select-IR, Capture-IR, Shift-IR, Exit1-IR and Update-IR for a configured
+               length. Check the lower jtag_agent monitor emits one jtag_item with ir_len and ir,
+               and dr_len=0. Agent self-test: jtag_riscv_tap_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: data_scan
+      desc: '''Traverse the DR path, shift TDI and sample TDO for the configured length. Check one
+               jtag_item contains dr_len, dr and dout with ir_len=0.
+               Agent self-test: jtag_riscv_tap_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: pause_ir
+      desc: '''Leave Shift-IR for Pause-IR for one and many TCK cycles, then resume shifting or exit
+               through Exit2-IR. Check the monitor emits one IR item with every shifted bit exactly
+               once. Agent self-test: jtag_riscv_pause_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: pause_dr
+      desc: '''Leave Shift-DR for Pause-DR for one and many TCK cycles, then resume shifting or exit
+               through Exit2-DR. Check the monitor emits one DR item and dout remains aligned.
+               Agent self-test: jtag_riscv_pause_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: dmi_read
+      desc: '''Select DMI, issue one read request and poll with status operations until completion.
+               Check jtag_riscv_monitor emits addr, op=DmiRead, returned data and final status; the
+               jtag_dmi layer emits req_op, addr, rsp_op and rdata. Agent self-test:
+               jtag_riscv_dmi_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: dmi_write
+      desc: '''Select DMI, issue one write and poll to completion. Check jtag_riscv_monitor emits
+               addr, op=DmiWrite, data and final status; the jtag_dmi layer emits req_op, addr,
+               wdata and rsp_op. Agent self-test: jtag_riscv_dmi_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: dmi_busy
+      desc: '''Return DmiInProgress to a status scan. Check the transaction remains pending, DMI
+               reset is written to clear the sticky status, polling resumes, and only the final
+               response creates a high-level item. Agent self-test: jtag_riscv_dmi_busy_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: dmi_failure
+      desc: '''Return DmiFail for a read and a write. Check the high-level item has failure status,
+               the register adapter returns UVM_NOT_OK, and allow_errors controls only reporting.
+               Agent self-test: jtag_riscv_dmi_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: rv_dm_activation
+      desc: '''Set dmcontrol.dmactive, read it back, and wait for a nonzero SBCS value. Check
+               rv_dm_activated is set only after the sequence succeeds and activation failure is
+               reported after the configured attempt limit. Agent self-test:
+               jtag_riscv_activation_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: system_bus_read
+      desc: '''Through the RV debug SBA path, configure access size and read-on-address, write the
+               address, wait for not busy and read data. Check sba_access_monitor emits bus_op,
+               size, addr, rdata and error fields. Agent self-test: jtag_riscv_sba_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: system_bus_write
+      desc: '''Through the RV debug SBA path, configure access size, address and write data. Check
+               sba_access_monitor emits bus_op, size, addr, wdata, busy error and SBA error after
+               completion. Agent self-test: jtag_riscv_sba_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: sba_autoincrement
+      desc: '''Enable SBA address autoincrement and perform consecutive accesses. Check one item per
+               access and that the predicted next address advances by the selected transfer size.
+               Agent self-test: jtag_riscv_sba_autoincrement_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: sba_protocol_errors
+      desc: '''Request a misaligned address, an unsupported size and an access while busy. Check the
+               jtag_dmi/SBA layer predicts bad-alignment, bad-size and busy errors respectively and
+               does not invent an SBA request. Agent self-test: jtag_riscv_sba_error_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_dmi
+      desc: '''Assert reset with a DMI or SBA request pending. Check lower-layer request queues are
+               cleared, the high-level response carries status_in_reset, RV_DM activation is lost,
+               and the next access begins from a reset TAP. Agent self-test:
+               jtag_riscv_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}

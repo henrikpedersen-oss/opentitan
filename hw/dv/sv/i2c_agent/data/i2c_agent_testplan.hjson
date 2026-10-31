@@ -1,0 +1,125 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  name: "i2c_agent"
+  testpoints: [
+    {
+      name: controller_write
+      desc: '''Use the agent as controller to drive START, a 7-bit address with write direction,
+               one or more data bytes and STOP. Check that the monitor emits one i2c_item with
+               addr, dir, bus_op, address ACK, data_q, data_ack_q, start and stop filled.
+               Agent self-test: i2c_agent_controller_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: controller_read
+      desc: '''Use the agent as controller to address a target for read, collect bytes, ACK all but
+               the final byte, NACK the final byte and drive STOP. Check the complete read item and
+               every ACK/NACK field. Agent self-test: i2c_agent_controller_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: target_write
+      desc: '''Use the agent as target while an external controller writes bytes. Drive an address
+               ACK and data ACKs, and check target_mode_wr_item_port receives addr, direction,
+               data_q, data_ack_q and the ending STOP. Agent self-test: i2c_agent_target_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: target_read
+      desc: '''Use the agent as target and return programmed bytes to an external controller. Check
+               target_mode_rd_item_port receives the address, returned data bytes, the controller's
+               ACK/NACKs and STOP. Agent self-test: i2c_agent_target_test.'''
+      stage: V1
+      tests: []
+    }
+    {
+      name: repeated_start
+      desc: '''Drive a repeated START without an intervening STOP, including a write-then-read
+               transfer. Check the monitor ends the first item with rstart_back, starts the next
+               with rstart_front, and preserves transaction order. Agent self-test:
+               i2c_agent_repeated_start_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: address_nack
+      desc: '''As target, NACK the address byte. Check the monitor records addr_ack=NACK, triggers
+               got_nack, and the controller sequence ends the transfer with STOP without sending
+               data. Agent self-test: i2c_agent_nack_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: data_nack
+      desc: '''As target, ACK the address and NACK a selected write data byte. Check data_ack_q
+               records the NACK, got_nack is triggered, and the controller follows it with STOP or
+               repeated START. Agent self-test: i2c_agent_nack_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: clock_stretching
+      desc: '''As target, hold SCL low before an ACK for a configured number of controller clock
+               periods, then complete the byte. Check the controller waits and the monitor emits
+               the same transaction data. Agent self-test: i2c_agent_clock_stretch_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: stretch_timeout
+      desc: '''As target, stretch SCL beyond timing_cfg.tTimeOut when timeout checking is enabled.
+               Check that the generated condition is long enough for the controller's timeout
+               check and that the agent can release the bus afterward. Agent self-test:
+               i2c_agent_stretch_timeout_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: stop_after_ack
+      desc: '''As controller, ACK a read byte and issue STOP instead of continuing the read. Check
+               the monitor records the ACK and STOP and sets ack_stop_det for the unexpected-stop
+               test mode. Agent self-test: i2c_agent_ack_stop_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: bus_interference
+      desc: '''Inject SDA instability while SCL is high and conflicting SDA or SCL levels while the
+               chip transmits. Check that the waveform meets the documented interference cases and
+               the monitor still terminates or aborts the item cleanly. Agent self-test:
+               i2c_agent_interference_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: ten_bit_address
+      desc: '''Drive the two-byte 10-bit address header and complete both read and write transfers.
+               Check that addr contains all ten bits and that direction and ACKs belong to the
+               correct address phase. Agent self-test: i2c_agent_10bit_address_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: arbitration_loss
+      desc: '''While acting as controller, release SDA for a one but force the observed bus low.
+               Check that the agent detects loss of arbitration, stops driving the transfer and
+               reports the partial transaction without corrupting the next one. Agent self-test:
+               i2c_agent_arbitration_test.'''
+      stage: V2
+      tests: []
+    }
+    {
+      name: reset_mid_transfer
+      desc: '''Reset the agent during address, data and clock-stretch phases. Check the partial item
+               is dropped, both open-drain outputs are released, state and queues are cleared, and
+               the next START is decoded normally. Agent self-test: i2c_agent_reset_test.'''
+      stage: V2
+      tests: []
+    }
+  ]
+}
