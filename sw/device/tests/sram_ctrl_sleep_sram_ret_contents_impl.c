@@ -7,6 +7,7 @@
 #include "hw/top/dt/rstmgr.h"
 #include "hw/top/dt/rv_core_ibex.h"
 #include "hw/top/dt/rv_plic.h"
+#include "sw/device/lib/base/cheriot_mmio.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_aon_timer.h"
 #include "sw/device/lib/dif/dif_pwrmgr.h"
@@ -71,7 +72,8 @@ static void retention_sram_check(check_config_t config) {
   }
 
   uint32_t tmp_buffer[kTestBufferSizeWords];
-  memcpy(tmp_buffer, (uint8_t *)ret_sram_owner_addr, sizeof(tmp_buffer));
+  memcpy(tmp_buffer, (uint8_t *)OT_MMIO_ADDR_TO_PTR(ret_sram_owner_addr),
+         sizeof(tmp_buffer));
 
   if (config.is_equal) {
     CHECK_ARRAYS_EQ(tmp_buffer, kTestData, kTestBufferSizeWords);
