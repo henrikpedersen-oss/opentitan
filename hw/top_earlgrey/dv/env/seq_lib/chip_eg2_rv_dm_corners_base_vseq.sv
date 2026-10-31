@@ -146,6 +146,12 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
       end else if ($sscanf(s, "EG2 DEBUG ready 0x%h 0x%h 0x%h 0x%h 0x%h 0x%h", done_addr,
                            scratch_addr, cmd_addr, stop_addr, vec_addr, lock_addr) == 6) begin
         readies++;
+        // The words the bench writes over SBA while the software polls them (done, command, stop):
+        // an SBA write reaches the model only when its JTAG access returns, after the software may
+        // have read the new value, so the model takes the chip's value for them (bench mailboxes).
+        eg2_iss_wrapper::backdoor_mailbox(done_addr, 4);
+        eg2_iss_wrapper::backdoor_mailbox(cmd_addr, 4);
+        eg2_iss_wrapper::backdoor_mailbox(stop_addr, 4);
       end else if ($sscanf(s, "EG2 DEBUG start 0x%h 0x%h 0x%h", start_seq, start_kind,
                            start_target) == 3) begin
         start_time = $realtime;

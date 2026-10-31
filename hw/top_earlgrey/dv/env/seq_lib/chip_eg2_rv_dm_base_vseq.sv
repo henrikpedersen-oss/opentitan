@@ -85,6 +85,10 @@ class chip_eg2_rv_dm_base_vseq extends chip_sw_eg2_chk_base_vseq;
     int unsigned r = when_pick;
     wait_sw_line("EG2 DEBUG ready", line);
     if (!($sscanf(line, "EG2 DEBUG ready 0x%h 0x%h", done_addr, scratch_addr) == 2)) `uvm_fatal(`gfn, $sformatf("Check failed ($sscanf(line, \"EG2 DEBUG ready 0x%%h 0x%%h\", done_addr, scratch_addr) == 2) %s", $sformatf("cannot read the addresses in '%s'", line)))
+    // The bench writes the done word over SBA while the software reads it, and its SBA write is
+    // reported to the model only when the JTAG access returns, after the chip may have read it:
+    // the model takes the chip's value for it, as for any bench mailbox.
+    eg2_iss_wrapper::backdoor_mailbox(done_addr, 4);
     if (r < weights[0]) begin
       `uvm_info(`gfn, "EG2 debug: JTAG accesses at the ready line", UVM_LOW)
     end else if (r < weights[0] + weights[1]) begin
