@@ -20,6 +20,17 @@ module tb;
   import prim_secded_pkg::get_ecc_data_width;
   import prim_secded_pkg::get_ecc_parity_width;
   import prim_secded_pkg::SecdedInv_39_32;
+
+`ifdef EG2_UPF
+  // Power-aware simulation (dvsim build mode en_upf; power intent hw/top_earlgrey/dv/upf/tb.upf):
+  // the bench's supply is on for the whole run. A supply nobody switches on stays off, so without
+  // this every domain starts powered down and corrupted. The chip's main domain then follows
+  // pwrmgr through the power switch in chip_earlgrey_asic.upf.
+  initial begin
+    void'(UPF::supply_on("VDD_TB", 1.0));
+    void'(UPF::supply_on("VSS_TB", 0.0));
+  end
+`endif
   import prim_secded_pkg::SecdedInv_28_22;
 
   // macro includes

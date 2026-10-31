@@ -322,7 +322,7 @@
     // Off by default; the eg2_top_verification Makefile adds it with UPF_ENABLE=1.
     {
       name: en_upf
-      build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf"]
+      build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf", "+define+EG2_UPF"]
     }
     // Build mode that configures a testbench in a manner suitable for pad
     // testing. For example, the testbench may need to have different agents
