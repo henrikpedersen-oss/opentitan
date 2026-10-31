@@ -323,9 +323,11 @@
     {
       name: en_upf
       // -lps_enable_assertion_ctrl: assertions in a powered-down domain are off (its corrupted values
-      // would fire them, e.g. tlul_rsp_intg_gen RspZero_A at time 0 before pwrmgr drives main_pd_n).
+      // would fire them). -lps_stime 1us: power-aware behaviour starts once the always-on reset has
+      // set pwrmgr's main_pd_n (reset value 1, main on); before, the switch control is X and Xcelium
+      // corrupts the main domain (tlul_rsp_intg_gen RspZero_A, an immediate assertion, fired at 0 fs).
       build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf", "+define+EG2_UPF",
-                   "-lps_enable_assertion_ctrl"]
+                   "-lps_enable_assertion_ctrl", "-lps_stime 1us"]
     }
     // Build mode that configures a testbench in a manner suitable for pad
     // testing. For example, the testbench may need to have different agents
