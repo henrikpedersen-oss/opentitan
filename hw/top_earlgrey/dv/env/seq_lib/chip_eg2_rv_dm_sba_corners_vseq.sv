@@ -206,7 +206,7 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     chk_eq("the word written while sbbusyerror was set", after_val, before_val);
     sba_wr(scratch_addr + 4 * 20, ~before_val);
     sba_rd(scratch_addr + 4 * 20, after_val);
-    chk_eq("an access after sbbusyerror's clear", after_val, ~before_val);
+    chk_eq("an access after sbbusyerror's clear", after_val, 32'(~before_val));
   endtask
 
   protected task case_autoinc();
