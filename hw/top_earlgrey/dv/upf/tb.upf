@@ -25,3 +25,11 @@ load_upf [file join [file dirname [info script]] ../../syn/chip_earlgrey_asic.up
 # supplies themselves; VCMAIN follows pwrmgr through the chip's power switch).
 connect_supply_net VDD_TB -ports {dut/VCC dut/VCAON dut/VIOA dut/VIOB dut/AVCC}
 connect_supply_net VSS_TB -ports {dut/VSS}
+
+# While the main domain is not on (deep sleep), its assertions are not evaluated: its logic,
+# reset synchronisers included, is corrupted to X, so `disable iff (!rst_ni)` no longer holds them
+# off and every assertion there would fire on the X (seen 2026-10-31: RspZero_A in sram_ctrl_meta's
+# TL-UL adapter at the power-down of chip_sw_pwrmgr_smoketest). They start again from INACTIVE
+# when the domain is back on. Cadence extension to IEEE 1801; it takes effect with Xcelium's
+# -lps_enable_assertion_ctrl (chip_sim_cfg.hjson, build mode en_upf).
+create_assertion_control -name AC_PD_MAIN_OFF -domains {dut/PD_MAIN} -type reset
