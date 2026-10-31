@@ -69,6 +69,7 @@
 #include "hw/top/dt/uart.h"           // Generated
 #include "sw/device/lib/base/abs_mmio.h"
 #include "sw/device/lib/base/bitfield.h"
+#include "sw/device/lib/base/cheriot_mmio.h"
 #include "sw/device/lib/base/math.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_aes.h"
@@ -260,7 +261,21 @@ static void save_fault_checker(fault_checker_t *fault_checker) {
   CHECK_STATUS_OK(ret_sram_testutils_scratch_write(2, 1, &type_addr));
 }
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+static void init_fault_checkers(fault_checker_t *checkers);
+#endif
+
 static void restore_fault_checker(fault_checker_t *fault_checker) {
+#if defined(__CHERI_PURE_CAPABILITY__)
+  // EG2, CHERIoT mode: a pointer read back from a 32-bit scratch word has no
+  // tag, and calling it faults. The checker is chosen again from
+  // kExpectedAlertNumber, which the bench sets before boot and resets keep.
+  fault_checker_t checkers[kDtAlertCount] = {{NULL, NULL, NULL}};
+  init_fault_checkers(checkers);
+  CHECK(kExpectedAlertNumber < kDtAlertCount);
+  *fault_checker = checkers[kExpectedAlertNumber];
+  return;
+#endif
   CHECK_STATUS_OK(ret_sram_testutils_scratch_read(
       0, 1, (uint32_t *)&(fault_checker->function)));
   CHECK_STATUS_OK(ret_sram_testutils_scratch_read(
@@ -1122,7 +1137,8 @@ static void execute_test(const dif_aon_timer_t *aon_timer) {
   if (kExpectedAlertNumber == dt_sram_ctrl_alert_to_alert_id(
                                   kSramCtrlRetDt, kDtSramCtrlAlertFatalError)) {
     LOG_INFO("Check that the retention SRAM blocks accesses");
-    uint32_t data = *((uint32_t *)kSramRetStart);
+    uint32_t data =
+        *((volatile uint32_t *)OT_MMIO_ADDR_TO_PTR(kSramRetStart));
     LOG_INFO("Read from address 0x%0x with expected error gets 0x%x",
              kSramRetStart, data);
     CHECK(load_access_exception_seen,
