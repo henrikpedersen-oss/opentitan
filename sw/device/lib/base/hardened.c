@@ -9,6 +9,7 @@
 
 extern uint32_t launder32(uint32_t);
 extern ot_word_t launderw(ot_word_t);
+extern uintptr_t launderp(uintptr_t);
 extern void barrier32(uint32_t);
 extern void barrierw(ot_word_t);
 

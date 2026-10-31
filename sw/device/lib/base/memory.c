@@ -65,6 +65,29 @@ void *OT_PREFIX_IF_NOT_RV32(memcpy)(void *restrict dest,
   }
   unsigned char *dest8 = (unsigned char *)dest;
   const unsigned char *src8 = (const unsigned char *)src;
+#if defined(__CHERI_PURE_CAPABILITY__)
+  // Under CHERI purecap the compiler turns struct copies into memcpy() calls,
+  // and the struct may hold pointers. A word or byte copy drops their tags, so
+  // where source and destination are equally aligned the aligned middle is
+  // copied in pointer-sized units, which keeps them.
+  const size_t kCap = sizeof(void *);
+  if ((__builtin_cheri_address_get(dest) - __builtin_cheri_address_get(src)) %
+          kCap ==
+      0) {
+    size_t j = 0;
+    for (; j < len && __builtin_cheri_address_get(&dest8[j]) % kCap != 0;
+         ++j) {
+      dest8[j] = src8[j];
+    }
+    for (; len - j >= kCap; j += kCap) {
+      *(void **)&dest8[j] = *(void *const *)&src8[j];
+    }
+    for (; j < len; ++j) {
+      dest8[j] = src8[j];
+    }
+    return dest;
+  }
+#endif
   size_t body_offset, tail_offset;
   compute_alignment(dest, src, len, &body_offset, &tail_offset);
   size_t i = 0;

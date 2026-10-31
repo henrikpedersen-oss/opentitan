@@ -38,8 +38,8 @@ status_t hardened_memcpy(uint32_t *restrict dest, const uint32_t *restrict src,
     barrierw(byte_idx);
 
     // Calculate pointers.
-    void *src = (void *)launderw(src_addr + byte_idx);
-    void *dest = (void *)launderw(dest_addr + byte_idx);
+    void *src = (void *)launderp(src_addr + byte_idx);
+    void *dest = (void *)launderp(dest_addr + byte_idx);
 
     // Perform the copy, without performing a typed dereference operation.
     write_32(read_32(src), dest);
@@ -63,7 +63,7 @@ status_t hardened_memshred(uint32_t *dest, size_t word_len) {
     barrierw(byte_idx);
 
     // Calculate pointer.
-    void *data = (void *)launderw(data_addr + byte_idx);
+    void *data = (void *)launderp(data_addr + byte_idx);
 
     // Write a freshly-generated random word to `*data`.
     write_32(hardened_memshred_random_word(), data);
@@ -95,8 +95,8 @@ hardened_bool_t hardened_memeq(const uint32_t *lhs, const uint32_t *rhs,
     barrierw(byte_idx);
 
     // Calculate pointers.
-    void *av = (void *)launderw(lhs_addr + byte_idx);
-    void *bv = (void *)launderw(rhs_addr + byte_idx);
+    void *av = (void *)launderp(lhs_addr + byte_idx);
+    void *bv = (void *)launderp(rhs_addr + byte_idx);
 
     uint32_t a = read_32(av);
     uint32_t b = read_32(bv);
@@ -141,8 +141,8 @@ hardened_bool_t consttime_memeq_byte(const void *lhs, const void *rhs,
     size_t byte_idx = launderw(random_order_advance(&order));
     barrierw(byte_idx);
 
-    uint8_t *a = (uint8_t *)launderw(lhs_addr + byte_idx);
-    uint8_t *b = (uint8_t *)launderw(rhs_addr + byte_idx);
+    uint8_t *a = (uint8_t *)launderp(lhs_addr + byte_idx);
+    uint8_t *b = (uint8_t *)launderp(rhs_addr + byte_idx);
 
     // Launder one of the operands, so that the compiler cannot cache the result
     // of the xor for use in the next operation.
@@ -202,10 +202,10 @@ status_t hardened_xor(const uint32_t *restrict x, const uint32_t *restrict y,
     uintptr_t randp = rand_addr + byte_idx;
 
     // Set the pointers.
-    void *xv = (void *)launderw(xp);
-    void *yv = (void *)launderw(yp);
-    void *destv = (void *)launderw(destp);
-    void *randv = (void *)launderw(randp);
+    void *xv = (void *)launderp(xp);
+    void *yv = (void *)launderp(yp);
+    void *destv = (void *)launderp(destp);
+    void *randv = (void *)launderp(randp);
 
     // Perform the XORs: dest = ((x ^ rand) ^ y) ^ rand
     write_32(read_32(xv) ^ read_32(randv), destv);
@@ -238,8 +238,8 @@ status_t hardened_xor_in_place(uint32_t *restrict x, const uint32_t *restrict y,
     barrierw(byte_idx);
 
     // Calculate pointers.
-    void *xv = (void *)launderw(x_addr + byte_idx);
-    void *yv = (void *)launderw(y_addr + byte_idx);
+    void *xv = (void *)launderp(x_addr + byte_idx);
+    void *yv = (void *)launderp(y_addr + byte_idx);
 
     // Perform an XOR in the array.
     write_32(read_32(xv) ^ read_32(yv), xv);
@@ -264,8 +264,8 @@ status_t randomized_bytecopy(void *restrict dest, const void *restrict src,
     size_t byte_idx = launderw(random_order_advance(&order));
     barrierw(byte_idx);
 
-    uint8_t *src_byte_idx = (uint8_t *)launderw(src_addr + byte_idx);
-    uint8_t *dest_byte_idx = (uint8_t *)launderw(dest_addr + byte_idx);
+    uint8_t *src_byte_idx = (uint8_t *)launderp(src_addr + byte_idx);
+    uint8_t *dest_byte_idx = (uint8_t *)launderp(dest_addr + byte_idx);
 
     *(dest_byte_idx) = *(src_byte_idx);
   }
@@ -290,8 +290,8 @@ status_t randomized_bytexor_in_place(void *restrict x, const void *restrict y,
     barrierw(byte_idx);
 
     // TODO(#8815) byte writes vs. word-wise integrity
-    uint8_t *x_byte_idx = (uint8_t *)launderw(x_addr + byte_idx);
-    uint8_t *y_byte_idx = (uint8_t *)launderw(y_addr + byte_idx);
+    uint8_t *x_byte_idx = (uint8_t *)launderp(x_addr + byte_idx);
+    uint8_t *y_byte_idx = (uint8_t *)launderp(y_addr + byte_idx);
 
     *(x_byte_idx) = *(x_byte_idx) ^ *(y_byte_idx);
   }

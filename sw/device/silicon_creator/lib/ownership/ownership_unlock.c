@@ -33,9 +33,9 @@ static rom_error_t do_unlock(boot_svc_msg_t *msg, boot_data_t *bootdata,
     return kErrorOwnershipInvalidNonce;
   }
   HARDENED_CHECK_EQ(
-      nonce_equal((const nonce_t *)launderw(
+      nonce_equal((const nonce_t *)launderp(
                       (uintptr_t)&msg->ownership_unlock_req.nonce),
-                  (const nonce_t *)launderw((uintptr_t)&bootdata->nonce)),
+                  (const nonce_t *)launderp((uintptr_t)&bootdata->nonce)),
       true);
 
   // Verify the device identification number is correct.
@@ -167,9 +167,9 @@ static rom_error_t unlock_abort(boot_svc_msg_t *msg, boot_data_t *bootdata) {
       return kErrorOwnershipInvalidNonce;
     }
     HARDENED_CHECK_EQ(
-        nonce_equal((const nonce_t *)launderw(
+        nonce_equal((const nonce_t *)launderp(
                         (uintptr_t)&msg->ownership_unlock_req.nonce),
-                    (const nonce_t *)launderw((uintptr_t)&bootdata->nonce)),
+                    (const nonce_t *)launderp((uintptr_t)&bootdata->nonce)),
         true);
 
     // Verify the device identification number is correct.

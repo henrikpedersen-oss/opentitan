@@ -273,6 +273,31 @@ inline ot_word_t launderw(ot_word_t val) {
 }
 
 /**
+ * Launders the pointer `val`, as `launderw()` does for a word.
+ *
+ * Use this, not `launderw()`, for a value that is turned back into a pointer:
+ * under CHERI purecap `ot_word_t` is the address only, so `(void *)launderw(p)`
+ * is an untagged pointer, and the compiler may delete every access through it.
+ * Elsewhere it is the same as `launderw()`.
+ *
+ * @param val A pointer-sized value to launder.
+ * @return The same value, a valid pointer wherever `val` was one.
+ */
+OT_WARN_UNUSED_RESULT
+inline uintptr_t launderp(uintptr_t val) {
+#if OT_BUILD_FOR_STATIC_ANALYZER || \
+    (defined(OT_DISABLE_HARDENING) && OT_DISABLE_HARDENING)
+  return val;
+#endif
+#if defined(__CHERI_PURE_CAPABILITY__)
+  asm volatile("" : "+C"(val));
+#else
+  asm volatile("" : "+r"(val));
+#endif
+  return val;
+}
+
+/**
  * Creates a reordering barrier for `val`.
  *
  * `barrier32()` takes an argument and discards it, while introducing an

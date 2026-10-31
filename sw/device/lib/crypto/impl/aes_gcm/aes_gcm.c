@@ -461,6 +461,12 @@ static status_t aes_gcm_init(const aes_key_t key,
 
   // Initialize the key and lengths.
   HARDENED_TRY(randomized_bytecopy(&ctx->key, &key, sizeof(aes_key_t)));
+#if defined(__CHERI_PURE_CAPABILITY__)
+  // A byte copy carries no capability tags: the key share pointers are copied
+  // as pointers, or every later use of ctx->key takes a CHERI tag fault.
+  ctx->key.key_shares[0] = key.key_shares[0];
+  ctx->key.key_shares[1] = key.key_shares[1];
+#endif
   ctx->aad_len = 0;
   ctx->input_len = 0;
 

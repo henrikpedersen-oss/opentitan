@@ -82,9 +82,9 @@ static rom_error_t activate_handler(boot_svc_msg_t *msg,
     return kErrorOwnershipInvalidNonce;
   }
   HARDENED_CHECK_EQ(
-      nonce_equal((const nonce_t *)launderw(
+      nonce_equal((const nonce_t *)launderp(
                       (uintptr_t)&msg->ownership_activate_req.nonce),
-                  (const nonce_t *)launderw((uintptr_t)&bootdata->nonce)),
+                  (const nonce_t *)launderp((uintptr_t)&bootdata->nonce)),
       true);
 
   // Verify the device identification number is correct.
