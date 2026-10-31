@@ -30,16 +30,19 @@
     }
     {
       name: pause_ir
-      desc: '''Leave Shift-IR for Pause-IR for one and many TCK cycles, then resume shifting or exit
-               through Exit2-IR. Check the monitor emits one IR item with every shifted bit exactly
+      desc: '''Go from Shift-IR through Exit1-IR to Pause-IR, stay there for one and many TCK
+               cycles, then leave through Exit2-IR, either back to Shift-IR to resume shifting or to
+               Update-IR to finish (IEEE 1149.1 TAP state machine: Pause is entered only from Exit1
+               and left only through Exit2). Check the monitor emits one IR item with every shifted bit exactly
                once. Agent self-test: jtag_riscv_pause_test.'''
       stage: V2
       tests: []
     }
     {
       name: pause_dr
-      desc: '''Leave Shift-DR for Pause-DR for one and many TCK cycles, then resume shifting or exit
-               through Exit2-DR. Check the monitor emits one DR item and dout remains aligned.
+      desc: '''Go from Shift-DR through Exit1-DR to Pause-DR, stay there for one and many TCK
+               cycles, then leave through Exit2-DR, either back to Shift-DR to resume shifting or to
+               Update-DR to finish. Check the monitor emits one DR item and dout remains aligned.
                Agent self-test: jtag_riscv_pause_test.'''
       stage: V2
       tests: []

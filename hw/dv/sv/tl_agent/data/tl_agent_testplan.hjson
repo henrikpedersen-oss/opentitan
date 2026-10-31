@@ -25,9 +25,11 @@
       name: put_partial_data
       desc: '''Drive legal PutPartialData requests with contiguous masks confined to active lanes.
                Check the device memory updates only selected bytes and the monitor emits the exact
-               address, size, mask and data. Agent self-test: tl_agent_smoke.'''
+               address, size, mask and data. tl_agent_smoke cannot check this (its device sequence
+               has no memory model; its scoreboard only compares host and device items), so it
+               needs a self-test with a device memory. Agent self-test: tl_agent_partial_test.'''
       stage: V1
-      tests: ["tl_agent_smoke"]
+      tests: []
     }
     {
       name: request_backpressure

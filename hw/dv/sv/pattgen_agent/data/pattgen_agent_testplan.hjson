@@ -14,16 +14,18 @@
     }
     {
       name: positive_clock_polarity
-      desc: '''Set polarity low and change PDA around positive PCL edges. Check that the monitor
-               samples only positive edges and fills data_q with the expected bits.
+      desc: '''Set polarity low: PCL starts low and PDA changes on each falling edge of PCL
+               (pattgen programmers_guide.md, CTRL.POLARITY). Check that the monitor samples PDA on
+               the rising edges only and fills data_q with the expected bits.
                Agent self-test: pattgen_agent_polarity_test.'''
       stage: V2
       tests: []
     }
     {
       name: negative_clock_polarity
-      desc: '''Set polarity high and change PDA around negative PCL edges. Check that the monitor
-               samples only negative edges and fills data_q with the expected bits.
+      desc: '''Set polarity high: PCL starts high and PDA changes on each rising edge of PCL
+               (pattgen programmers_guide.md, CTRL.POLARITY). Check that the monitor samples PDA on
+               the falling edges only and fills data_q with the expected bits.
                Agent self-test: pattgen_agent_polarity_test.'''
       stage: V2
       tests: []

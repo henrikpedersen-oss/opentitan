@@ -83,7 +83,8 @@
     }
     {
       name: handshake_packet
-      desc: '''Drive and observe ACK, NAK, STALL and NYET. Check one handshake_pkt per packet with
+      desc: '''Drive and observe ACK, NAK and STALL (NYET is a high-speed handshake only; a
+               full-speed bus never carries it). Check one handshake_pkt per packet with
                the PID and direction on the correct request or response analysis port.
                Agent self-test: usb20_agent_handshake_test.'''
       stage: V1
