@@ -25,9 +25,9 @@
 //  | unmapped    | read after a device window no window follows     | sberror 2 or 7              |
 //  | integrity   | a read of scratch with its response's data       | sberror 2 or 7; no rv_dm    |
 //  |             |   integrity bit flipped (bench fault)            |   alert                     |
-//  | busy        | a second access while a write across the always- | sbbusyerror 1; no access    |
-//  |             |   on CDC (aon_timer WKUP_THOLD_LO) is in flight; |   while it is set; accesses |
-//  |             |   then a write while sbbusyerror is set          |   work after its clear      |
+//  | busy        | a second access while a write (aon_timer         | sbbusyerror 1; no access    |
+//  |             |   WKUP_THOLD_LO) is held off the bus by the      |   while it is set; accesses |
+//  |             |   bench; then a write while sbbusyerror is set   |   work after its clear      |
 //  | autoinc     | n words written with sbautoincrement, read back  | the words; sbaddress0       |
 //  |             |   with sbreadondata and sbautoincrement          |   advanced by 4 per access  |
 //  | sizes       | 8- and 16-bit writes at each lane of a scratch   | only the addressed lanes    |
@@ -141,6 +141,31 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     sbcs_wr(3'd2);
   endtask
 
+  // Holds rv_dm's SBA request off the bus, as a slow device would: the crossbar does not see
+  // a_valid and rv_dm does not see a_ready, so an access rv_dm starts stays in flight (sbbusy 1)
+  // until the release, when the crossbar takes it as usual. Nothing is in flight when the hold
+  // starts (checked), so no response can be lost.
+  protected task hold_sba(bit hold);
+    uvm_hdl_data_t v;
+    tlul_pkg::tl_h2d_t h;
+    tlul_pkg::tl_d2h_t d;
+    if (!hold) begin
+      if (!uvm_hdl_release(SbaReqPath)) `uvm_fatal(`gfn, SbaReqPath)
+      if (!uvm_hdl_release(SbaRspPath)) `uvm_fatal(`gfn, SbaRspPath)
+      return;
+    end
+    if (!uvm_hdl_read(SbaReqPath, v)) `uvm_fatal(`gfn, {"cannot read ", SbaReqPath})
+    h = tlul_pkg::tl_h2d_t'(v[$bits(tlul_pkg::tl_h2d_t)-1:0]);
+    if (!uvm_hdl_read(SbaRspPath, v)) `uvm_fatal(`gfn, {"cannot read ", SbaRspPath})
+    d = tlul_pkg::tl_d2h_t'(v[$bits(tlul_pkg::tl_d2h_t)-1:0]);
+    chk_true("no SBA request or response in flight when the hold starts", !h.a_valid && !d.d_valid);
+    h.a_valid = 1'b0;
+    d.a_ready = 1'b0;
+    `uvm_info(`gfn, "EG2 stimulus: rv_dm's SBA request held off the bus", UVM_LOW)
+    if (!uvm_hdl_force(SbaReqPath, uvm_hdl_data_t'(h))) `uvm_fatal(`gfn, SbaReqPath)
+    if (!uvm_hdl_force(SbaRspPath, uvm_hdl_data_t'(d))) `uvm_fatal(`gfn, SbaRspPath)
+  endtask
+
   protected task case_busy();
     uvm_reg_data_t v;
     bit [31:0] before_val, after_val;
@@ -148,12 +173,19 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     sba_rd(scratch_addr + 4 * 20, before_val);
     sbcs_wr(3'd2);
     sbaddr_wr(AonThold);
+    // The first write waits on the bus until the release, so the second one always starts while it
+    // is in flight. (Before 2026-10-31 the overlap relied on the always-on CDC being slower than
+    // two JTAG DMI writes; the 2026-10-31 run read sbbusyerror 0, and its stimulus check could not
+    // tell whether the first write had already finished. With the hold, sbbusyerror 0 is a DUT
+    // failure.)
+    hold_sba(1'b1);
     sbdata_wr(words[0]);
-    sbdata_wr(words[1]);  // a new write while the first is in flight
     sbcs_rd(v);
-    chk_true("the write across the CDC still ran at the second access (stimulus)",
-             get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusy, v) ||
-             get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusyerror, v));
+    chk_true("the first write is in flight at the second access (stimulus)",
+             get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusy, v) &&
+             !get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusyerror, v));
+    sbdata_wr(words[1]);  // a new write while the first is in flight
+    hold_sba(1'b0);
     sba_wait(v);
     chk_eq("sbbusyerror after an access started while busy", get_field_val(
            cfg.jtag_dmi_ral.sbcs.sbbusyerror, v), 1);
