@@ -88,6 +88,14 @@ dif_result_t dif_${ip.name_snake}_init_from_dt(
 dif_result_t dif_${ip.name_snake}_get_dt(
   const dif_${ip.name_snake}_t *${ip.name_snake},
   dt_${ip.name_snake}_t *dt) {
+#ifdef __CHERIOT__
+  // Opaque to the optimiser. With LTO a handle that is a global is otherwise read as `g.dt`, the
+  // member's offset folded into a CGP-relative relocation whose addend the CHERIoT LLVM's lld drops
+  // when it relaxes it: `dt` is then read from the handle's first word (the base address) and every
+  // DT lookup through the handle fails (eg2_top_verification status/dv_tickets.md, "Lld drops the
+  // addend of a CGP-relative access"). Remove when lld keeps the addend.
+  __asm__ volatile("" : "+C"(${ip.name_snake}));
+#endif
   if ((int)${ip.name_snake}->dt == kDt${ip.name_camel}Count || dt == NULL) {
     return kDifBadArg;
   }
