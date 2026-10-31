@@ -8,4 +8,20 @@
 upf_version 2.1
 
 set_design_top tb
+
+# The bench itself: one always-on supply (a simulator needs a default power domain at the top).
+create_supply_port VDD_TB
+create_supply_port VSS_TB
+create_supply_net VDD_TB
+create_supply_net VSS_TB
+connect_supply_net VDD_TB -ports VDD_TB
+connect_supply_net VSS_TB -ports VSS_TB
+create_supply_set SS_TB -function {power VDD_TB} -function {ground VSS_TB}
+create_power_domain PD_TB -include_scope -supply {primary SS_TB}
+
 load_upf [file join [file dirname [info script]] ../../syn/chip_earlgrey_asic.upf] -scope dut
+
+# The chip's supply pins from the bench: all on for the whole run (the bench does not model the
+# supplies themselves; VCMAIN follows pwrmgr through the chip's power switch).
+connect_supply_net VDD_TB -ports {dut/VCC dut/VCAON dut/VIOA dut/VIOB dut/AVCC}
+connect_supply_net VSS_TB -ports {dut/VSS}
