@@ -316,6 +316,14 @@
       build_opts: ["+define+EG2_PERIPH_SB"]
       run_opts: ["+eg2_periph_sb=1", "+eg2_test={test}", "+eg2_build=en_eg2_periph_model"]
     }
+    // Power-aware simulation with the draft power intent (hw/top_earlgrey/syn/chip_earlgrey_asic.upf,
+    // loaded at tb.dut by hw/top_earlgrey/dv/upf/tb.upf): the main domain is switched off in deep
+    // sleep and its outputs are isolated. Xcelium only (VCS needs -upf and its low-power licence).
+    // Off by default; the eg2_top_verification Makefile adds it with UPF_ENABLE=1.
+    {
+      name: en_upf
+      build_opts: ["-lps_1801 {proj_root}/hw/top_earlgrey/dv/upf/tb.upf"]
+    }
     // Build mode that configures a testbench in a manner suitable for pad
     // testing. For example, the testbench may need to have different agents
     // or interfaces connected to the pads for marked tests.

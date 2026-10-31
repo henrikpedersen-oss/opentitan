@@ -1,0 +1,158 @@
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# DRAFT power intent (IEEE 1801 UPF 2.1) for Earl Grey 2, chip_earlgrey_asic. Written 2026-10-31
+# from the RTL and the documents below so that power-aware simulation and low-power checks can
+# start; it is not the signed-off intent (no UPF exists elsewhere: GAP-FLOW-8, REQ_IMP_03). Every
+# assumption is marked "ASSUMPTION" and must be confirmed by the AST and physical design owners.
+#
+# Sources:
+# - hw/top_earlgrey/ip/ast/README.md, "Core Supplies" and "Core Power Control and Indication":
+#   VCMAIN and VCAON are generated from VCC; VCAON is on whenever VCC is; VCMAIN "can be turned off
+#   when requested": the power manager requests it through main_pd_ni.
+# - hw/top_earlgrey/ip/ast/rtl/ast_part_secondary.sv: main_pd = !pwrmgr_i.main_pd_n (MAIN regulator
+#   power down); pwrmgr_i.pwr_clamp_env is the "Enveloped ISOlation ENable for MAIN".
+# - hw/top_earlgrey/ip_autogen/pwrmgr/rtl/pwrmgr_slow_fsm.sv: pwr_clamp_env is raised before the
+#   main domain powers down and released after it is back (reset value 1).
+# - EG2 High-Level Specification, Power Requirements (targets, not approved): deep sleep, "only
+#   always-on domain powered"; core voltage 0.6 V for deep sleep, 0.8 to 1.0 V in operation.
+# - hw/top_earlgrey/syn/chip_earlgrey_asic_nonzero_upf_vals.tcl: the inputs whose isolation value
+#   must be 1 (life-cycle signals whose OFF encoding is not all zeros).
+# - hw/top_earlgrey/rtl/autogen/top_earlgrey.sv: the RTL partitions earlgrey_pd_aon (pwrmgr,
+#   rstmgr, clkmgr, pinmux, sysrst_ctrl, adc_ctrl, aon_timer, sensor_ctrl, sram_ctrl_ret, the AST's
+#   secondary part) and earlgrey_pd_main (everything else, with the AST's primary part).
+
+upf_version 2.1
+
+# The scope is chip_earlgrey_asic: synthesis and implementation read this file with the chip as the
+# design top; simulation loads it at the chip instance (hw/top_earlgrey/dv/upf/tb.upf).
+
+################################################################################################
+# Supplies
+################################################################################################
+
+# Chip supply pins. ASSUMPTION: the pad names of the package (the RTL has no supply ports); VIOA
+# and VIOB are the two IO bank supplies (chip_earlgrey_asic.sv IoBankVioa/IoBankViob), AVCC the
+# analog supply of the USB-C CC pads (IoBankAvcc).
+create_supply_port VCC
+create_supply_port VIOA
+create_supply_port VIOB
+create_supply_port AVCC
+create_supply_port VSS
+
+create_supply_net VCC
+create_supply_net VIOA
+create_supply_net VIOB
+create_supply_net AVCC
+create_supply_net VSS
+connect_supply_net VCC  -ports VCC
+connect_supply_net VIOA -ports VIOA
+connect_supply_net VIOB -ports VIOB
+connect_supply_net AVCC -ports AVCC
+connect_supply_net VSS  -ports VSS
+
+# The core supplies the AST's regulators make from VCC (ast/README.md "Core Supplies").
+# ASSUMPTION: VCAON, the always-on regulator's output, is described as a supply port of the design
+# (the AST is analog; in the netlist it is the AST macro's output pin, which the physical design
+# owner connects here). VCMAIN is the output of the switch below.
+create_supply_port VCAON
+create_supply_net VCAON
+connect_supply_net VCAON -ports VCAON
+create_supply_net VCMAIN
+
+create_supply_set SS_AON  -function {power VCAON}  -function {ground VSS}
+create_supply_set SS_MAIN -function {power VCMAIN} -function {ground VSS}
+create_supply_set SS_VCC  -function {power VCC}    -function {ground VSS}
+
+################################################################################################
+# Power domains
+################################################################################################
+
+# The top level, the IO ring glue and everything not in the main partition: always on.
+create_power_domain PD_AON -include_scope -supply {primary SS_AON}
+
+# The main partition: switched off in deep sleep.
+create_power_domain PD_MAIN -elements {top_earlgrey/earlgrey_pd_main} -supply {primary SS_MAIN}
+
+################################################################################################
+# Power switch: VCMAIN, controlled by pwrmgr's main_pd_n.
+# ASSUMPTION: in silicon VCMAIN comes from its own regulator, not a header switch; a switch with
+# the same control is the usual way to describe "the main regulator is off" for simulation and
+# low-power checks. The control is the AON-side net that feeds the AST (ast_part_secondary.sv
+# pwrmgr_i.main_pd_n). Some tools need the struct member as a scalar net: give them
+# top_earlgrey/earlgrey_pd_aon/u_ast_part_secondary/main_pd (active high) instead.
+################################################################################################
+
+create_power_switch SW_MAIN \
+  -domain PD_AON \
+  -input_supply_port  {vin  VCAON} \
+  -output_supply_port {vout VCMAIN} \
+  -control_port {main_pd_n top_earlgrey/earlgrey_pd_aon/pwrmgr_pwr_ast_req.main_pd_n} \
+  -on_state  {main_on  vin {main_pd_n}} \
+  -off_state {main_off {!main_pd_n}}
+
+################################################################################################
+# Isolation: every output of the main partition is clamped in the always-on domain while main is
+# off, controlled by pwrmgr's enveloped clamp (pwr_clamp_env, active high, set before power-down
+# and released after power-up: pwrmgr_slow_fsm.sv). Clamp value 0, except the life-cycle inputs
+# whose OFF encoding needs 1 (chip_earlgrey_asic_nonzero_upf_vals.tcl).
+################################################################################################
+
+source [file join [file dirname [info script]] chip_earlgrey_asic_nonzero_upf_vals.tcl]
+
+set_isolation ISO_MAIN_OUT_0 \
+  -domain PD_MAIN \
+  -applies_to outputs \
+  -clamp_value 0 \
+  -isolation_supply_set SS_AON \
+  -isolation_signal top_earlgrey/earlgrey_pd_aon/pwrmgr_pwr_ast_req.pwr_clamp_env \
+  -isolation_sense high \
+  -location parent
+
+# The more specific strategy wins for these sinks (IEEE 1801 precedence of -elements).
+# ASSUMPTION: these are pins inside PD_AON (where OpenTitan's partner flow named them), not the
+# partition's boundary ports; if a tool accepts only boundary ports, name the matching
+# earlgrey_pd_aon input ports instead.
+set_isolation ISO_LC_OFF_CLAMP1 \
+  -domain PD_AON \
+  -elements $UPF_ISO_LC_OFF_PORTS_CLAMP1 \
+  -applies_to inputs \
+  -clamp_value 1 \
+  -isolation_supply_set SS_AON \
+  -isolation_signal top_earlgrey/earlgrey_pd_aon/pwrmgr_pwr_ast_req.pwr_clamp_env \
+  -isolation_sense high \
+  -location self
+
+# Inputs of the main partition driven from the always-on domain need no isolation: the always-on
+# domain is on whenever main is.
+
+################################################################################################
+# Level shifting. ASSUMPTION: VCAON and VCMAIN have the same voltage whenever both are on (the HLS
+# gives 0.8 to 1.0 V in operation; its 0.6 V deep-sleep voltage applies only while main is off and
+# isolated), so no level shifters between PD_AON and PD_MAIN. The IO ring's level shifters (VCC,
+# VIOA, VIOB, AVCC to core) belong to the pad cells and are described by the pad library.
+################################################################################################
+
+set_level_shifter LS_NONE -domain PD_MAIN -applies_to both -rule both -no_shift
+
+################################################################################################
+# Retention: none in the logic. State kept over deep sleep is in always-on blocks (the retention
+# SRAM sram_ctrl_ret, pinmux's retention and wake-up logic, aon_timer, pwrmgr), which are in PD_AON.
+################################################################################################
+
+################################################################################################
+# Power states
+################################################################################################
+
+add_port_state VCC   -state {VCC_ON 3.3}
+add_port_state VCAON -state {AON_ON 0.9} -state {AON_DEEP 0.6}
+add_port_state SW_MAIN/vout -state {MAIN_ON 0.9} -state {MAIN_OFF off}
+
+# ASSUMPTION: nominal voltages for the state table only (0.9 V within the HLS's 0.8 to 1.0 V; 0.6 V
+# in deep sleep from the HLS; 3.3 V VCC). Replace with the library corners.
+create_pst EG2_PST -supplies {VCC VCAON VCMAIN}
+add_pst_state ACTIVE     -pst EG2_PST -state {VCC_ON AON_ON   MAIN_ON}
+# Normal sleep gates clocks only; the supplies are as in ACTIVE.
+add_pst_state SLEEP      -pst EG2_PST -state {VCC_ON AON_ON   MAIN_ON}
+add_pst_state DEEP_SLEEP -pst EG2_PST -state {VCC_ON AON_DEEP MAIN_OFF}

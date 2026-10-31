@@ -1,0 +1,11 @@
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Power intent for power-aware simulation of the chip bench (dvsim build mode en_upf, make
+# UPF_ENABLE=1): the chip's draft power intent, loaded at the chip instance tb.dut.
+
+upf_version 2.1
+
+set_design_top tb
+load_upf [file join [file dirname [info script]] ../../syn/chip_earlgrey_asic.upf] -scope dut
