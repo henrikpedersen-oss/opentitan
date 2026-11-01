@@ -674,6 +674,32 @@ interface chip_if;
   wire rram_rd_buf_rdy = ~((|`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.buf_valid) ||
                            (|`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.buf_wip));
 
+  // A macro backdoor write bypasses rram_ctrl's write notification. Give the chip sequence the
+  // same cache-coherence effect: every entry holding an overwritten 128-bit RRAM word becomes
+  // Invalid. An Invalid entry's retained metadata cannot produce a hit and is replaced on alloc.
+  function automatic void invalidate_rram_rd_buf(int unsigned byte_addr, int unsigned size);
+`ifndef GATE_LEVEL
+    int unsigned first_word = byte_addr >> 4;
+    int unsigned last_word = (byte_addr + size - 1) >> 4;
+    for (int i = 0; i < rram_ctrl_pkg::NumRdBuf; i++) begin
+      if (`RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.rd_buf[i].part ==
+              rram_ctrl_pkg::RramPartData &&
+          `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.rd_buf[i].attr !=
+              rram_ctrl_pkg::Invalid &&
+          `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.rd_buf[i].addr inside
+              {[first_word:last_word]}) begin
+        string path = $sformatf({"tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_ctrl.",
+                                 "u_rram_phy.u_rram_phy_rd.gen_bufs[%0d].",
+                                 "u_rram_phy_rd_buffer.rd_buf_q.attr"}, i);
+        `DV_CHECK_FATAL(uvm_hdl_deposit(path, rram_ctrl_pkg::Invalid), path, MsgId)
+        `uvm_info(MsgId, $sformatf("Invalidated RRAM read-buffer entry %0d for word 0x%0h",
+                                   i, `RRAM_CTRL_HIER.u_rram_phy.u_rram_phy_rd.rd_buf[i].addr),
+                  UVM_LOW)
+      end
+    end
+`endif
+  endfunction
+
   // rram_ctrl's controller writes into the data partition, for the ISS (eg2_iss_wrapper), whose
   // fetches read its own memory and so must see code the software wrote through the controller
   // (chip_sw_rram_write_then_fetch, chip_sw_rram_host_exec, chip_sw_rram_uncorr_fetch; 2026-10-25).

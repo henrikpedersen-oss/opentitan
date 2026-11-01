@@ -97,6 +97,7 @@ class chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq extends chip_sw_base_vseq;
 
   virtual task body();
     super.body();
+    sw_symbol_backdoor_mailbox("kTestPhaseDV");
 
     // Add status sync at the beginning of the test
     `DV_WAIT(cfg.sw_test_status_vif.sw_test_status == SwTestStatusInTest,

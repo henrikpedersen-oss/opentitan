@@ -776,6 +776,11 @@ class chip_sw_base_vseq extends chip_base_vseq;
         end
         mem_bkdr_write8(mem, mem_addr + i, data[i]);
       end
+      if (mem == RramData) begin
+        // A controller write invalidates matching read-buffer entries. A macro backdoor write must
+        // do that explicitly so a later host read cannot hit data cached before this overwrite.
+        cfg.chip_vif.invalidate_rram_rd_buf(mem_addr, size);
+      end
       if (mem == Rom) begin
         rom_ctrl_bkdr_util rom;
         `downcast(rom, cfg.mem_bkdr_util_h[mem])
@@ -821,6 +826,17 @@ class chip_sw_base_vseq extends chip_base_vseq;
                                                      input bit does_not_exist_ok = 0);
 
     sw_symbol_backdoor_access(symbol, data, sw_type, does_not_exist_ok, 1);
+  endfunction
+
+  // Tell the instruction-set model that software polls a symbol while the bench changes it. The
+  // model cannot otherwise know which of the concurrent chip loads first observes the new value.
+  virtual function void sw_symbol_backdoor_mailbox(input string symbol,
+                                                   input sw_type_e sw_type = SwTypeTestSlotA);
+    bit [bus_params_pkg::BUS_AW-1:0] addr;
+    uint size;
+    string image = $sformatf("%0s.elf", cfg.sw_images[sw_type]);
+    `DV_CHECK_FATAL(dv_utils_pkg::sw_symbol_get_addr_size(image, symbol, 1'b0, addr, size), symbol)
+    eg2_iss_wrapper::backdoor_mailbox(addr, size);
   endfunction
 
   // General-use function to backdoor write a byte of data to any selected memory type

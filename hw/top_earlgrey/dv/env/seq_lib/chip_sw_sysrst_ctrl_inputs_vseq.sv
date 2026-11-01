@@ -40,6 +40,7 @@ class chip_sw_sysrst_ctrl_inputs_vseq extends chip_sw_base_vseq;
   virtual task body();
     bit [7:0] pads_to_set = '0;
     super.body();
+    sw_symbol_backdoor_mailbox("kTestPhaseDV");
 
     for (int current_phase = 0; current_phase < NUM_TEST_PHASES; current_phase++) begin
       // set each pad individually then all together.
