@@ -167,7 +167,8 @@ class chip_sw_i2c_device_tx_rx_vseq extends chip_sw_i2c_tx_rx_vseq;
   // - Drive a READ transfer
   // - Drive a WRITE transfer by writing the same data collected by the READ transfer
   virtual task drive_i2c_agent_stimulus();
-    i2c_item xfer  = i2c_item::type_id::create("xfer");
+    i2c_item xfer = i2c_item::type_id::create("xfer");
+    i2c_item write_xfer;
 
     create_and_drive_i2c_xfer(xfer, i2c_pkg::READ, BusOpRead);
 
@@ -197,10 +198,15 @@ class chip_sw_i2c_device_tx_rx_vseq extends chip_sw_i2c_tx_rx_vseq;
     // data, and use it to populate the new write transfer.
     `DV_CHECK(p_sequencer.i2c_rd_fifos[i2c_idx].try_get(xfer))
 
-    // The read bytes are pushed into data_q by the i2c_monitor. data_ack_q contains the N/Ack
-    // information from the previous read transfer but that shouldn't matter because N/Acking is a
-    // device's job entirely in a write transfer.
-    create_and_drive_i2c_xfer(xfer, i2c_pkg::WRITE, BusOpWrite);
+    // Do not turn a monitor response back into a driver request: it contains
+    // read-side ACK and protocol state. Copy only the returned bytes into a
+    // fresh request so the write is also published as a distinct transaction.
+    write_xfer = i2c_item::type_id::create("write_xfer");
+    write_xfer.data_q = xfer.data_q;
+    // The monitor sets got_stop after the read and waits for it to be cleared before collecting the
+    // next transfer. Block-level i2c_rx_tx, target_smoke and target_runtime do the same reset.
+    cfg.m_i2c_agent_cfgs[i2c_idx].got_stop = 0;
+    create_and_drive_i2c_xfer(write_xfer, i2c_pkg::WRITE, BusOpWrite);
   endtask : drive_i2c_agent_stimulus
 
 endclass : chip_sw_i2c_device_tx_rx_vseq
