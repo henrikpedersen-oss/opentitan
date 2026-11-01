@@ -521,6 +521,10 @@ class eg2_sysrst_ctrl_monitor extends eg2_sysmon_monitor;
       care_off_until[i] = 0;
       care_off_until_reset[i] = 1'b0;
     end
+    // The documents say the reset-value pin override holds ec_rst_l low after reset, but do not say
+    // whether reset release also starts the EC_RST_CTL input pulse stretcher. Do not predict the pin
+    // until that possible pulse, plus the normal output settling margin, has elapsed.
+    care_off_until[1] = longint'(ec_rst_pulse) + settle_cycles;
     foreach (last_chg[i]) last_chg[i] = 0;
     prev_in = sample_in();
     prev_ipwrb = prev_in[0];
