@@ -75,6 +75,16 @@ create_power_domain PD_AON -include_scope -supply {primary SS_AON}
 # The main partition: switched off in deep sleep.
 create_power_domain PD_MAIN -elements {top_earlgrey/earlgrey_pd_main} -supply {primary SS_MAIN}
 
+# The AST's primary part sits in the main partition's hierarchy (earlgrey_pd_main.u_ast_part_primary)
+# but is the analog block that makes the system, IO and USB clocks: it stays powered when the main
+# logic is off, or nothing would clock the power-up after a deep-sleep wake-up (2026-11-01:
+# chip_sw_pwrmgr_smoketest under UPF_ENABLE=1 never woke, the oscillator models corrupted to X).
+# ASSUMPTION: always-on digital supply; the AST's own analog supplies (VCC, AVCC) are not modelled.
+# Its inputs from the main logic are outputs of PD_MAIN, clamped by ISO_MAIN_OUT_0 while main is off
+# (pwrmgr turns the main clocks off through the AST before that anyway).
+create_power_domain PD_AST -elements {top_earlgrey/earlgrey_pd_main/u_ast_part_primary} \
+  -supply {primary SS_AON}
+
 ################################################################################################
 # Power switch: VCMAIN, controlled by pwrmgr's main_pd_n.
 # ASSUMPTION: in silicon VCMAIN comes from its own regulator, not a header switch; a switch with
