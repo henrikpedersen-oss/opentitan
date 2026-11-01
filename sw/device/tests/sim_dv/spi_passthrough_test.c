@@ -379,6 +379,8 @@ void ottf_external_isr(uint32_t *exc_info) {
   if (peripheral_id == dt_spi_device_instance_id(kSpiDeviceDt)) {
     dt_spi_device_irq_t irq =
         dt_spi_device_irq_from_plic_id(kSpiDeviceDt, plic_irq_id);
+    LOG_INFO("Claimed SPI device IRQ: PLIC ID %u, SPI IRQ %u", plic_irq_id,
+             irq);
     CHECK(irq == kDtSpiDeviceIrqUploadCmdfifoNotEmpty);
     spi_device_isr();
   }
