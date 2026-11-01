@@ -171,6 +171,11 @@ class chip_env extends cip_base_env #(
 
   function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
+    // During low-power entry, low_power_group_en and alert_init can look like alert
+    // signal-integrity failures to cip_base_scoreboard. The chip-level scoreboard already disables
+    // this check and relies on the alert protocol assertions; apply the same policy to the passive
+    // ROM controller scoreboard.
+    m_rom_ctrl_env.scoreboard.check_alert_sig_int_err = 1'b0;
     if (cfg.en_eg2_scb) begin
       m_eg2_scoreboard.rvfi_enabled = m_eg2_rvfi_agent.enabled();
       m_eg2_rvfi_agent.monitor.analysis_port.connect(m_eg2_scoreboard.rvfi_fifo.analysis_export);
