@@ -1,0 +1,293 @@
+# What the chip bench does for a test, given to eg2sim instead: one line per test,
+#   <test> <eg2sim arguments>
+# --sym <symbol>=<value>[:<bytes>] writes the test image as the bench's sw_symbol_backdoor_overwrite
+# does; --stim <key>=<value> drives the peripheral models as the bench's agents do (the keys are in
+# peripherals/pinmux/sw/systemc-model/eg2_periph_stim.h; {sym:<symbol>:<length>} sends bytes of the
+# test image, {rep:<hex byte>:<count>} a repeated byte). Each line says which bench sequence it
+# stands in for. No spaces inside an argument: write a space in a log message as %20. A stimulus
+# at a point of the run: --stim <key>=<value>@<point>[@<point>...][+<delay>], the points log:<message>
+# (<prefix>* for any message starting so), status:<InTest, InWfi, InBootRom, ...>, event:<name>, wfi,
+# lowpower;
+# a value list v1,v2,... gives the n-th time its n-th value; {n} is the n-th number of the log
+# message a point matched (eg2sim.cc, TrigStim).
+# USB SETUP reception (chip_sw_usbdev_setuprx): the sim_dv image compiles out the FPGA-only
+# "Awaiting SETUP" prompt, so send the host's first GET_DESCRIPTOR(Device) after software has
+# connected, within its 1.5 ms receive timeout.
+usbdev_setuprx_test          --stim usbdev.host_setup=8006000100004000@1000us
+usbdev_setuprx_test_cheriot  --stim usbdev.host_setup=8006000100004000@1000us
+#
+# Life-cycle chip-bench inputs. 001122... below is not an expected state: it is the token the
+# bench supplies both to OTP (hashed by the model) and to the LC TAP. A transition event resets
+# the chip only after the model has entered POST_TRANSITION. RMA additionally reloads the test
+# image after the model has wiped RRAM, as the named chip sequences do.
+# chip_sw_lc_ctrl_transition_vseq: TEST_LOCKED1 -> TEST_UNLOCKED2 over the TAP, then software -> DEV.
+lc_ctrl_transition_test  --sym kTestIterationCount=1:1 --stim lc_ctrl.otp_state=4@0us --stim lc_ctrl.otp_test_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.otp_test_exit=sym.kLcExitToken@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=5:000102030405060708090a0b0c0d0e0f@1us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+# The external-clock form of that sequence also asks LC_CTRL to acknowledge the selected clock.
+clkmgr_external_clk_src_for_lc_test  --sym kTestIterationCount=1:1 --sym kExternalClockEnable=1:1 --stim lc_ctrl.otp_state=4@0us --stim lc_ctrl.otp_test_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.otp_test_exit=sym.kLcExitToken@0us --stim lc_ctrl.external_clock=1@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=5:000102030405060708090a0b0c0d0e0f@1us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+# chip_sw_lc_walkthrough_vseq: RAW -> TEST_UNLOCKED0 over the TAP; software supplies later targets.
+lc_walkthrough_test  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.otp_count=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.hash_symbol=kLcExitToken:kOtpExitToken@0us --stim lc_ctrl.hash_to_symbol=000102030405060708090a0b0c0d0e0f:kOtpUnlockToken@0us --stim lc_ctrl.hash_symbol=kLcRmaToken:kOtpRmaToken@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=1:000102030405060708090a0b0c0d0e0f@1us --stim test.reload=1@event:lc_transition_19 --stim rstmgr.hw_reset=1@event:lc_transition+1us
+lc_walkthrough_test@lc_walkthrough_dev  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.otp_count=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.hash_symbol=kLcExitToken:kOtpExitToken@0us --stim lc_ctrl.hash_to_symbol=000102030405060708090a0b0c0d0e0f:kOtpUnlockToken@0us --stim lc_ctrl.hash_symbol=kLcRmaToken:kOtpRmaToken@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=1:000102030405060708090a0b0c0d0e0f@1us --stim test.reload=1@event:lc_transition_19 --stim rstmgr.hw_reset=1@event:lc_transition+1us
+lc_walkthrough_test  --stim lc_ctrl.clear_secret0=1@0us --stim lc_ctrl.clear_secret2=1@0us --stim lc_ctrl.sw_destination=16@0us
+lc_walkthrough_test@lc_walkthrough_dev  --stim lc_ctrl.clear_secret0=1@0us --stim lc_ctrl.clear_secret2=1@0us
+# chip_sw_lc_walkthrough_testunlocks_vseq: software locks each unlocked state; the TAP token asks
+# for the next unlocked state, whose number the lifecycle model derives from its decoded OTP state.
+lc_walkthrough_testunlocks_test  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.otp_count=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.hash_to_symbol=000102030405060708090a0b0c0d0e0f:kOtpUnlockToken@0us --stim lc_ctrl.auto_test_unlock=000102030405060708090a0b0c0d0e0f@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=1:000102030405060708090a0b0c0d0e0f@1us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+lc_walkthrough_testunlocks_test@lc_walkthrough_testunlocks  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.otp_count=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim lc_ctrl.hash_to_symbol=000102030405060708090a0b0c0d0e0f:kOtpUnlockToken@0us --stim lc_ctrl.auto_test_unlock=000102030405060708090a0b0c0d0e0f@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=1:000102030405060708090a0b0c0d0e0f@1us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+lc_walkthrough_testunlocks_test  --stim lc_ctrl.clear_secret0=1@0us
+lc_walkthrough_testunlocks_test@lc_walkthrough_testunlocks  --stim lc_ctrl.clear_secret0=1@0us
+# chip_sw_lc_ctrl_program_error_vseq injects an OTP programming error after software is ready.
+lc_ctrl_program_error  --stim lc_ctrl.program_error=1@log:Begin%20life%20cycle%20transition
+# chip_sw_lc_volatile_raw_unlock_vseq uses the test-only volatile path: no OTP write and no reset.
+lc_ctrl_volatile_raw_unlock_test  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.volatile_raw_unlock=000102030405060708090a0b0c0d0e0f@1us
+lc_ctrl_volatile_raw_unlock_test@lc_ctrl_volatile_raw_unlock  --stim lc_ctrl.otp_state=0@0us --stim lc_ctrl.raw_unlock=000102030405060708090a0b0c0d0e0f@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.volatile_raw_unlock=000102030405060708090a0b0c0d0e0f@1us
+# chip_sw_lc_ctrl_scrap_vseq: software requests SCRAP where the CPU is enabled. Generated variants
+# override kPerformTransitionBySW after this default and use a TAP request in CPU-disabled states.
+lc_ctrl_scrap_test  --stim sym.kPerformTransitionBySW=1@0us --stim rstmgr.hw_reset=1@event:lc_transition+1us --stim lc_ctrl.expect_state=20@event:lc_transition+2us
+# chip_sw_exit_test_unlocked_bootstrap_vseq: TEST_UNLOCKED0 -> PROD over the TAP. The model already
+# has the selected test image, so SPI bootstrap's host image transfer reduces to the ROM_EXEC fuse.
+exit_test_unlocked_bootstrap  --stim lc_ctrl.otp_state=1@0us --stim lc_ctrl.otp_word=0x140:1@0us --stim lc_ctrl.otp_test_exit=000102030405060708090a0b0c0d0e0f@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.jtag_transition=17:000102030405060708090a0b0c0d0e0f@1us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+# chip_sw_csrng_lc_hw_debug_en_vseq starts TEST_UNLOCKED0; software provisions its exit token and
+# requests a mission state, then the bench resets after transition success.
+csrng_lc_hw_debug_en_test  --stim csrng.lifecycle_diversification=1@0us --stim lc_ctrl.clear_secret0=1@0us --stim rstmgr.por=1@1ns --stim rstmgr.hw_reset=1@event:lc_transition+1us
+csrng_lc_hw_debug_en_test@csrng_lc_hw_debug_en_test  --stim csrng.lifecycle_diversification=1@0us --stim lc_ctrl.clear_secret0=1@0us --stim rstmgr.por=1@1ns --stim rstmgr.hw_reset=1@event:lc_transition+1us
+# chip_sw_rram_rma_unlocked_vseq's three ROM boots: write data; provision SECRET2 and reset; TAP
+# transition to RMA and reset. kTestPhase is the bench synchronization, not the lifecycle answer.
+rram_rma_unlocked_test  --stim lc_ctrl.otp_state=16@0us --stim lc_ctrl.clear_secret2=1@0us --stim sym.kSrcLcState=16:1@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.otp_rma=000102030405060708090a0b0c0d0e0f@status:InWfi --stim sym.kTestPhase=1,2@status:InWfi+1us --stim rstmgr.por=1,@status:InWfi+2us --stim lc_ctrl.jtag_transition=,19:000102030405060708090a0b0c0d0e0f@status:InWfi+3us --stim rstmgr.hw_reset=1@event:lc_transition+1us
+
+# chip_sw_rom_ctrl_integrity_check_vseq corrupts only the expected digest, boots once in a
+# TEST_UNLOCKED state where pwrmgr ignores the bad result, writes PROD into OTP, and resets. The
+# model declares success only after its independently calculated digest still mismatches and the
+# decoded PROD state stops startup.
+rom_ctrl_integrity_check_test  --stim lc_ctrl.otp_state=1@0us --stim rom_ctrl.corrupt_digest=1@0us --stim rom_ctrl.expect_bad_boot=1@0us --stim rstmgr.por=1@1ns --stim lc_ctrl.otp_state=17@status:InWfi+1us --stim rstmgr.hw_reset=1@status:InWfi+2us
+# chip_sw_base_vseq clears SECRET2 provisioning before these access-control checks.
+otp_ctrl_lc_signals_test  --stim keymgr.lifecycle_gating=1@0us --stim lc_ctrl.clear_secret2=1@0us --stim rstmgr.por=1@1ns
+#
+# UART (chip_sw_uart_tx_rx_vseq): the UART under test, its 64 bytes sent to the chip, then 65 more
+# the test leaves unread, which must overflow the 64-byte RX FIFO.
+uart_tx_rx_test          --sym kUartIdxDv=0:1 --stim uart0.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test_cheriot  --sym kUartIdxDv=0:1 --stim uart0.rx={sym:kExpUartRxData:64}{rep:55:65}
+# The same for each UART instance (chip_sw_uart_tx_rx[_idx<N>]; variants.txt sets kUartIdxDv=<N>).
+uart_tx_rx_test@uart_tx_rx                       --stim uart0.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test@uart_tx_rx_idx1                  --stim uart1.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test@uart_tx_rx_idx2                  --stim uart2.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test@uart_tx_rx_idx3                  --stim uart3.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test_cheriot@uart_tx_rx_cheriot       --stim uart0.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test_cheriot@uart_tx_rx_idx1_cheriot  --stim uart1.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test_cheriot@uart_tx_rx_idx2_cheriot  --stim uart2.rx={sym:kExpUartRxData:64}{rep:55:65}
+uart_tx_rx_test_cheriot@uart_tx_rx_idx3_cheriot  --stim uart3.rx={sym:kExpUartRxData:64}{rep:55:65}
+# The host-driven UART tests: the host picks the UART.
+uart_loopback_test       --sym uart_idx=0:1
+uart_baud_rate_test      --sym uart_idx=0:1
+# OTBN runs at its real speed while the CPU polls its STATUS (RSA-4096 decryption takes about 145
+# million OTBN cycles): RSA key generation, signatures and the pairwise consistency test need more
+# than the default 200 million instructions.
+rsa_2048_signature_functest      --max-insns 3000000000
+rsa_3072_signature_functest      --max-insns 3000000000
+rsa_4096_signature_functest      --max-insns 3000000000
+rsa_4096_encryption_functest     --max-insns 3000000000
+pct_functest                     --max-insns 3000000000
+# sensor_ctrl (chip_sw_sensor_ctrl_status_intr_vseq): each "Waiting for IO change", once the core
+# sleeps, the bench flips an IO rail's power good (it picks the rail at random; rail 0 here).
+sensor_ctrl_status_test          --stim sensor_ctrl.io_pok_toggle=0@log:Waiting%20for%20IO%20change+20us
+sensor_ctrl_status_test_cheriot  --stim sensor_ctrl.io_pok_toggle=0@log:Waiting%20for%20IO%20change+20us
+# sensor_ctrl wake-up from deep sleep (chip_sw_pwrmgr_sensor_ctrl_deep_sleep_wake_up_vseq): after
+# "Issue WFI to enter sensor_ctrl sleep" the bench fires AST event 0 (chip_if trigger_sensor_ctrl_wkup).
+pwrmgr_sensor_ctrl_deep_sleep_wake_up          --stim sensor_ctrl.ast_event=0@log:Issue%20WFI%20to%20enter%20sensor_ctrl%20sleep+20us
+pwrmgr_sensor_ctrl_deep_sleep_wake_up_cheriot  --stim sensor_ctrl.ast_event=0@log:Issue%20WFI%20to%20enter%20sensor_ctrl%20sleep+20us
+# keymgr_dpe sideload into AES (chip_sw_keymgr_dpe_sideload_aes_vseq): when keymgr_dpe has
+# generated the AES key, the bench encrypts the test's plaintext with it (AES C model) and
+# backdoor-writes the expected ciphertext into kAESDigest.
+keymgr_dpe_sideload_aes_test          --stim aes.sideload_expect=kPlainText:kAESDigest@log:KeymgrDpe%20generated%20HW%20output%20for%20Aes%20from%20the%20CreatorRootKey
+keymgr_dpe_sideload_aes_test_cheriot  --stim aes.sideload_expect=kPlainText:kAESDigest@log:KeymgrDpe%20generated%20HW%20output%20for%20Aes%20from%20the%20CreatorRootKey
+# keymgr_dpe sideload into HMAC (chip_sw_keymgr_dpe_sideload_hmac_vseq): the bench computes
+# HMAC-SHA256 over kData with the generated 512-bit key and writes sideload_digest_result.
+keymgr_dpe_sideload_hmac_test          --stim hmac.sideload_expect=kData:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20HMAC%20from%20the%20CreatorRootKey
+keymgr_dpe_sideload_hmac_test_cheriot  --stim hmac.sideload_expect=kData:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20HMAC%20from%20the%20CreatorRootKey
+# keymgr_dpe sideload into KMAC (chip_sw_keymgr_dpe_sideload_kmac_vseq): the bench computes a
+# 32-byte KMAC128 digest of kKmacMessage with the generated 256-bit key and writes the result.
+keymgr_dpe_sideload_kmac_test          --stim kmac.sideload_expect=kKmacMessage:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20Kmac%20from%20the%20CreatorRootKey
+keymgr_dpe_sideload_kmac_test_cheriot  --stim kmac.sideload_expect=kKmacMessage:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20Kmac%20from%20the%20CreatorRootKey
+# AES-KW masks with rv_core_ibex RND_DATA, which the model supplies through EDN: run its vectors
+# rather than the image's model-gap path that skips them (a NIST test that compares no vector is
+# not a pass).
+eg2_nist_aes_kw                      --param model_gaps=0
+eg2_nist_aes_kw_cheriot              --param model_gaps=0
+eg2_nist_aes_kw_inject_fail          --param model_gaps=0
+eg2_nist_aes_kw_cheriot_inject_fail  --param model_gaps=0
+# The OTBN NIST tests run on the model's C++ OTBN (crypto-engines/otbn/sw/systemc-model/eg2_otbn.h)
+# rather than through the image's model-gap path, which skips every vector; the vector budget still
+# skips some (sw-suite-nist-ref runs all of them on otbnsim).
+eg2_nist_otbn_ecdh                   --param model_gaps=0
+eg2_nist_otbn_ecdh_inject_fail       --param model_gaps=0
+eg2_nist_otbn_ecdsa                  --param model_gaps=0
+eg2_nist_otbn_ecdsa_inject_fail      --param model_gaps=0
+eg2_nist_otbn_rsa                    --param model_gaps=0
+eg2_nist_otbn_rsa_inject_fail        --param model_gaps=0
+# sysrst_ctrl's pads (chip_sw_sysrst_ctrl_*_vseq), as the bench drives them at the test's phase
+# synchronisations (sw_test_status InTest, InWfi; a value list gives each synchronisation its
+# value, an empty item none). sysrst_ctrl.in is in PIN_IN_VALUE's order (pwrb key0 key1 key2 lid
+# ac ec_rst_l flash_wp_l = bits 0..7); the sequences' pad orders are mapped onto it. The test
+# phase symbols are written as sw_symbol_backdoor_overwrite writes them.
+# chip_sw_sysrst_ctrl_inputs_vseq: all pads 0, then each pad alone and all eight, each with the
+# phase and the expected value 1 us later (the sequence's order: key0 key1 key2 pwrb ac lid ec wp).
+sysrst_ctrl_inputs_test          --stim sysrst_ctrl.in=0x00 --stim sysrst_ctrl.pads=1,2,4,8,16,32,64,128,255@status:InWfi --stim sym.kTestExpectedDV=1,2,4,8,16,32,64,128,255@status:InWfi+1us --stim sym.kTestPhaseDV=1,2,3,4,5,6,7,8,9@status:InWfi+1us
+sysrst_ctrl_inputs_test_cheriot  --stim sysrst_ctrl.in=0x00 --stim sysrst_ctrl.pads=1,2,4,8,16,32,64,128,255@status:InWfi --stim sym.kTestExpectedDV=1,2,4,8,16,32,64,128,255@status:InWfi+1us --stim sym.kTestPhaseDV=1,2,3,4,5,6,7,8,9@status:InWfi+1us
+# chip_sw_sysrst_ctrl_in_irq_vseq: for each of the 7 H->L, 7 L->H and 4 combination cases two
+# synchronisations: first the previous level with a glitch towards the next one shorter than the
+# 5 us debounce (the sequence's up-to-500 ns glitch; here one pulse, 100 to 300 ns), which must
+# not interrupt; then, 10 us on, the next level after a glitch, which interrupts once; the phase
+# 10.5 us after each synchronisation.
+sysrst_ctrl_in_irq_test          --stim sysrst_ctrl.in=0x00 --stim sysrst_ctrl.in=0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f,@status:InWfi --stim sysrst_ctrl.in=0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,@status:InWfi+100ns --stim sysrst_ctrl.in=0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f,@status:InWfi+300ns --stim sysrst_ctrl.in=,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00@status:InWfi+10us --stim sysrst_ctrl.in=,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f@status:InWfi+10200ns --stim sysrst_ctrl.in=,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00@status:InWfi+10400ns --stim sym.kCurrentTestPhaseDV=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36@status:InWfi+10500ns
+sysrst_ctrl_in_irq_test_cheriot  --stim sysrst_ctrl.in=0x00 --stim sysrst_ctrl.in=0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f,@status:InWfi --stim sysrst_ctrl.in=0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,@status:InWfi+100ns --stim sysrst_ctrl.in=0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f,@status:InWfi+300ns --stim sysrst_ctrl.in=,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00@status:InWfi+10us --stim sysrst_ctrl.in=,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x03,,0x2c,,0x2b,,0x2f@status:InWfi+10200ns --stim sysrst_ctrl.in=,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x00,,0x01,,0x02,,0x04,,0x08,,0x20,,0x40,,0x80,,0x00,,0x00,,0x00,,0x00@status:InWfi+10400ns --stim sym.kCurrentTestPhaseDV=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36@status:InWfi+10500ns
+# chip_sw_sysrst_ctrl_outputs_vseq: all 16 four-bit input/output loopback patterns, then the next
+# phase 3 always-on cycles after each InWfi, InTest synchronisation; the pads it checks are bench
+# checks. The model restores the input after its loopback sweep.
+sysrst_ctrl_outputs_test         --stim sysrst_ctrl.loopback_check=1@status:InWfi --stim sysrst_ctrl.in=0xc5@status:InTest+15us --stim sysrst_ctrl.outputs_expect=,,,0x00,0xff,0x0a/0xbf,0x0f/0x0f@status:InWfi@status:InTest+15us --stim sym.kTestPhaseDV=1,2,3,4,5,6,7@status:InWfi@status:InTest+15us
+sysrst_ctrl_outputs_test_cheriot --stim sysrst_ctrl.loopback_check=1@status:InWfi --stim sysrst_ctrl.in=0xc5@status:InTest+15us --stim sysrst_ctrl.outputs_expect=,,,0x00,0xff,0x0a/0xbf,0x0f/0x0f@status:InWfi@status:InTest+15us --stim sym.kTestPhaseDV=1,2,3,4,5,6,7@status:InWfi@status:InTest+15us
+# chip_sw_sysrst_ctrl_ec_rst_l_vseq: key0 and key1 high (key2 and pwrb pulled down, ec_rst_l and
+# flash_wp_l pulled up), both low once software waits for the combination reset (InWfi); after
+# the reset each InWfi, InTest synchronisation, 3 always-on cycles on, gives the next phase.
+sysrst_ctrl_ec_rst_l_test          --stim sysrst_ctrl.in=0xc6 --stim sysrst_ctrl.in=0xc0,@status:InWfi --stim sym.kTestPhase=1,2,3,4,5@status:InWfi@status:InTest+15us
+sysrst_ctrl_ec_rst_l_test_cheriot  --stim sysrst_ctrl.in=0xc6 --stim sysrst_ctrl.in=0xc0,@status:InWfi --stim sym.kTestPhase=1,2,3,4,5@status:InWfi@status:InTest+15us
+# chip_sw_sysrst_ctrl_reset_vseq: all pads high; at the first InWfi key0 and key1 low (combination
+# reset), phase 1 and the ULP inputs released (ac and lid low, pwrb high) at the next boot; at
+# the second InWfi lid open (the ULP wake-up from deep sleep) and phase 2; at the following boot
+# all pads high, at the third InWfi key2 and pwrb low (combination reset from deep sleep); phase 3
+# at the boot after it.
+sysrst_ctrl_reset_test          --stim sysrst_ctrl.in=0xff --stim sysrst_ctrl.in=0xf9,0xd9,0xf6@status:InWfi --stim sym.kTestPhaseDV=,2,@status:InWfi --stim sysrst_ctrl.in=,0xc9,0xff,@status:InBootRom --stim sym.kTestPhaseDV=,1,,3@status:InBootRom
+sysrst_ctrl_reset_test_cheriot  --stim sysrst_ctrl.in=0xff --stim sysrst_ctrl.in=0xf9,0xd9,0xf6@status:InWfi --stim sym.kTestPhaseDV=,2,@status:InWfi --stim sysrst_ctrl.in=,0xc9,0xff,@status:InBootRom --stim sym.kTestPhaseDV=,1,,3@status:InBootRom
+# chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq: pwrb, ac and lid pulled down; phases 1 and 2 after
+# InWfi, InTest synchronisations (phase 2 after the 20-cycle debounce time); once software sleeps
+# (the third InWfi) lid_open glitches high, low and high again within the debounce time; phase 3
+# at the InTest after the wake-up, phase 4 after the next synchronisation.
+sysrst_ctrl_ulp_z3_wakeup_test          --stim sysrst_ctrl.in=0xce --stim sysrst_ctrl.in=,,0xde@status:InWfi --stim sysrst_ctrl.in=,,0xce@status:InWfi+5us --stim sysrst_ctrl.in=,,0xde@status:InWfi+10us --stim sym.kTestPhaseDV=1,,,4@status:InWfi@status:InTest+15us --stim sym.kTestPhaseDV=,2@status:InWfi@status:InTest+115us --stim sym.kTestPhaseDV=,,3@status:InWfi@status:InTest
+sysrst_ctrl_ulp_z3_wakeup_test_cheriot  --stim sysrst_ctrl.in=0xce --stim sysrst_ctrl.in=,,0xde@status:InWfi --stim sysrst_ctrl.in=,,0xce@status:InWfi+5us --stim sysrst_ctrl.in=,,0xde@status:InWfi+10us --stim sym.kTestPhaseDV=1,,,4@status:InWfi@status:InTest+15us --stim sym.kTestPhaseDV=,2@status:InWfi@status:InTest+115us --stim sym.kTestPhaseDV=,,3@status:InWfi@status:InTest
+# chip_sw_sysrst_ctrl_vseq: key0 pulled up, the other sysrst_ctrl inputs not routed by pinmux (0);
+# 10 always-on cycles after "Reset Request SourceOne is set" key0 pulses low for 55 cycles, which
+# the all-keys combination turns into a reset.
+pwrmgr_sysrst_ctrl_test          --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Reset%20Request%20SourceOne%20is%20set+50us --stim sysrst_ctrl.in=0xc2@log:Reset%20Request%20SourceOne%20is%20set+325us
+pwrmgr_sysrst_ctrl_test_cheriot  --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Reset%20Request%20SourceOne%20is%20set+50us --stim sysrst_ctrl.in=0xc2@log:Reset%20Request%20SourceOne%20is%20set+325us
+# chip_sw_deep_sleep_all_reset_vseq: key0 pulled up, the other sysrst_ctrl inputs not routed (0);
+# after "Sysrst reset in active mode" / "... deep sleep mode" / "... normal sleep mode" the bench
+# waits 10 to 210 always-on cycles (here 20) and pulses key0 low for 50 to 59 cycles (here 55).
+pwrmgr_all_reset_reqs_test               --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Sysrst%20reset%20in*+100us --stim sysrst_ctrl.in=0xc2@log:Sysrst%20reset%20in*+375us
+pwrmgr_deep_sleep_all_reset_reqs_test    --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Sysrst%20reset%20in*+100us --stim sysrst_ctrl.in=0xc2@log:Sysrst%20reset%20in*+375us
+pwrmgr_normal_sleep_all_reset_reqs_test  --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Sysrst%20reset%20in*+100us --stim sysrst_ctrl.in=0xc2@log:Sysrst%20reset%20in*+375us
+pwrmgr_random_sleep_all_reset_reqs_test  --stim sysrst_ctrl.in=0xc2 --stim sysrst_ctrl.in=0xc0@log:Sysrst%20reset%20in*+100us --stim sysrst_ctrl.in=0xc2@log:Sysrst%20reset%20in*+375us
+# The POR_N pad and the AST's main power-ok, as the bench drives them (rstmgr.por, pwrmgr.main_pok_glitch).
+# chip_sw_sleep_por_reset_vseq: key0 pulled up, the other sysrst_ctrl inputs not routed (0). At the
+# first "Ready for pad POR", once the chip is in low power, POR_N is pulled 10 always-on cycles
+# later; at the second, 30 cycles on, key0 pulses low for 55 cycles (the all-keys combination
+# resets the chip).
+pwrmgr_deep_sleep_por_reset_test    --stim sysrst_ctrl.in=0xc2 --stim rstmgr.por=1,@log:Ready%20for%20pad%20POR@lowpower+50us --stim sysrst_ctrl.in=,0xc0@log:Ready%20for%20pad%20POR+150us --stim sysrst_ctrl.in=,0xc2@log:Ready%20for%20pad%20POR+425us
+pwrmgr_normal_sleep_por_reset_test  --stim sysrst_ctrl.in=0xc2 --stim rstmgr.por=1,@log:Ready%20for%20pad%20POR@lowpower+50us --stim sysrst_ctrl.in=,0xc0@log:Ready%20for%20pad%20POR+150us --stim sysrst_ctrl.in=,0xc2@log:Ready%20for%20pad%20POR+425us
+# chip_sw_main_power_glitch_vseq: once software runs (InTest), the main power-ok glitches 5 to 13
+# always-on cycles after the core next sleeps (here 9).
+pwrmgr_main_power_glitch_test   --stim pwrmgr.main_pok_glitch=1,@status:InTest@wfi+45us
+pwrmgr_sleep_power_glitch_test  --stim pwrmgr.main_pok_glitch=1,@status:InTest@wfi+45us
+# chip_sw_deep_power_glitch_vseq: the glitch when pwrmgr next starts a low-power entry.
+pwrmgr_deep_sleep_power_glitch_test  --stim pwrmgr.main_pok_glitch=1,@status:InTest@lowpower
+# chip_sw_random_power_glitch_vseq: after each "Booting and setting <deep|normal> sleep followed by
+# glitch reset" a glitch at the next low-power entry (deep) or 300 to 320 always-on cycles after the
+# core next sleeps (normal, here 310); after each "... followed by hw por" POR_N pulled once the
+# chip is in low power (the bench: 10 to 210 cycles after the message, then 0 to 4 more; here 4
+# cycles after the entry).
+pwrmgr_random_sleep_power_glitch_reset_test  --stim pwrmgr.main_pok_glitch=1@log:Booting%20and%20setting%20deep%20sleep%20followed%20by%20glitch%20reset@lowpower --stim pwrmgr.main_pok_glitch=1@log:Booting%20and%20setting%20normal%20sleep%20followed%20by%20glitch%20reset@wfi+1550us --stim rstmgr.por=1@log:Booting%20and%20setting%20deep%20sleep%20followed%20by%20hw%20por@lowpower+20us --stim rstmgr.por=1@log:Booting%20and%20setting%20normal%20sleep%20followed%20by%20hw%20por@lowpower+20us
+# The pads pinmux's wake-up detectors watch (pinmux.pad=<0 MIO | 1 DIO>:<pad>:<level>).
+# chip_sw_sleep_pin_wake_vseq: software picks a pad at random and logs it ("Pad Selection:
+# <0 MIO | 1 DIO> / <pad>"); the bench drives it 0, waits until the chip is in low power and
+# drives it 1 15 to 300 us later (here 20 us).
+sleep_pin_wake_test          --stim pinmux.pad={0}:{1}:1@log:Pad%20Selection:*@lowpower+20us
+sleep_pin_wake_test_cheriot  --stim pinmux.pad={0}:{1}:1@log:Pad%20Selection:*@lowpower+20us
+# chip_sw_sleep_pin_retention_vseq: each round, 10 always-on cycles after the chip is in low power,
+# the wake-up pad (GPIO 8 on IOA8, MIO pad 8) high for 3 cycles; the GPIO values in sleep it checks
+# are bench checks.
+sleep_pin_retention_test          --stim pinmux.pad=0:8:1@log:Entering%20low%20power%20mode.@lowpower+50us --stim pinmux.pad=0:8:0@log:Entering%20low%20power%20mode.@lowpower+65us
+sleep_pin_retention_test_cheriot  --stim pinmux.pad=0:8:1@log:Entering%20low%20power%20mode.@lowpower+50us --stim pinmux.pad=0:8:0@log:Entering%20low%20power%20mode.@lowpower+65us
+# chip_sw_pwrmgr_deep_sleep_all_wake_ups_vseq (do_random=1 for the random variant: each round
+# twice): 20 always-on cycles after "Issue WFI to enter sleep <n>" round 0 presses the power button
+# (pwrb_in, routed from IOR13), round 1 forces the ADC channels to 5 and 115, round 2 drives the
+# wake-up pad IOB7 (MIO pad 16) high; each is released at "Woke up by source <n>". The other
+# sysrst_ctrl inputs are not routed (0); before the force the AST's ADC gives a value the
+# documents do not state: 1023, outside the test's filter, stands for it. The USB, aon_timer and
+# sensor_ctrl rounds need no stimulus.
+pwrmgr_deep_sleep_all_wake_ups            --stim sysrst_ctrl.in=0xc1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim sysrst_ctrl.in=0xc0@log:Issue%20WFI%20to%20enter%20sleep%200+100us --stim sysrst_ctrl.in=0xc1@log:Woke%20up%20by%20source%200 --stim adc_ctrl.chan0=5@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan1=115@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan0=1023@log:Woke%20up%20by%20source%201 --stim adc_ctrl.chan1=1023@log:Woke%20up%20by%20source%201 --stim pinmux.pad=0:16:1@log:Issue%20WFI%20to%20enter%20sleep%202+100us --stim pinmux.pad=0:16:0@log:Woke%20up%20by%20source%202
+pwrmgr_deep_sleep_all_wake_ups_cheriot    --stim sysrst_ctrl.in=0xc1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim sysrst_ctrl.in=0xc0@log:Issue%20WFI%20to%20enter%20sleep%200+100us --stim sysrst_ctrl.in=0xc1@log:Woke%20up%20by%20source%200 --stim adc_ctrl.chan0=5@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan1=115@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan0=1023@log:Woke%20up%20by%20source%201 --stim adc_ctrl.chan1=1023@log:Woke%20up%20by%20source%201 --stim pinmux.pad=0:16:1@log:Issue%20WFI%20to%20enter%20sleep%202+100us --stim pinmux.pad=0:16:0@log:Woke%20up%20by%20source%202
+pwrmgr_normal_sleep_all_wake_ups          --stim sysrst_ctrl.in=0xc1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim sysrst_ctrl.in=0xc0@log:Issue%20WFI%20to%20enter%20sleep%200+100us --stim sysrst_ctrl.in=0xc1@log:Woke%20up%20by%20source%200 --stim adc_ctrl.chan0=5@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan1=115@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan0=1023@log:Woke%20up%20by%20source%201 --stim adc_ctrl.chan1=1023@log:Woke%20up%20by%20source%201 --stim pinmux.pad=0:16:1@log:Issue%20WFI%20to%20enter%20sleep%202+100us --stim pinmux.pad=0:16:0@log:Woke%20up%20by%20source%202
+pwrmgr_normal_sleep_all_wake_ups_cheriot  --stim sysrst_ctrl.in=0xc1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim sysrst_ctrl.in=0xc0@log:Issue%20WFI%20to%20enter%20sleep%200+100us --stim sysrst_ctrl.in=0xc1@log:Woke%20up%20by%20source%200 --stim adc_ctrl.chan0=5@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan1=115@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan0=1023@log:Woke%20up%20by%20source%201 --stim adc_ctrl.chan1=1023@log:Woke%20up%20by%20source%201 --stim pinmux.pad=0:16:1@log:Issue%20WFI%20to%20enter%20sleep%202+100us --stim pinmux.pad=0:16:0@log:Woke%20up%20by%20source%202
+pwrmgr_random_sleep_all_wake_ups          --stim sysrst_ctrl.in=0xc1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim sysrst_ctrl.in=0xc0@log:Issue%20WFI%20to%20enter%20sleep%200+100us --stim sysrst_ctrl.in=0xc1@log:Woke%20up%20by%20source%200 --stim adc_ctrl.chan0=5@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan1=115@log:Issue%20WFI%20to%20enter%20sleep%201+100us --stim adc_ctrl.chan0=1023@log:Woke%20up%20by%20source%201 --stim adc_ctrl.chan1=1023@log:Woke%20up%20by%20source%201 --stim pinmux.pad=0:16:1@log:Issue%20WFI%20to%20enter%20sleep%202+100us --stim pinmux.pad=0:16:0@log:Woke%20up%20by%20source%202
+# chip_sw_adc_ctrl_sleep_debug_cable_wakeup_vseq: the settings it writes into the image (8 low-power
+# and 8 normal samples, wake-up time 16 cycles, channel 0 in [128, 255], channel 1 in [512, 639]);
+# once software sleeps (InWfi) the ADC's output pair by pair: 8 pairs with one channel-0 sample
+# out of range (the sequence picks which at random; here the fourth), one pair with both out, 8
+# with one channel-1 sample out, 8 with both out, then 16 in range (8 periodic, 8 continuous),
+# which wake the chip. In range: 200 and 600; out: 50. Unforced (before): 1023 stands for the
+# AST's undocumented value. The powerdown count and the no-early-wake-up check are bench checks.
+adc_ctrl_sleep_debug_cable_wakeup_test          --sym kNumLowPowerSamples=8:1 --sym kNumNormalPowerSamples=8:1 --sym kWakeUpTimeAonCycles=16:1 --sym kChannel0MaxLowByte=0xff:1 --sym kChannel0MaxHighByte=0:1 --sym kChannel0MinLowByte=0x80:1 --sym kChannel0MinHighByte=0:1 --sym kChannel1MaxLowByte=0x7f:1 --sym kChannel1MaxHighByte=2:1 --sym kChannel1MinLowByte=0:1 --sym kChannel1MinHighByte=2:1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim adc_ctrl.pairs=200/600;200/600;200/600;50/600;200/600;200/600;200/600;200/600;50/50;200/600;200/600;200/600;200/50;200/600;200/600;200/600;200/600;50/50;50/50;50/50;50/50;50/50;50/50;50/50;50/50;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600@status:InWfi
+adc_ctrl_sleep_debug_cable_wakeup_test_cheriot  --sym kNumLowPowerSamples=8:1 --sym kNumNormalPowerSamples=8:1 --sym kWakeUpTimeAonCycles=16:1 --sym kChannel0MaxLowByte=0xff:1 --sym kChannel0MaxHighByte=0:1 --sym kChannel0MinLowByte=0x80:1 --sym kChannel0MinHighByte=0:1 --sym kChannel1MaxLowByte=0x7f:1 --sym kChannel1MaxHighByte=2:1 --sym kChannel1MinLowByte=0:1 --sym kChannel1MinHighByte=2:1 --stim adc_ctrl.chan0=1023 --stim adc_ctrl.chan1=1023 --stim adc_ctrl.pairs=200/600;200/600;200/600;50/600;200/600;200/600;200/600;200/600;50/50;200/600;200/600;200/600;200/50;200/600;200/600;200/600;200/600;50/50;50/50;50/50;50/50;50/50;50/50;50/50;50/50;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600;200/600@status:InWfi
+# The debugger: the chip bench's JTAG agent and jtag_rv_debugger (OpenOCD and opentitanlib on FPGA
+# and silicon), as debugger.* keys that act through rv_dm's DMI (ibex-ss/debug-ctrl/sw/systemc-model/
+# eg2_rv_dm.h lists them). {image:<path under bazel-out's bin/>} is another image of the EG2 fork's
+# Bazel output (run.sh resolves it; a test whose image is not built is reported, not run).
+#
+# Access after wake-up (chip_sw_rv_dm_access_after_wakeup_vseq): after "Software Setup." the
+# debugger activates rv_dm, writes progbuf0 and reads it back, and the bench sets kSoftwareBarrierDv
+# to 1; on "Entering normal sleep." it presses the power button (sysrst_ctrl pwrb_in low), releases
+# it on "Waking up from normal sleep.", checks progbuf0 kept its value, and sets the barrier to 2;
+# on "Entering deep sleep." it presses the button again; after "Waking up from deep sleep." it
+# releases it, activates rv_dm again (the deep sleep reset it), writes and reads back progbuf0, and
+# sets the barrier to 3. The sequence writes a random value; here two fixed ones.
+rv_dm_access_after_wakeup_dev  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
+rv_dm_access_after_wakeup_rma  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
+rv_dm_access_after_wakeup_rma_cheriot  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
+rv_dm_access_after_wakeup_test_unlocked1  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
+# NDM reset (chip_rv_dm_ndm_reset_vseq with chip_jtag_base_vseq's debug_mode_en and ndm_reset_off):
+# after "wait for ndm reset" the debugger sets dmactive, then ndmreset, and clears it once the chip
+# has reset. The havereset checks around it are the FPGA harness's (sw/host/tests/chip/rv_dm/src/
+# ndm_reset_req.rs: ackhavereset clears anyhavereset and allhavereset, the NDM reset sets them).
+rv_dm_ndm_reset_req_dev  --stim debugger.dmactive=1@log:wait%20for%20ndm%20reset+1us --stim debugger.ackhavereset=1@log:wait%20for%20ndm%20reset+2us --stim debugger.dmi_expect=0x11:0/0xc0000@log:wait%20for%20ndm%20reset+3us --stim debugger.ndmreset=1@log:wait%20for%20ndm%20reset+4us --stim debugger.ndmreset=0@log:wait%20for%20ndm%20reset+20us --stim debugger.dmi_expect=0x11:0xc0000/0xc0000@log:wait%20for%20ndm%20reset+21us
+rv_dm_ndm_reset_req_rma  --stim debugger.dmactive=1@log:wait%20for%20ndm%20reset+1us --stim debugger.ackhavereset=1@log:wait%20for%20ndm%20reset+2us --stim debugger.dmi_expect=0x11:0/0xc0000@log:wait%20for%20ndm%20reset+3us --stim debugger.ndmreset=1@log:wait%20for%20ndm%20reset+4us --stim debugger.ndmreset=0@log:wait%20for%20ndm%20reset+20us --stim debugger.dmi_expect=0x11:0xc0000/0xc0000@log:wait%20for%20ndm%20reset+21us
+rv_dm_ndm_reset_req_rma_cheriot  --stim debugger.dmactive=1@log:wait%20for%20ndm%20reset+1us --stim debugger.ackhavereset=1@log:wait%20for%20ndm%20reset+2us --stim debugger.dmi_expect=0x11:0/0xc0000@log:wait%20for%20ndm%20reset+3us --stim debugger.ndmreset=1@log:wait%20for%20ndm%20reset+4us --stim debugger.ndmreset=0@log:wait%20for%20ndm%20reset+20us --stim debugger.dmi_expect=0x11:0xc0000/0xc0000@log:wait%20for%20ndm%20reset+21us
+rv_dm_ndm_reset_req_test_unlocked1  --stim debugger.dmactive=1@log:wait%20for%20ndm%20reset+1us --stim debugger.ackhavereset=1@log:wait%20for%20ndm%20reset+2us --stim debugger.dmi_expect=0x11:0/0xc0000@log:wait%20for%20ndm%20reset+3us --stim debugger.ndmreset=1@log:wait%20for%20ndm%20reset+4us --stim debugger.ndmreset=0@log:wait%20for%20ndm%20reset+20us --stim debugger.dmi_expect=0x11:0xc0000/0xc0000@log:wait%20for%20ndm%20reset+21us
+# NDM reset of a halted core (chip_sw_rv_dm_ndm_reset_when_cpu_halted_vseq): after "Ready for CPU
+# halt request" the debugger sets dmactive, checks the core runs (dmstatus allrunning, anyrunning),
+# halts it (haltreq; allhalted, anyhalted, not running), clears haltreq and checks it stays halted,
+# that no abstract command is busy, and reads x0-x15 for logging. In the RISC-V runs, the Debug
+# Spec's cmderr=3 rule is checked independently for an abstract write to read-only cycle and for a
+# program-buffer `csrw cycle`. The RISC-V runs read unconfigured mhpmcounter31 as zero and accept a
+# WARL write to tied-zero mhpmevent31; the CHERIoT run checks mshwm's low-four-zero WARL rule. An
+# endless program-buffer jump must leave abstractcs.busy set; a DATA0 read must add cmderr=1, and a
+# command while that error is non-zero must not overwrite it. dmactive is cycled to recover. Then
+# lc_ctrl's DEVICE_ID is compared
+# over SBA with OTP (the bench reads OTP through its backdoor). dcsr and GPR values have no
+# independent oracle in this suite, so they are not compared. The held-reset check follows the chip
+# sequence and the top's tied-low unavailable input: dmstatus reports running throughout NDM reset.
+# The post-release check independently requires the core to run again.
+rv_dm_ndm_reset_req_when_cpu_halted_dev  --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+5us --stim debugger.dmi_expect=0x11:0xc00/0xc00@log:Ready%20for%20CPU%20halt%20request+10us --stim debugger.haltreq=1@log:Ready%20for%20CPU%20halt%20request+11us --stim debugger.dmi_expect=0x11:0x300/0xf00@log:Ready%20for%20CPU%20halt%20request+15us --stim debugger.haltreq=0@log:Ready%20for%20CPU%20halt%20request+20us --stim debugger.dmi_expect=0x11:0x200/0x200@log:Ready%20for%20CPU%20halt%20request+40us --stim debugger.dmi_expect=0x16:0/0x1000@log:Ready%20for%20CPU%20halt%20request+41us --stim debugger.reg_expect=0xb1f:0@log:Ready%20for%20CPU%20halt%20request+41500ns --stim debugger.reg_write=0x33f:0xffffffff@log:Ready%20for%20CPU%20halt%20request+41700ns --stim debugger.reg_expect=0x33f:0@log:Ready%20for%20CPU%20halt%20request+41900ns --stim debugger.reg_read=0x1000:16@log:Ready%20for%20CPU%20halt%20request+42us --stim debugger.dmi_write=0x04:1@log:Ready%20for%20CPU%20halt%20request+43us --stim debugger.dmi_write=0x17:0x230c00@log:Ready%20for%20CPU%20halt%20request+44us --stim debugger.dmi_expect=0x16:0x300/0x700@log:Ready%20for%20CPU%20halt%20request+45us --stim debugger.dmi_write=0x16:0x700@log:Ready%20for%20CPU%20halt%20request+46us --stim debugger.dmi_write=0x20:0xc0001073@log:Ready%20for%20CPU%20halt%20request+47us --stim debugger.dmi_write=0x21:0x00100073@log:Ready%20for%20CPU%20halt%20request+48us --stim debugger.dmi_write=0x17:0x240000@log:Ready%20for%20CPU%20halt%20request+49us --stim debugger.dmi_expect=0x16:0x300/0x700@log:Ready%20for%20CPU%20halt%20request+50us --stim debugger.dmi_write=0x16:0x700@log:Ready%20for%20CPU%20halt%20request+51us --stim debugger.dmi_write=0x20:0x0000006f@log:Ready%20for%20CPU%20halt%20request+52us --stim debugger.dmi_write=0x17:0x240000@log:Ready%20for%20CPU%20halt%20request+53us --stim debugger.dmi_expect=0x16:0x1000/0x1000@log:Ready%20for%20CPU%20halt%20request+54us --stim debugger.dmi_expect=0x04:0/0@log:Ready%20for%20CPU%20halt%20request+54500ns --stim debugger.dmi_expect=0x16:0x1100/0x1700@log:Ready%20for%20CPU%20halt%20request+54750ns --stim debugger.dmi_write=0x17:0@log:Ready%20for%20CPU%20halt%20request+55us --stim debugger.dmi_expect=0x16:0x1100/0x1700@log:Ready%20for%20CPU%20halt%20request+56us --stim debugger.dmactive=0@log:Ready%20for%20CPU%20halt%20request+57us --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+58us --stim debugger.sba_expect_otp=lc_ctrl.regs.DEVICE_ID_0:0x688:8@log:Ready%20for%20CPU%20halt%20request+60us --stim debugger.ndmreset=1@log:Ready%20for%20CPU%20halt%20request+65us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+70us --stim debugger.ndmreset=0@log:Ready%20for%20CPU%20halt%20request+100us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+105us
+rv_dm_ndm_reset_req_when_cpu_halted_rma  --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+5us --stim debugger.dmi_expect=0x11:0xc00/0xc00@log:Ready%20for%20CPU%20halt%20request+10us --stim debugger.haltreq=1@log:Ready%20for%20CPU%20halt%20request+11us --stim debugger.dmi_expect=0x11:0x300/0xf00@log:Ready%20for%20CPU%20halt%20request+15us --stim debugger.haltreq=0@log:Ready%20for%20CPU%20halt%20request+20us --stim debugger.dmi_expect=0x11:0x200/0x200@log:Ready%20for%20CPU%20halt%20request+40us --stim debugger.dmi_expect=0x16:0/0x1000@log:Ready%20for%20CPU%20halt%20request+41us --stim debugger.reg_expect=0xb1f:0@log:Ready%20for%20CPU%20halt%20request+41500ns --stim debugger.reg_write=0x33f:0xffffffff@log:Ready%20for%20CPU%20halt%20request+41700ns --stim debugger.reg_expect=0x33f:0@log:Ready%20for%20CPU%20halt%20request+41900ns --stim debugger.reg_read=0x1000:16@log:Ready%20for%20CPU%20halt%20request+42us --stim debugger.dmi_write=0x04:1@log:Ready%20for%20CPU%20halt%20request+43us --stim debugger.dmi_write=0x17:0x230c00@log:Ready%20for%20CPU%20halt%20request+44us --stim debugger.dmi_expect=0x16:0x300/0x700@log:Ready%20for%20CPU%20halt%20request+45us --stim debugger.dmi_write=0x16:0x700@log:Ready%20for%20CPU%20halt%20request+46us --stim debugger.dmi_write=0x20:0xc0001073@log:Ready%20for%20CPU%20halt%20request+47us --stim debugger.dmi_write=0x21:0x00100073@log:Ready%20for%20CPU%20halt%20request+48us --stim debugger.dmi_write=0x17:0x240000@log:Ready%20for%20CPU%20halt%20request+49us --stim debugger.dmi_expect=0x16:0x300/0x700@log:Ready%20for%20CPU%20halt%20request+50us --stim debugger.dmi_write=0x16:0x700@log:Ready%20for%20CPU%20halt%20request+51us --stim debugger.dmi_write=0x20:0x0000006f@log:Ready%20for%20CPU%20halt%20request+52us --stim debugger.dmi_write=0x17:0x240000@log:Ready%20for%20CPU%20halt%20request+53us --stim debugger.dmi_expect=0x16:0x1000/0x1000@log:Ready%20for%20CPU%20halt%20request+54us --stim debugger.dmi_expect=0x04:0/0@log:Ready%20for%20CPU%20halt%20request+54500ns --stim debugger.dmi_expect=0x16:0x1100/0x1700@log:Ready%20for%20CPU%20halt%20request+54750ns --stim debugger.dmi_write=0x17:0@log:Ready%20for%20CPU%20halt%20request+55us --stim debugger.dmi_expect=0x16:0x1100/0x1700@log:Ready%20for%20CPU%20halt%20request+56us --stim debugger.dmactive=0@log:Ready%20for%20CPU%20halt%20request+57us --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+58us --stim debugger.sba_expect_otp=lc_ctrl.regs.DEVICE_ID_0:0x688:8@log:Ready%20for%20CPU%20halt%20request+60us --stim debugger.ndmreset=1@log:Ready%20for%20CPU%20halt%20request+65us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+70us --stim debugger.ndmreset=0@log:Ready%20for%20CPU%20halt%20request+100us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+105us
+rv_dm_ndm_reset_req_when_cpu_halted_rma_cheriot  --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+5us --stim debugger.dmi_expect=0x11:0xc00/0xc00@log:Ready%20for%20CPU%20halt%20request+10us --stim debugger.haltreq=1@log:Ready%20for%20CPU%20halt%20request+11us --stim debugger.dmi_expect=0x11:0x300/0xf00@log:Ready%20for%20CPU%20halt%20request+15us --stim debugger.haltreq=0@log:Ready%20for%20CPU%20halt%20request+20us --stim debugger.dmi_expect=0x11:0x200/0x200@log:Ready%20for%20CPU%20halt%20request+40us --stim debugger.dmi_expect=0x16:0/0x1000@log:Ready%20for%20CPU%20halt%20request+41us --stim debugger.reg_read=0x1000:16@log:Ready%20for%20CPU%20halt%20request+42us --stim debugger.reg_write=0xbc1:0x123f@log:Ready%20for%20CPU%20halt%20request+41us --stim debugger.reg_expect=0xbc1:0x1230@log:Ready%20for%20CPU%20halt%20request+42us --stim debugger.sba_expect_otp=lc_ctrl.regs.DEVICE_ID_0:0x688:8@log:Ready%20for%20CPU%20halt%20request+44us --stim debugger.ndmreset=1@log:Ready%20for%20CPU%20halt%20request+50us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+55us --stim debugger.ndmreset=0@log:Ready%20for%20CPU%20halt%20request+100us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+105us
+rv_dm_ndm_reset_req_when_cpu_halted_test_unlocked1  --stim debugger.dmactive=1@log:Ready%20for%20CPU%20halt%20request+5us --stim debugger.dmi_expect=0x11:0xc00/0xc00@log:Ready%20for%20CPU%20halt%20request+10us --stim debugger.haltreq=1@log:Ready%20for%20CPU%20halt%20request+11us --stim debugger.dmi_expect=0x11:0x300/0xf00@log:Ready%20for%20CPU%20halt%20request+15us --stim debugger.haltreq=0@log:Ready%20for%20CPU%20halt%20request+20us --stim debugger.dmi_expect=0x11:0x200/0x200@log:Ready%20for%20CPU%20halt%20request+40us --stim debugger.dmi_expect=0x16:0/0x1000@log:Ready%20for%20CPU%20halt%20request+41us --stim debugger.reg_read=0x1000:16@log:Ready%20for%20CPU%20halt%20request+42us --stim debugger.sba_expect_otp=lc_ctrl.regs.DEVICE_ID_0:0x688:8@log:Ready%20for%20CPU%20halt%20request+44us --stim debugger.ndmreset=1@log:Ready%20for%20CPU%20halt%20request+50us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+55us --stim debugger.ndmreset=0@log:Ready%20for%20CPU%20halt%20request+100us --stim debugger.dmi_expect=0x11:0xc00/0xf00@log:Ready%20for%20CPU%20halt%20request+105us
+# SRAM programs. The OTP image of rv_core_ibex_{epmp,isa,mem}_test (otp.txt) disables ROM execution,
+# so the ROM halts; the host halts the core over JTAG, loads the test's SRAM program and starts it
+# (opentitanlib load_sram_program.rs, with the FPGA harnesses sw/host/tests/chip/rv_core_ibex_epmp,
+# which the mem test uses too, and rv_core_ibex_isa; the chip bench's version of the same steps is
+# chip_sw_rom_e2e_jtag_inject_vseq). The debugger halts the core after its first instruction (that
+# sequence halts it 0 to 20000 CPU cycles after power-up, at random): the core then has the reset
+# ePMP of the top (ibex_pmp_reset_pkg), not the one the model's test ROM sets up, which on FPGA is
+# the production ROM's. The SRAM programs are built for fpga_cw340_rom_with_fake_keys, their only
+# Earl Grey execution environment (sw/device/tests/BUILD), and report on the console only: the ePMP
+# and memory tests' harness passes on the console's PASS line (exit_strings.txt); the ISA test's
+# waits for the program's final ebreak and requires a0 == 1. They are not among the sim_dv images:
+# build them with the others (bazel build //sw/device/tests:rv_core_ibex_epmp_test
+# //sw/device/tests:rv_core_ibex_isa_test_sram //sw/device/tests:rv_core_ibex_mem_test_sram).
+rv_core_ibex_epmp_test_functest      --stim debugger.dmactive=1@1cyc --stim debugger.haltreq=1@1cyc --stim debugger.dmi_expect=0x11:0x300/0x300@1us --stim debugger.sram_program={image:sw/device/tests/rv_core_ibex_epmp_test_fpga_cw340_rom_with_fake_keys.elf}@2us
+rv_core_ibex_mem_test_test_unlocked0  --stim debugger.dmactive=1@1cyc --stim debugger.haltreq=1@1cyc --stim debugger.dmi_expect=0x11:0x300/0x300@1us --stim debugger.sram_program={image:sw/device/tests/rv_core_ibex_mem_test_sram_fpga_cw340_rom_with_fake_keys.elf}@2us
+rv_core_ibex_isa_test_test_unlocked0  --stim debugger.dmactive=1@1cyc --stim debugger.haltreq=1@1cyc --stim debugger.dmi_expect=0x11:0x300/0x300@1us --stim debugger.sram_program={image:sw/device/tests/rv_core_ibex_isa_test_sram_fpga_cw340_rom_with_fake_keys.elf};wait;0x100a:1@2us
+# OTP is sampled by otp_ctrl/lc_ctrl on reset. These are the four SRAM execution combinations and
+# the RRAM life-cycle sequence from their chip benches.
+sram_ctrl_execution_main_test  --stim otp.write=0x6d0:0x69:1@1cyc --stim otp.lc_state=Rma@1cyc --stim rstmgr.por=1@2cyc --stim lc_ctrl.sram_exec_expect=Rma:off,Rma:on,Prod:off,Prod:on@status:InWfi --stim otp.write=0x6d0:0x96:1,0x6d0:0x69:1,0x6d0:0x96:1@status:InWfi --stim otp.lc_state=Rma,Prod,Prod@status:InWfi --stim rstmgr.por=1,1,1,@status:InWfi --stim bench.finish=,,,pass@status:InWfi
+rram_ctrl_lc_rw_en_test  --stim otp.lc_state=TestLocked2@1cyc --stim otp.write=0x7b0:0:8@1cyc --stim rstmgr.por=1@2cyc --stim lc_ctrl.rram_rw_expect=off@1us --stim otp.lc_state=Dev@2us --stim rstmgr.por=1@2us --stim otp.lc_state=Prod,Scrap@status:InWfi --stim rstmgr.por=1,1@status:InWfi --stim lc_ctrl.rram_rw_expect=off@status:InWfi@status:InWfi+1us --stim bench.finish=pass@status:InWfi@status:InWfi+2us
+# GPIO pads. gpio.pad_expect checks every output transition after the first expected value is seen;
+# gpio.in drives the rising then falling thermometer pattern, one value after each WFI.
+gpio_test  --stim gpio.pad_expect=0x1:0xffffffff/0x2:0xffffffff/0x4:0xffffffff/0x8:0xffffffff/0x10:0xffffffff/0x20:0xffffffff/0x40:0xffffffff/0x80:0xffffffff/0x100:0xffffffff/0x200:0xffffffff/0x400:0xffffffff/0x800:0xffffffff/0x1000:0xffffffff/0x2000:0xffffffff/0x4000:0xffffffff/0x8000:0xffffffff/0x10000:0xffffffff/0x20000:0xffffffff/0x40000:0xffffffff/0x80000:0xffffffff/0x100000:0xffffffff/0x200000:0xffffffff/0x400000:0xffffffff/0x800000:0xffffffff/0x1000000:0xffffffff/0x2000000:0xffffffff/0x4000000:0xffffffff/0x8000000:0xffffffff/0x10000000:0xffffffff/0x20000000:0xffffffff/0x40000000:0xffffffff/0x80000000:0xffffffff/0:0xffffffff/0xffffffff:0xffffffff/0xfffffffe:0xffffffff/0xfffffffd:0xffffffff/0xfffffffb:0xffffffff/0xfffffff7:0xffffffff/0xffffffef:0xffffffff/0xffffffdf:0xffffffff/0xffffffbf:0xffffffff/0xffffff7f:0xffffffff/0xfffffeff:0xffffffff/0xfffffdff:0xffffffff/0xfffffbff:0xffffffff/0xfffff7ff:0xffffffff/0xffffefff:0xffffffff/0xffffdfff:0xffffffff/0xffffbfff:0xffffffff/0xffff7fff:0xffffffff/0xfffeffff:0xffffffff/0xfffdffff:0xffffffff/0xfffbffff:0xffffffff/0xfff7ffff:0xffffffff/0xffefffff:0xffffffff/0xffdfffff:0xffffffff/0xffbfffff:0xffffffff/0xff7fffff:0xffffffff/0xfeffffff:0xffffffff/0xfdffffff:0xffffffff/0xfbffffff:0xffffffff/0xf7ffffff:0xffffffff/0xefffffff:0xffffffff/0xdfffffff:0xffffffff/0xbfffffff:0xffffffff/0x7fffffff:0xffffffff/0xffffffff:0xffffffff/0:0xffffffff@log:Starting%20GPIO%20output%20test --stim gpio.in=0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f,0xff,0x1ff,0x3ff,0x7ff,0xfff,0x1fff,0x3fff,0x7fff,0xffff,0x1ffff,0x3ffff,0x7ffff,0xfffff,0x1fffff,0x3fffff,0x7fffff,0xffffff,0x1ffffff,0x3ffffff,0x7ffffff,0xfffffff,0x1fffffff,0x3fffffff,0x7fffffff,0xffffffff,0xfffffffe,0xfffffffc,0xfffffff8,0xfffffff0,0xffffffe0,0xffffffc0,0xffffff80,0xffffff00,0xfffffe00,0xfffffc00,0xfffff800,0xfffff000,0xffffe000,0xffffc000,0xffff8000,0xffff0000,0xfffe0000,0xfffc0000,0xfff80000,0xfff00000,0xffe00000,0xffc00000,0xff800000,0xff000000,0xfe000000,0xfc000000,0xf8000000,0xf0000000,0xe0000000,0xc0000000,0x80000000,0x0@wfi+1cyc
+gpio_test_cheriot  --stim gpio.pad_expect=0x1:0xffffffff/0x2:0xffffffff/0x4:0xffffffff/0x8:0xffffffff/0x10:0xffffffff/0x20:0xffffffff/0x40:0xffffffff/0x80:0xffffffff/0x100:0xffffffff/0x200:0xffffffff/0x400:0xffffffff/0x800:0xffffffff/0x1000:0xffffffff/0x2000:0xffffffff/0x4000:0xffffffff/0x8000:0xffffffff/0x10000:0xffffffff/0x20000:0xffffffff/0x40000:0xffffffff/0x80000:0xffffffff/0x100000:0xffffffff/0x200000:0xffffffff/0x400000:0xffffffff/0x800000:0xffffffff/0x1000000:0xffffffff/0x2000000:0xffffffff/0x4000000:0xffffffff/0x8000000:0xffffffff/0x10000000:0xffffffff/0x20000000:0xffffffff/0x40000000:0xffffffff/0x80000000:0xffffffff/0:0xffffffff/0xffffffff:0xffffffff/0xfffffffe:0xffffffff/0xfffffffd:0xffffffff/0xfffffffb:0xffffffff/0xfffffff7:0xffffffff/0xffffffef:0xffffffff/0xffffffdf:0xffffffff/0xffffffbf:0xffffffff/0xffffff7f:0xffffffff/0xfffffeff:0xffffffff/0xfffffdff:0xffffffff/0xfffffbff:0xffffffff/0xfffff7ff:0xffffffff/0xffffefff:0xffffffff/0xffffdfff:0xffffffff/0xffffbfff:0xffffffff/0xffff7fff:0xffffffff/0xfffeffff:0xffffffff/0xfffdffff:0xffffffff/0xfffbffff:0xffffffff/0xfff7ffff:0xffffffff/0xffefffff:0xffffffff/0xffdfffff:0xffffffff/0xffbfffff:0xffffffff/0xff7fffff:0xffffffff/0xfeffffff:0xffffffff/0xfdffffff:0xffffffff/0xfbffffff:0xffffffff/0xf7ffffff:0xffffffff/0xefffffff:0xffffffff/0xdfffffff:0xffffffff/0xbfffffff:0xffffffff/0x7fffffff:0xffffffff/0xffffffff:0xffffffff/0:0xffffffff@log:Starting%20GPIO%20output%20test --stim gpio.in=0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f,0xff,0x1ff,0x3ff,0x7ff,0xfff,0x1fff,0x3fff,0x7fff,0xffff,0x1ffff,0x3ffff,0x7ffff,0xfffff,0x1fffff,0x3fffff,0x7fffff,0xffffff,0x1ffffff,0x3ffffff,0x7ffffff,0xfffffff,0x1fffffff,0x3fffffff,0x7fffffff,0xffffffff,0xfffffffe,0xfffffffc,0xfffffff8,0xfffffff0,0xffffffe0,0xffffffc0,0xffffff80,0xffffff00,0xfffffe00,0xfffffc00,0xfffff800,0xfffff000,0xffffe000,0xffffc000,0xffff8000,0xffff0000,0xfffe0000,0xfffc0000,0xfff80000,0xfff00000,0xffe00000,0xffc00000,0xff800000,0xff000000,0xfe000000,0xfc000000,0xf8000000,0xf0000000,0xe0000000,0xc0000000,0x80000000,0x0@wfi+1cyc

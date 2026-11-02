@@ -1,0 +1,7 @@
+# Tests whose outcome is not a pass for a known reason: the report shows them as "<outcome> (known)"
+# with the text below. One line per test: <test> <reason>. A finding is named by its issue, or
+# "not filed yet" with the ticket or testplan name.
+dbg_host.tag_clear  not filed yet (testplan bus_master_dbg_host_tag_clear, fails on the RTL too): the debug module's bus writes do not pass the tag filter, so a write over a capability leaves its tag set
+dbg_host.verdict    not filed yet: the run fails on dbg_host.tag_clear
+rtos_prerelease.futex  RTL requirement gap (EG2 spec GAP-RTLREQ-10): fails on the RTL as here: mcycle stops while the core sleeps in WFI (clock gated), the RTOS counts time in mcycle and wakes on mtime ("Timeout until ... finished at ..., before expected")
+rtos_prerelease.verdict  RTL requirement gap: the run fails on rtos_prerelease.futex (GAP-RTLREQ-10)

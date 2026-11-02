@@ -1,0 +1,6 @@
+# Tests that need an unavailable execution or boot-image flow. Production ROM is on hold until the
+# production flow is available (decision 2026-11-01). The suite reports these separately and does
+# not run them. One line per test: <regular expression for the test name> <the reason>.
+rv_core_ibex_mem_test_prod             needs its selected production/owner-ROM execution environment
+rv_core_ibex_mem_test_test_unlocked0   its SRAM program calls and reads instructions in the production mask ROM
+rom_ext_key_(dev|prod|test|unknown)    is a ROM_EXT support image, not a standalone test image; it needs the secure-boot ROM flow

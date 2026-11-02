@@ -1,0 +1,4 @@
+# Chip-bench checks that bench.txt now reproduces and checks in eg2sim. These entries are excluded
+# from the "pass (bench checks not run)" count. One test image per line.
+sysrst_ctrl_outputs_test
+sysrst_ctrl_outputs_test_cheriot

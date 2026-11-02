@@ -1,0 +1,90 @@
+# The bare-metal suite's test categories, for its report. One line per pattern:
+#   <pattern> <category>
+# The pattern is an awk regular expression matched against the test name; the first matching line
+# gives the category, and the report lists the categories in this order. A name that matches no line
+# goes to "Other". Categories are "<area>: <block>", small enough to read at a glance.
+#
+# Tests written for EG2 (eg2_*), by the area of the EG2 test plan they belong to.
+^eg2_(connectivity|dif_smoke|status_smoke|ottf_smoke|testrig)               EG2 chip: connectivity and smoke tests
+^eg2_(switch|handover|epmp_handover|reset_state)                             EG2 core: mode switch and handover
+^eg2_rand_revocation                                                         EG2 memory system: revocation
+^eg2_rand_                                                                   EG2 core: random tests
+^eg2_(illegal|rf_intg|fetch|addr_translation|cap_halves)                     EG2 core: instructions, fetch and registers
+^eg2_(mem_test|mem_sys_e2e)                                                  EG2 memory system: end to end
+^eg2_(meta_|tag_|fi_meta|nvm_cap)                                            EG2 memory system: tags and metadata
+^eg2_(revocation|revoke|revbm)                                               EG2 memory system: revocation
+^eg2_(tbre|trvk)                                                             EG2 memory system: hardware revoker
+^eg2_sram                                                                    EG2 memory system: SRAM
+^eg2_(tl_|bus_intg)                                                          EG2 memory system: TL-UL bus
+^eg2_rram_(ctrl|init|idle|crash|sec_cm)                                      EG2 RRAM: controller
+^eg2_rram_(host|prim)                                                        EG2 RRAM: host access
+^eg2_rram_(exec|fetch|write_then|uncorr)                                     EG2 RRAM: fetch and execute
+^eg2_rram_otp                                                                EG2 RRAM: OTP partitions
+^eg2_rram                                                                    EG2 RRAM: protection, ECC, scrambling and tags
+^eg2_rv_dm_(sba|cap_bypass)|^eg2_sba_                                        EG2 debug: system bus access
+^eg2_rv_dm_(halt|step|reset|triggers)                                        EG2 debug: halt, step and triggers
+^eg2_rv_dm                                                                   EG2 debug: debug module, JTAG and life cycle
+^eg2_sec_                                                                    EG2 security: device identity and reset
+^eg2_(lc_|otp_)                                                              EG2 security: life cycle and OTP
+^eg2_keymgr                                                                  EG2 security: key manager
+^eg2_(alert|boot_|lock_)                                                     EG2 security: alerts, boot and locks
+^eg2_nist                                                                    EG2 crypto: NIST vectors
+^eg2_rng                                                                     EG2 crypto: random number source
+^eg2_otbn                                                                    EG2 crypto: OTBN
+^eg2_pbf_(alert|sensor)                                                      EG2 power, boot and fault: alerts and sensors
+^eg2_pbf_(cheriot|compartment|meta|memory)                                   EG2 power, boot and fault: CHERIoT and memory
+^eg2_pbf_(debug|rom_ext)                                                     EG2 power, boot and fault: debug and boot
+^eg2_pbf_(entropy|keymgr|otbn|sym_crypto)                                    EG2 power, boot and fault: crypto
+^eg2_pbf_(lc_otp|power)                                                      EG2 power, boot and fault: life cycle and power
+^eg2_pbf_periph                                                              EG2 power, boot and fault: peripherals
+^eg2_usb                                                                     EG2 peripherals: USB
+^eg2_periph                                                                  EG2 peripherals: capabilities and locks
+^eg2_                                                                        EG2 other
+# OpenTitan's chip tests, by block.
+^(alert|boot_data|irq_asm|otbn_boot_services|owner_verify|retention_sram|rnd|rstmgr|uart|usb|watchdog|kmac|keymgr_dpe)_functest$|^hmac_functest@  OpenTitan silicon creator: drivers and boot services
+^(ecdsa_p256_verify|rsa_verify|spx_verify)_functest$|^(mod_exp_ibex|sigverify_dynamic)_functest_hardcoded$|^(fors|mgf1|thash|wots)_test$|^verify_test_  OpenTitan silicon creator: signature verification
+^(aes|entropy|hmac|keymgr_dpe|kmac|otbn|rv_core_ibex)_test$|^alert_test@                     OpenTitan crypto library: drivers
+^(crc32_|hardened_|memory_perftest)                                       OpenTitan base library
+^coremark                                                                 OpenTitan benchmarks: CoreMark
+^rv_core_ibex                                                                OpenTitan core: Ibex
+^(rv_plic|plic_)                                                             OpenTitan core: interrupt controller
+^rv_timer                                                                    OpenTitan core: timer
+^(pmp_|crt_test|cheriot_)                                                    OpenTitan core: PMP, start-up and CHERIoT
+^rv_dm                                                                       OpenTitan debug
+^entropy_src                                                                 OpenTitan entropy: entropy source
+^(edn_|csrng)                                                                OpenTitan entropy: CSRNG and EDN
+^(otbn|sha2_otbn|hkdf_otbn)                                                  OpenTitan public-key crypto: OTBN
+^rsa                                                                         OpenTitan public-key crypto: RSA
+^(ecc_|ecdh|ecdsa)                                                           OpenTitan public-key crypto: elliptic curves
+^(ed25519|x25519|mldsa|mlkem)                                                OpenTitan public-key crypto: Curve25519 and post-quantum
+^(kmac_app_rom|rom_)                                                         OpenTitan memories and life cycle: ROM and boot keys
+^aes                                                                         OpenTitan symmetric crypto: AES
+^(hmac|sha)                                                                  OpenTitan symmetric crypto: HMAC and SHA-2
+^kmac                                                                        OpenTitan symmetric crypto: KMAC
+^keymgr                                                                      OpenTitan symmetric crypto: key manager
+^(cmac|drbg|hkdf|kats|kdf|otcrypto|stateful|symmetric|pct_)                  OpenTitan symmetric crypto: crypto library
+^(lc_|exit_test)                                                             OpenTitan memories and life cycle: life cycle
+^otp_                                                                        OpenTitan memories and life cycle: OTP
+^sram_ctrl                                                                   OpenTitan memories and life cycle: SRAM
+^(rram|flash)                                                                OpenTitan memories and life cycle: RRAM and flash
+^(alert|all_escalation|data_integrity)                                       OpenTitan alerts: alert handler and escalation
+^(sensor|ast_)                                                               OpenTitan alerts: sensors and AST
+^pwrmgr_.*wake                                                                OpenTitan power: power manager wake-ups
+^pwrmgr_.*(reset|glitch)                                                     OpenTitan power: power manager resets and glitches
+^pwrmgr                                                                      OpenTitan power: power manager
+^clkmgr                                                                      OpenTitan power: clock manager
+^rstmgr                                                                      OpenTitan power: reset manager
+^aon_timer                                                                   OpenTitan power: always-on timer
+^sleep_pin                                                                   OpenTitan power: sleep pins
+^sysrst                                                                      OpenTitan power: system reset controller
+^(chip_power|power_virus)                                                    OpenTitan power: power load
+^uart_                                                                       OpenTitan peripherals: UART
+^spi_device                                                                  OpenTitan peripherals: SPI device
+^spi_host                                                                    OpenTitan peripherals: SPI host
+^spi_pass                                                                    OpenTitan peripherals: SPI passthrough
+^i2c_                                                                        OpenTitan peripherals: I2C
+^gpio_                                                                       OpenTitan peripherals: GPIO
+^usbdev_(sleep|deep|suspend|aon|vbus|pullup|pincfg)                          OpenTitan peripherals: USB device power, pins and suspend
+^usbdev                                                                      OpenTitan peripherals: USB device transfers
+^adc_                                                                        OpenTitan peripherals: ADC
+^(example|exit_test|statically|status_functest|ottf_|test_rom_test)                      OpenTitan examples and test framework

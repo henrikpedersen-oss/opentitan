@@ -1,0 +1,21 @@
+# Tests that bring their own OTP image: the `otp` of their BUILD target's dv_params, which dvsim
+# loads in place of the default img_rma, or the image its chip test list entry selects with
+# +use_otp_image (csrng_lc_hw_debug_en_test). One line per test: <test> <image under bazel-out's bin/>.
+# A test's _cheriot and _inject_fail builds use the same image. run.sh loads it; a test whose image
+# is not built is reported model-stop; substituting img_rma would exercise the wrong life cycle.
+clkmgr_external_clk_src_for_sw_fast_test  hw/top_earlgrey/data/otp/emulation/otp_img_dev_manuf_personalized.24.vmem
+clkmgr_external_clk_src_for_sw_slow_test  hw/top_earlgrey/data/otp/emulation/otp_img_dev_manuf_personalized.24.vmem
+csrng_lc_hw_debug_en_test                  hw/top_earlgrey/data/otp/img_test_unlocked0.24.vmem
+eg2_sec_device_id                          sw/device/tests/eg2_sec/otp_img_eg2_sec_device_id_rma.24.vmem
+flash_scrambling_smoketest                sw/device/tests/flash_scrambling_smoketest_otp_img_rma.24.vmem
+otp_ctrl_descrambling_test                sw/device/tests/otp_ctrl_descrambling_otp_image.24.vmem
+power_virus_systemtest                    sw/device/tests/power_virus_systemtest_otp_img_rma.24.vmem
+rv_core_ibex_epmp_test_functest           sw/device/silicon_creator/manuf/tests/otp_img_rom_exec_disabled_test_unlocked0.24.vmem
+rv_core_ibex_isa_test_test_unlocked0      sw/device/silicon_creator/manuf/tests/otp_img_rom_exec_disabled_test_unlocked0.24.vmem
+rv_core_ibex_mem_test_test_unlocked0      sw/device/silicon_creator/manuf/tests/otp_img_rom_exec_disabled_test_unlocked0.24.vmem
+rv_dm_access_after_wakeup_dev             hw/top_earlgrey/data/otp/img_dev.24.vmem
+rv_dm_access_after_wakeup_test_unlocked1  hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem
+rv_dm_ndm_reset_req_dev                   hw/top_earlgrey/data/otp/img_dev.24.vmem
+rv_dm_ndm_reset_req_test_unlocked1        hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem
+rv_dm_ndm_reset_req_when_cpu_halted_dev   hw/top_earlgrey/data/otp/img_dev.24.vmem
+rv_dm_ndm_reset_req_when_cpu_halted_test_unlocked1 hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem

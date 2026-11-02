@@ -1,0 +1,79 @@
+# The CHERIoT RTOS suite's runs: one firmware image each, on eg2sim --board rtos_soc. A run gives
+# many tests, one per check the firmware reports on its UART (README.md). Lines:
+#   <run> <image> [<eg2sim arguments>]   the image: a path in the ibex_cheriot_verification
+#                                        checkout (its firmware build: make rtos-firmware there),
+#                                        or nix:<package>/<path>, a package of its flake
+#   <run> must-print <count> <regex>     the run's verdict needs exactly <count> UART lines matching
+#                                        <regex> (extended regular expression, colour codes removed);
+#                                        a run with such lines needs no "All tests finished"
+#   <run> must-fail <check> ...          a mutation run: these checks must fail, and only they are
+#                                        tests of the run (a pass means the suite missed the break)
+
+# The upstream CHERIoT RTOS test suite (cheriot-rtos tests/), one firmware, 20 tests: built from
+# the cheriot-rtos submodule for board sonata-simulator (sleeps faked, the run ends on the exit
+# string), as cheriot-rtos-suite-tests-xlm runs it.
+rtos         build/cheriot-rtos/tests/cheriot/cheriot/release/test-suite
+# The same suite as the flake builds it (cheriot-rtos-xlm): cheriot-rtos 31e24610 for board
+# sonata-prerelease (no SIMULATION: real timer waits and timer interrupts), built with the flake's
+# CHERIoT LLVM (ee468e7b).
+rtos_prerelease  nix:cheriot-rtos-test-suite/share/test-suite
+
+# The suites of ibex/dv/cheriot-rtos-test-suite/sw/tests.
+revocation   ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw
+juliet       ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/juliet_cwe_tests
+cheri_c      ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/cheri_c_tests
+dbg_host     ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/dbg_host_test_fw
+perf         ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/perf_test_fw
+
+# cheriot-rtos tests.extra: no verdict lines of their own; they pass on a clean exit (exit code 0,
+# the local cheriot-rtos patch 0002) and the lines each must print (as cheriot_rtos_results.py).
+regress_drs  build/cheriot-rtos/tests.extra/regress-double_ref_shared/cheriot/cheriot/release/top_compartment
+regress_drs  must-print 1 ^Simulation exit code:
+regress_drs  must-print 1 ^Simulation exit code: 0$
+regress_drs  must-print 1 ^top2: ref2: 1$
+regress_tei  build/cheriot-rtos/tests.extra/regress-thread_exit_IRQ/cheriot/cheriot/release/top_compartment
+regress_tei  must-print 1 ^Simulation exit code:
+regress_tei  must-print 1 ^Simulation exit code: 0$
+hwrev_irq    build/cheriot-rtos/tests.extra/hardware_revoker_IRQs/cheriot/cheriot/release/top_compartment
+hwrev_irq    must-print 1 ^Simulation exit code:
+hwrev_irq    must-print 1 ^Simulation exit code: 0$
+hwrev_irq    must-print 10 ^top: After wait: for [^ ]+, result true,
+
+# Revocation stress (cheriot-rtos-revocation-stress-xlm): the revocation, Juliet and hardware
+# revoker interrupt firmware with slow memories, for each code:data latency pair the RTL runs (4:4,
+# 8:16, 16:8). The model cannot delay a memory access; eg2sim --slow-memories slows the core and the
+# revoker against the timer instead (rtos_soc.cc), which moves the sweeps and the preemptions as
+# the stress runs do.
+stress_c4d4.revocation  ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw --slow-memories 4:4
+stress_c4d4.juliet      ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/juliet_cwe_tests --slow-memories 4:4
+stress_c4d4.hwrev_irq   build/cheriot-rtos/tests.extra/hardware_revoker_IRQs/cheriot/cheriot/release/top_compartment --slow-memories 4:4
+stress_c4d4.hwrev_irq   must-print 1 ^Simulation exit code:
+stress_c4d4.hwrev_irq   must-print 1 ^Simulation exit code: 0$
+stress_c4d4.hwrev_irq   must-print 10 ^top: After wait: for [^ ]+, result true,
+stress_c8d16.revocation  ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw --slow-memories 8:16
+stress_c8d16.juliet      ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/juliet_cwe_tests --slow-memories 8:16
+stress_c8d16.hwrev_irq   build/cheriot-rtos/tests.extra/hardware_revoker_IRQs/cheriot/cheriot/release/top_compartment --slow-memories 8:16
+stress_c8d16.hwrev_irq   must-print 1 ^Simulation exit code:
+stress_c8d16.hwrev_irq   must-print 1 ^Simulation exit code: 0$
+stress_c8d16.hwrev_irq   must-print 10 ^top: After wait: for [^ ]+, result true,
+stress_c16d8.revocation  ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw --slow-memories 16:8
+stress_c16d8.juliet      ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/juliet_cwe_tests --slow-memories 16:8
+stress_c16d8.hwrev_irq   build/cheriot-rtos/tests.extra/hardware_revoker_IRQs/cheriot/cheriot/release/top_compartment --slow-memories 16:8
+stress_c16d8.hwrev_irq   must-print 1 ^Simulation exit code:
+stress_c16d8.hwrev_irq   must-print 1 ^Simulation exit code: 0$
+stress_c16d8.hwrev_irq   must-print 10 ^top: After wait: for [^ ]+, result true,
+
+# Mutations: the model with one check broken (eg2sim --mutate, as the SoC's +cheriot_rtos_mutate),
+# so the suite shows it notices. barrier_none: the load barrier never revokes; tbre_no_inval: the
+# hardware revoker sweeps but never clears a tag; dbg_lock_open: the debug-access gate lets the
+# debug module's bus writes through while debug access is disabled.
+barrier_none.revocation   ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw --mutate barrier_none
+barrier_none.revocation   must-fail phase_2 random base preempt race
+barrier_none.rtos         build/cheriot-rtos/tests/cheriot/cheriot/release/test-suite --mutate barrier_none
+barrier_none.rtos         must-fail allocator
+barrier_none.juliet       ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/juliet_cwe_tests --mutate barrier_none
+barrier_none.juliet       must-fail cwe415 cwe416
+tbre_no_inval.revocation  ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/revocation_test_fw --mutate tbre_no_inval
+tbre_no_inval.revocation  must-fail sweep random race
+dbg_lock_open.dbg_host    ibex/dv/cheriot-rtos-test-suite/sw/build/cheriot/cheriot/release/dbg_host_test_fw --mutate dbg_lock_open
+dbg_lock_open.dbg_host    must-fail locked

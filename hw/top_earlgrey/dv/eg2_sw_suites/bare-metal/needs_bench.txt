@@ -1,0 +1,34 @@
+# Tests the model cannot run honestly: their bench sequence does the step the software waits for,
+# or their checks measure something the model does not have (clock frequencies). run.sh reports them as
+# model-stop with the reason below, without running them: setting the value the software waits
+# for, or passing a measurement of nothing, would make the software pass without what the test
+# exists for. They run on the chip bench. One line per test: <regular expression for the test
+# name> <the reason>.
+rv_dm_control_status_.*           the debugger's checks of rv_dm's control and status registers, made from a host over JTAG (opentitantool, FPGA and silicon); the chip bench runs EG2's own eg2_rv_dm_control_status instead
+rv_dm_dtm_.*                      the debugger's checks of the debug transport module, made from a host over JTAG (opentitantool, FPGA and silicon); the chip bench runs EG2's own eg2_rv_dm_dtm instead
+example_sival                     a host program sends the JSON commands the software waits for (FPGA and silicon test)
+example_mem_ujcmd_test            a host harness reads and writes memory through JSON commands (//sw/host/tests/chip/mem; FPGA and silicon test)
+clkmgr_external_clk_src_for_sw_(fast|slow)_test  the clock measurements (clkmgr's frequency counters, RECOV_ERR_CODE) after the switch to the external clock and the stepped-down dividers: the model has no clock frequencies, so it would pass them whatever the clock (its EXTCLK_STATUS acknowledgement is modelled)
+usbdev_(config_host|deep_disconnect|deep_reset|deep_resume|iso|logging|mixed|pincfg|sleep_disconnect|sleep_reset|sleep_resume|stream|suspend_full|suspend_resume|toggle_restore)_test(_cheriot)?  a USB host enumerates and configures the device and exchanges packets with it, which the software waits for (usb_testutils_controlep: device_state Configured, else Unavailable); the chip bench's DPI USB host (chip_sw_usbdev_dpi_vseq)
+usbdev_test(_cheriot)?            a USB host enumerates and configures the device and exchanges packets with it, which the software waits for (usb_testutils_controlep: device_state Configured, else Unavailable); the chip bench's DPI USB host (chip_sw_usbdev_dpi_vseq)
+alert_handler_lpg_sleep_mode_alerts_test  the sequence injects the alert and coordinates the escalation reset and retained-SRAM phase (chip_sw_all_escalation_resets_vseq)
+alert_handler_lpg_sleep_mode_pings_test  the sequence shortens the alert ping counter and coordinates sleep and wake-up (chip_sw_alert_handler_shorten_ping_wait_cycle_vseq)
+all_escalation_resets_test(_cheriot)?  the sequence chooses an alert, backdoor-writes its number, and injects the fault after software asks for it (chip_sw_all_escalation_resets_vseq)
+ast_clk_outs_test                 the sequence observes AST clock outputs while software changes clock controls; the model has no clock pins or frequencies (chip_sw_ast_clk_outputs_vseq)
+ast_clk_rst_inputs                the sequence forces AST ADC values and clock/reset inputs through sleep phases (chip_sw_ast_clk_rst_inputs_vseq)
+clkmgr_(jitter|reset)_frequency_test  the tests check clock-frequency measurements and calibration that the model has no clocks to measure (chip_sw_base_vseq)
+data_integrity_escalation_reset_test  the sequence backdoor-selects a memory address and injects its ECC fault (chip_sw_data_integrity_vseq)
+entropy_src_ast_rng_req_test      the test waits for raw analog entropy from the AST RNG interface, which the register model does not have (chip_sw_base_vseq)
+spi_host_(smoketest|tx_rx_test(_cheriot)?|winbond_flash_test)  an external SPI flash/device returns SFDP or transfer data that software checks (chip_sw_spi_host_tx_rx_vseq for tx_rx; chip_sw_base_vseq with the SPI device agent for flash tests)
+sram_ctrl_scrambled_access_test  the sequence writes scrambled SRAM through the backdoor and supplies the expected plaintext bytes (chip_sw_sram_ctrl_scrambled_access_vseq)
+uart_(baud_rate|loopback)_test    a host program advances test_phase and sends or checks the serial traffic (FPGA and silicon tests: their BUILD targets run with a host harness; there is no chip simulation entry)
+# Chip-test settings (variants.txt) whose parameter only picks the fault the bench injects: on the
+# model the test's model_gaps knob skips that fault, so the run would repeat the image's own run.
+eg2_rram_sec_cm(_cheriot)?(_inject_fail)?@.*  the parameters pick the countermeasure fault (or the row swap, or the verify-read glitch) that the sequence injects into the RRAM controller (chip_sw_eg2_rram_sec_cm_vseq)
+eg2_revbm_errors_cheriot(_inject_fail)?@.*  the parameters pick the revocation-bitmap error or reset the sequence injects while the revoker runs (chip_sw_eg2_revbm_errors_vseq)
+eg2_tbre_fault_cheriot@.*         the parameter picks the fault the sequence injects into the background revoker's word or bitmap reads (chip_sw_eg2_tbre_fault_vseq)
+eg2_fetch_intg(_cheriot)?@.*      the parameter picks the memory the sequence corrupts an instruction fetch from (the ROM by backdoor, or SRAM) (chip_sw_eg2_fetch_intg_vseq)
+# The libraries' tests that a host program drives (FPGA and silicon tests; no chip simulation entry).
+ottf_flow_control_functest        a host console sends the message the test waits for, with flow control (its BUILD target's test_cmd; FPGA and silicon test)
+usb_functest                      a USB host enumerates the device the test sets up (//sw/host/tests/chip/usb:silicon_creator_harness; FPGA and silicon test)
+sysrst_ctrl_ec_rst_l_test@sw\.device\.tests  a host harness drives the EC reset and power button (//sw/host/tests/chip/sysrst_ctrl:sysrst_ctrl_ec_rst_l; FPGA and silicon test); the chip simulation runs its sim_dv copy, sysrst_ctrl_ec_rst_l_test

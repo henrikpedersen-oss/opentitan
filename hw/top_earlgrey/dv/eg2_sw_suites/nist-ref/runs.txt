@@ -1,0 +1,13 @@
+# Test name|checker line selected with --only|--rsa-sign value|optional --slice range
+otbn.SigVer.P-256.SHA-256|SigVer.rsp P-256,SHA-256|0|
+otbn.SigVer.P-256.SHA-384|SigVer.rsp P-256,SHA-384|0|
+otbn.SigVer.P-384.SHA-256|SigVer.rsp P-384,SHA-256|0|
+otbn.SigVer.P-384.SHA-384|SigVer.rsp P-384,SHA-384|0|
+otbn.SigGen.P-256.SHA-256|SigGen.txt P-256,SHA-256|0|
+otbn.SigGen.P-256.SHA-384|SigGen.txt P-256,SHA-384|0|
+otbn.SigGen.P-384.SHA-256|SigGen.txt P-384,SHA-256|0|
+otbn.SigGen.P-384.SHA-384|SigGen.txt P-384,SHA-384|0|
+otbn.ECDH.P-256|KAS_ECC_CDH_PrimitiveTest.txt P-256|0|
+otbn.ECDH.P-384|KAS_ECC_CDH_PrimitiveTest.txt P-384|0|
+otbn.RSA-SigVer15.2048|SigVer15_186-3.rsp 2048|0|
+otbn.RSA-SigVer15.3072|SigVer15_186-3.rsp 3072|0|

@@ -1,0 +1,12 @@
+# The assembler-on-eg2sim suite uses the same categories as the Simple System runner.
+^rvt\.rv32ui\.            riscv-tests: rv32ui (base integer, user)
+^rvt\.rv32um\.            riscv-tests: rv32um (multiply and divide)
+^rvt\.rv32uc\.            riscv-tests: rv32uc (compressed)
+^rvt\.rv32mi\.            riscv-tests: rv32mi (machine mode, traps, CSRs)
+^arch\.I\.                Architecture tests: I (base integer)
+^arch\.M\.                Architecture tests: M (multiply and divide)
+^arch\.C\.                Architecture tests: C (compressed)
+^arch\.B\.                Architecture tests: B (Zba, Zbb, Zbc, Zbs)
+^arch\.Zifencei\.         Architecture tests: Zifencei
+^arch\.privilege\.        Architecture tests: privilege (misaligned, ecall, ebreak)
+^rand\. EG2 constrained random framework

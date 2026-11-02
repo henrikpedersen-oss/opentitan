@@ -1,0 +1,34 @@
+# The CHERIoT RTOS suite's test categories, for its report. One line per pattern:
+#   <pattern> <category>
+# The pattern is an awk regular expression matched against the test name (<run>.<check>); the
+# first matching line gives the category, and the report lists the categories in this order. A
+# name that matches no line goes to "Other". <run>.verdict is the run as a whole.
+#
+# The CHERIoT RTOS test suite (cheriot-rtos tests/): a category per test of its runner. Its
+# Allocator test is under Revocation below.
+^rtos\.(compartment_calls|crash_recovery|unwind_cleanup|stacks_exhaustion_in_the_switcher|check_pointer|static_sealing|mmio)$  RTOS suite: compartments, calls and sealing
+^rtos\.(futex|locks|queue|event_groups|multiwaiter|thread_pool)$  RTOS suite: threads and synchronisation
+^rtos\.(debug_helpers_.*|stdio|list|misc_apis|global_constructors)$  RTOS suite: libraries and helpers
+^rtos\.verdict$                             RTOS suite: the run as a whole
+#
+# Revocation: every test of it, in small parts.
+^revocation\.(phase_[0-9]|base|preempt)$    Revocation: load barrier
+^revocation\.(sweep|tbre_invalidate_only|race|progress)$  Revocation: hardware revoker sweep
+^revocation\.                               Revocation: barrier and sweep together, the run as a whole
+^hwrev_irq\.                                Revocation: hardware revoker interrupt (tests.extra)
+^rtos(_prerelease)?\.allocator$             Revocation: RTOS allocator (frees revoked by the revoker)
+^stress_                                    Revocation: stress, slow memories
+^(barrier_none|tbre_no_inval)\.             Revocation: mutations the suite must notice
+#
+# The same RTOS suite as the flake builds it (31e24610, sonata-prerelease, the flake's CHERIoT LLVM).
+^rtos_prerelease\.                          RTOS suite, nix build (31e24610, sonata-prerelease)
+#
+# Juliet CWE compartment enforcement: a category per CWE group.
+^juliet\.                                   Juliet CWE (121, 122, 190, 415, 416)
+#
+^cheri_c\.libc_                             CHERI-C: libc (Cambridge cheri-c-tests libc/)
+^cheri_c\.                                  CHERI-C: clang-purecap (Cambridge cheri-c-tests)
+^(regress_drs|regress_tei)\.                cheriot-rtos tests.extra: scheduler regressions
+^dbg_host\.                                 Debug host: system bus access
+^dbg_lock_open\.                            Debug host: mutation, the debug-access gate stuck open
+^perf\.                                     Performance: ROM_EXT hash feed (data only, not cycles)

@@ -1,0 +1,8 @@
+# Tests whose BUILD target declares its own end (opentitan_test exit_success): the run passes when
+# its log shows that line, as the FPGA and silicon runs judge it, even though the test aborts.
+# One line per test: <test> <success text, a fixed string>.
+ottf_alert_catch_test  Alert 3 is asserted
+# The SRAM programs the debugger loads (bench.txt) report on the console only; their FPGA harness
+# (sw/host/tests/chip/rv_core_ibex_epmp) passes on the console line PASS (test_status_set's "PASS!").
+rv_core_ibex_epmp_test_functest  PASS!
+rv_core_ibex_mem_test_test_unlocked0  PASS!

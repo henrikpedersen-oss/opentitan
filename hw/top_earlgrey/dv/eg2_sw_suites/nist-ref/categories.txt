@@ -1,0 +1,6 @@
+^cavp\. AES, SHA, HMAC, SHA-3, SHAKE and CTR_DRBG C references
+^otbn\.SigVer ECDSA verification on OTBN ISS
+^otbn\.SigGen\. ECDSA signing on OTBN ISS
+^otbn\.ECDH ECDH on OTBN ISS
+^otbn\.RSA-SigVer RSA verification on OTBN ISS
+^otbn\.RSA-SigGen RSA signing on OTBN ISS

@@ -1,0 +1,7 @@
+# One unsplittable vector per line. The suite adds one vector for each of SHA-256/384/512 RSA-3072
+# signing with this reason. Measured P-256 verification retired 0.8 million OTBN instructions in
+# 28 seconds on nyx (28,600 instructions/s). Each RSA-3072 signing vector needs 52 million OTBN
+# instructions, so one vector extrapolates to 1,818 seconds before the checker startup and is over
+# the 30-minute per-test limit. Run one by hand with:
+#   build/sw-suites/nist-ref/otbn.RSA-SigGen15.3072.vector-<NN>/rerun.sh
+otbn.RSA-SigGen15.3072.vector- unsplittable RSA-3072 signature: 52,000,000 OTBN instructions, 1,818 s extrapolated at the measured 28,600 instructions/s
