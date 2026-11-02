@@ -35,7 +35,7 @@
  * runs only, and counted.
  *
  * Built with `EG2_REGMEM_INJECT_FAIL`, the first value compared is expected with one bit flipped:
- * the run must fail with `REG FAIL`.
+ * the run must fail with `REG FAIL`, and it stops after that window.
  */
 
 #include "sw/device/tests/eg2_regmem/eg2_regmem.h"
@@ -652,9 +652,18 @@ bool eg2_test_main(void) {
     eg2_puts(" regs ");
     eg2_putdec(c.checks - checks0);
     eg2_puts(" checks\r\n");
+#ifdef EG2_REGMEM_INJECT_FAIL
+    // The flipped expectation has failed: the red run is shown; the other windows take hours.
+    if (c.fails != 0) {
+      nwin = w + 1;
+      break;
+    }
+#endif
   }
   c.block_lines = 0;
+#ifndef EG2_REGMEM_INJECT_FAIL
   lock_phase(&c);
+#endif
 
   eg2_puts("REG summary: ");
   eg2_putdec(nwin);

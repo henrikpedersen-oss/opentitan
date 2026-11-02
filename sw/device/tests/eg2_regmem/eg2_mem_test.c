@@ -33,7 +33,7 @@
  * `model_gaps` skips what the EG2 SystemC model does not model (set by eg2sim runs only).
  *
  * Built with `EG2_REGMEM_INJECT_FAIL`, the first value compared is expected with one bit
- * flipped: the run must fail with `MEM FAIL`.
+ * flipped: the run must fail with `MEM FAIL`, and it stops after that memory.
  */
 
 #include "hw/top/rom_ctrl_regs.h"  // Generated.
@@ -680,6 +680,12 @@ bool eg2_test_main(void) {
     }
     one_memory(&c, &kEg2RmMems[i]);
     ++done;
+#ifdef EG2_REGMEM_INJECT_FAIL
+    // The flipped expectation has failed: the red run is shown; the other memories take hours.
+    if (c.fails != 0) {
+      break;
+    }
+#endif
   }
 
   eg2_puts("MEM summary: ");

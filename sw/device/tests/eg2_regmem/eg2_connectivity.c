@@ -33,7 +33,7 @@
  * `model_gaps` (default 0) skips what the EG2 SystemC model does not model (eg2sim runs only).
  *
  * Built with `EG2_REGMEM_INJECT_FAIL`, the first interrupt is expected at the wrong rv_plic
- * source ID: the run must fail with `CONN <block> FAIL interrupt`.
+ * source ID: the run must fail with `CONN <block> FAIL interrupt`, and it stops after that block.
  */
 
 #include "hw/top/alert_handler_regs.h"  // Generated.
@@ -530,8 +530,16 @@ bool eg2_test_main(void) {
     failed += c.fails != f;
     nint += kEg2RmBlocks[k].nintr;
     nalert += kEg2RmBlocks[k].nalert;
+#ifdef EG2_REGMEM_INJECT_FAIL
+    // The wrong source ID has failed: the red run is shown; the other blocks would take hours.
+    if (c.fails != 0) {
+      break;
+    }
+#endif
   }
+#ifndef EG2_REGMEM_INJECT_FAIL
   links(&c);
+#endif
   eg2_puts("CONN summary: ");
   eg2_putdec(nblocks);
   eg2_puts(" blocks, ");
