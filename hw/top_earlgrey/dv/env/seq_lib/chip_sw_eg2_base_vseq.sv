@@ -8,10 +8,11 @@
 //   - kEg2Seed, the software's own seed, drawn from the run's seed: the test's random choices in
 //     software (eg2_rand) come from it, so a run is reproduced from its seed alone;
 //   - kEg2Param_<name>, one 32-bit word per test parameter, from the rand fields of the test's
-//     own vseq, which overrides write_params() and holds the constraints.
+//     own vseq, which overrides write_params() and holds the constraints;
+//   - kEg2StopOnFail, 1 for an _inject_fail image: the run ends at its first failed check.
 //
 // Each value can be pinned from the command line, which overrides the random draw:
-//   +eg2_seed=<n>  +eg2_param_<name>=<n>
+//   +eg2_seed=<n>  +eg2_param_<name>=<n>  +eg2_stop_on_fail=<0|1>
 // Every value written is logged with where it came from (random or plusarg); the software prints
 // what it read back, so a mismatch shows in the log. A symbol the image does not have is an
 // error: a parameter renamed on one side only must not silently stop being randomised.
@@ -134,6 +135,11 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
       return;
     end
     write_word("kEg2Seed", "eg2_seed", sw_seed);
+    // A run that must fail (an _inject_fail image) ends at its first failed check (eg2_fail_stop
+    // in eg2_result.c): that failure is its result, and the rest of the test would only take time.
+    write_word("kEg2StopOnFail", "eg2_stop_on_fail",
+               cfg.sw_images.exists(SwTypeTestSlotA) &&
+               str_utils_pkg::str_has_substr(cfg.sw_images[SwTypeTestSlotA], "_inject_fail"));
     write_console_channel();
 `ifdef EG2_PERIPH_SB
     // For the header of the EG2 scoreboards' logs (eg2_sb_log).

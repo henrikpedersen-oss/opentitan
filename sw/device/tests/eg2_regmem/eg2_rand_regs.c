@@ -147,6 +147,7 @@ static bool check(ctx_t *c, const eg2_rm_block_t *b, const eg2_rm_reg_t *r, cons
     eg2_rm_hex(" mask ", mask);
     eg2_puts("\r\n");
   }
+  eg2_fail_stop();
   return false;
 }
 
@@ -161,6 +162,7 @@ static void fail_fault(ctx_t *c, const eg2_rm_block_t *b, const eg2_rm_reg_t *r,
     eg2_rm_hex(" mtval ", mtval);
     eg2_puts("\r\n");
   }
+  eg2_fail_stop();
 }
 
 // A word read; a fault is a failure (and reads as 0).

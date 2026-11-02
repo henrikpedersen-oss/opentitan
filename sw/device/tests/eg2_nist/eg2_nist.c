@@ -106,6 +106,7 @@ static bool run_one(eg2_nist_run_fn_t fn, uint32_t idx, bool *corrupt) {
     ++passed[v->file];
   } else {
     ++failed[v->file];
+    eg2_fail_stop();
   }
   return r == kEg2NistPassed;
 }

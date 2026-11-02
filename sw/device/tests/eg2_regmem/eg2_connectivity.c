@@ -96,6 +96,7 @@ static bool check(ctx_t *c, const char *chk, const char *what, uint32_t got, uin
   eg2_rm_hex(" expected ", exp);
   eg2_rm_hex(" mask ", mask);
   eg2_puts("\r\n");
+  eg2_fail_stop();
   return false;
 }
 

@@ -142,6 +142,7 @@ bool eg2_check(eg2_tally_t *t, const char *what, uint32_t idx, uint32_t got, uin
     eg2_puthex(exp);
     eg2_puts("\r\n");
   }
+  eg2_fail_stop();
   return false;
 }
 

@@ -24,6 +24,10 @@ enum {
 // the start-up code would overwrite a writable global.
 OT_USED OT_SECTION(".rodata") volatile const uint32_t kEg2ConsoleDv = 0;
 
+// Non-zero: the run ends at its first failed check (eg2_fail_stop). Written by
+// chip_sw_eg2_base_vseq for an _inject_fail image; the image's 0 runs every check.
+OT_USED OT_SECTION(".rodata") volatile const uint32_t kEg2StopOnFail = 0;
+
 enum {
   // The DV window's console word: SW_DV_EG2_CONSOLE_ADDR in the chip bench's chip_common_pkg.sv
   // (after OTTF's status word at +0 and log word at +4).
@@ -206,4 +210,13 @@ void eg2_result_report(bool passed) {
   for (;;) {
     __asm__ volatile("wfi");
   }
+}
+
+void eg2_fail_stop(void) {
+  if (kEg2StopOnFail == 0) {
+    return;
+  }
+  eg2_puts("EG2 must-fail run: stopped at the first failed check\r\n");
+  gpio_verdict(false);
+  eg2_result_report(false);
 }

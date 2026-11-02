@@ -70,6 +70,7 @@ bool eg2_periph_check(const char *inst, const char *what, uint32_t exp, uint32_t
   eg2_puts(" got 0x");
   eg2_puthex(got);
   eg2_puts("\r\n");
+  eg2_fail_stop();
   return false;
 }
 
@@ -84,6 +85,7 @@ bool eg2_periph_expect(const char *inst, const char *what, bool cond) {
   eg2_puts(" ");
   eg2_puts(what);
   eg2_puts("\r\n");
+  eg2_fail_stop();
   return false;
 }
 

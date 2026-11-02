@@ -87,6 +87,14 @@ bool eg2_test_end(bool passed);
  */
 void eg2_result_report(bool passed) __attribute__((noreturn));
 
+/**
+ * Called by the check helpers after they have printed a failed check. In a run that must fail
+ * (the bench sets `kEg2StopOnFail` for an _inject_fail image) it reports the failure at once and
+ * parks the core: the failure is what the run has to show, and the rest of the test would only
+ * take time (hours for the memory and register tests). Otherwise it returns.
+ */
+void eg2_fail_stop(void);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
