@@ -1,0 +1,3 @@
+[submodule "hw/top_earlgrey/dv/eg2_model"]
+	path = hw/top_earlgrey/dv/eg2_model
+	url = git@github.com:lowRISC/ot-model.git
