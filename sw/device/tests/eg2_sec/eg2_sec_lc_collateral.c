@@ -149,7 +149,9 @@ static bool seed_page(uint32_t page, bool enabled) {
                       enabled ? 0 : kEg2RramErrMp, r.err_code & kEg2RramErrMp) &&
        ok;
   if (!enabled) {
-    ok = eg2_boot_check("refused seed read returns no data", 0, buf[0] | buf[1]) && ok;
+    for (size_t i = 0; i < ARRAYSIZE(buf); ++i) {
+      ok = eg2_boot_check("refused seed read returns all ones", UINT32_MAX, buf[i]) && ok;
+    }
     uint32_t w[4] = {1, 2, 3, 4};
     r = eg2_rram_op(kEg2RramOpWrite, kEg2RramPartInfo, page * RRAM_CTRL_PARAM_BYTES_PER_PAGE, 4,
                     w);

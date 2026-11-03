@@ -213,8 +213,10 @@ eg2_rram_res_t eg2_rram_op(uint32_t op, uint32_t partition, uint32_t addr, uint3
                   ((partition & 1u) << RRAM_CTRL_CONTROL_PARTITION_BIT) |
                   (((nwords - 1) & RRAM_CTRL_CONTROL_NUM_MASK) << RRAM_CTRL_CONTROL_NUM_OFFSET);
   eg2_rram_reg_wr(RRAM_CTRL_CONTROL_REG_OFFSET, ctrl);
-  // 2. The data, through the FIFO windows, until the operation is done. An operation the
-  // controller refuses completes at once with OP_STATUS.err; the FIFOs are then not used.
+  // 2. The data, through the FIFO windows, until the operation is done. A refused read still
+  // returns the full requested word count as all-ones through the read FIFO before completing
+  // with OP_STATUS.err (rram_ctrl programmers_guide.md, "Errors During Multi-Word Controller
+  // Reads").
   uint32_t moved = 0;
   for (uint32_t polls = 0; polls < 100000; ++polls) {
     res.op_status = eg2_rram_reg(RRAM_CTRL_OP_STATUS_REG_OFFSET);
