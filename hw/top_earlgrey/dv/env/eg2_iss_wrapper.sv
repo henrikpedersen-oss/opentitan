@@ -282,6 +282,13 @@ class eg2_iss_wrapper extends uvm_component;
   // (ADDR, CONTROL with START, Write, data partition; the words it stores to wr_fifo), the words
   // the PHY accepted and not yet programmed, and the programmed ones not yet given to the model.
   protected bit [31:0]   rram_addr_reg;
+  // rram_ctrl's EXEC as the core wrote it (registers.md EXEC: "A value of 0xa26a38f7 allows RRAM to
+  // be used for code execution. Any other value prevents code execution."; reset value 0), cleared
+  // at a chip reset: a fetch error in the RRAM host window while it holds anything else is the
+  // documented one, given to the model like an armed one (2026-11-03, chip_sw_rram_exec_en: the
+  // chip trapped on the fetch, the model ran the instruction).
+  protected bit [31:0]   rram_exec;
+  localparam bit [31:0]  RramExecMagic = 32'ha26a_38f7;
   protected bit [31:0]   rram_op_base;
   protected int unsigned rram_op_num, rram_op_idx;
   protected bit [31:0]   rram_sw_words[bit [31:0]];
@@ -428,6 +435,7 @@ class eg2_iss_wrapper extends uvm_component;
         debug_stopped = 1'b0;
       end
       report_left("the chip reset");
+      rram_exec   = '0;
       sail_active = 1'b0;
       restart(item.boot_addr);
 `ifdef EG2_SYSMODEL
@@ -507,6 +515,7 @@ class eg2_iss_wrapper extends uvm_component;
     // A fetch error the chip took on this instruction at a word the bench armed: Spike's fetch there
     // fails in this step (R11, 2026-10-25).
     if (item.iside_err) begin
+      arm_if_exec_off(item);
       if (iside_armed.exists(item.iside_err_addr)) begin
         void'(riscv_cosim_set_iside_error(cosim, item.iside_err_addr));
         // Spike's decoded-instruction cache serves an instruction it ran before without a fetch,
@@ -786,6 +795,8 @@ class eg2_iss_wrapper extends uvm_component;
   protected function void rram_reg_store(bit [31:0] addr, bit [31:0] wdata, realtime t, string by);
     if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_ADDR_OFFSET)) begin
       rram_addr_reg = {11'b0, wdata[20:0]};  // ADDR.START, 20:0
+    end else if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_EXEC_OFFSET)) begin
+      rram_exec = wdata;
     end else if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_CONTROL_OFFSET) && wdata[0]) begin
       resolve_rram_programmed(t);
       rram_close_op("the next START", 1'b1);
@@ -1266,6 +1277,7 @@ class eg2_iss_wrapper extends uvm_component;
     // A bus error the chip took, on a fetch the bench armed or on a data access: the model takes the
     // access fault instead of executing the instruction (R12, 2026-10-25; it ran on before, and
     // diverged from the chip at the fault).
+    if (item.iside_err) arm_if_exec_off(item);
     if (item.iside_err && !iside_armed.exists(item.iside_err_addr)) report_unarmed_iside(item);
     if (item.iside_err && iside_armed.exists(item.iside_err_addr)) begin
       bit [31:0] tval = item.iside_err_addr == {item.pc[31:2], 2'b00} ? item.pc : item.pc + 2;
@@ -1747,6 +1759,19 @@ class eg2_iss_wrapper extends uvm_component;
 `else
     return 1'b0;
 `endif
+  endfunction
+
+  // A fetch error in the RRAM host window while rram_ctrl's EXEC does not hold the value that allows
+  // execution is the documented one (rram_exec): armed for this fetch like a bench fault, so Spike's
+  // fetch fails or CHERIoT-Sail takes the access fault. 2026-11-03.
+  protected function void arm_if_exec_off(eg2_rvfi_item item);
+    if (iside_armed.exists(item.iside_err_addr)) return;
+    if (item.iside_err_addr < RramHost ||
+        item.iside_err_addr - RramHost >= top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) return;
+    if (rram_exec == RramExecMagic) return;
+    `uvm_info(`gfn, $sformatf({"EG2_ISS fetch error at %08h expected: rram_ctrl EXEC is %08h, not the ",
+                               "value that allows execution"}, item.iside_err_addr, rram_exec), UVM_LOW)
+    iside_armed[item.iside_err_addr] = 1'b1;
   endfunction
 
   protected function void report_unarmed_iside(eg2_rvfi_item item);
