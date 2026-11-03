@@ -104,12 +104,14 @@ void eg2_fail_stop(void);
  * that check runs); prints `EG2_INJECT_ARMED <what>`.
  * eg2_inject_failed(what): called by every shared check helper when check `what` fails, after its
  * failure line and before eg2_fail_stop(); when `what` is the armed check it prints
- * `EG2_INJECT_CAUGHT <what>` (once).
+ * `EG2_INJECT_CAUGHT <what>` if it is the run's first failed check, else
+ * `EG2_INJECT_OTHER_FIRST <what>` (once). It counts every helper's failure, so the rule holds also
+ * where kEg2StopOnFail cannot be set (a signed image behind ROM_EXT runs on after a failure).
  *
- * The graders (scripts/eg2_results.py, the sw-suite runner) need the CAUGHT line before the verdict:
- * ARMED without CAUGHT is a failure for another reason; neither line is an image built before this.
- * With kEg2StopOnFail the run ends at its first failed check, so CAUGHT also says that the broken
- * check was the first to fail.
+ * The graders (scripts/eg2_results.py, the sw-suite runner) need the CAUGHT line before the verdict
+ * of every must-fail image that can print the markers (one that links eg2_inject_failed: the chip
+ * bench logs it, the suite looks in the image). ARMED without CAUGHT, OTHER_FIRST, or neither (a
+ * failure, hang or tool error before the broken check) is a failure for another reason.
  */
 void eg2_inject_armed(const char *what);
 void eg2_inject_failed(const char *what);

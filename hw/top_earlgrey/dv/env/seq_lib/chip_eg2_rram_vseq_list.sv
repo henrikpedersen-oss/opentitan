@@ -15,6 +15,7 @@
 `include "chip_sw_eg2_rram_host_intg_vseq.sv"
 `include "chip_sw_eg2_rram_host_wr_reject_vseq.sv"
 `include "chip_sw_eg2_rram_idle_low_power_vseq.sv"
+`include "chip_sw_eg2_rram_idle_low_power_otp_vseq.sv"
 `include "chip_sw_eg2_rram_init_vseq.sv"
 `include "chip_sw_eg2_rram_mem_protection_vseq.sv"
 `include "chip_sw_eg2_rram_otp_isolation_vseq.sv"

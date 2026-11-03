@@ -669,6 +669,10 @@ eg2_rram_idle_low_power pass
 eg2_rram_idle_low_power_cheriot pass
 eg2_rram_idle_low_power_cheriot_inject_fail must-fail
 eg2_rram_idle_low_power_inject_fail must-fail
+eg2_rram_idle_low_power_otp pass
+eg2_rram_idle_low_power_otp_cheriot pass
+eg2_rram_idle_low_power_otp_cheriot_inject_fail must-fail
+eg2_rram_idle_low_power_otp_inject_fail must-fail
 eg2_rram_init pass
 eg2_rram_init_cheriot pass
 eg2_rram_init_cheriot_inject_fail must-fail
@@ -1105,7 +1109,7 @@ rv_core_ibex_test pass
 rv_dm_access_after_wakeup_dev pass
 rv_dm_access_after_wakeup_rma pass
 rv_dm_access_after_wakeup_rma_cheriot pass
-rv_dm_access_after_wakeup_test_unlocked1 model-stop
+rv_dm_access_after_wakeup_test_unlocked1 pass
 rv_dm_control_status_dev model-stop
 rv_dm_control_status_rma model-stop
 rv_dm_control_status_test_unlocked1 model-stop
@@ -1115,11 +1119,11 @@ rv_dm_dtm_test_unlocked1 model-stop
 rv_dm_ndm_reset_req_dev pass
 rv_dm_ndm_reset_req_rma pass
 rv_dm_ndm_reset_req_rma_cheriot pass
-rv_dm_ndm_reset_req_test_unlocked1 model-stop
+rv_dm_ndm_reset_req_test_unlocked1 pass
 rv_dm_ndm_reset_req_when_cpu_halted_dev pass
 rv_dm_ndm_reset_req_when_cpu_halted_rma pass
 rv_dm_ndm_reset_req_when_cpu_halted_rma_cheriot pass
-rv_dm_ndm_reset_req_when_cpu_halted_test_unlocked1 model-stop
+rv_dm_ndm_reset_req_when_cpu_halted_test_unlocked1 pass
 rv_plic_smoketest pass
 rv_timer_smoketest pass
 rv_timer_smoketest_cheriot pass
@@ -1228,6 +1232,7 @@ usbdev_sleep_disconnect_test model-stop
 usbdev_sleep_reset_test model-stop
 usbdev_sleep_resume_test model-stop
 usbdev_stream_test model-stop
+usbdev_stream_test_cheriot model-stop
 usbdev_suspend_full_test model-stop
 usbdev_suspend_resume_test model-stop
 usbdev_test model-stop

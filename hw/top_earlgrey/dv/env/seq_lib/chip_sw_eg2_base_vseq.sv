@@ -131,6 +131,17 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
     string mutation;
     super.cpu_init();
     if (!$value$plusargs("eg2_icache=%d", pinned)) set_otp_icache(icache_at_boot, "random");
+    // Whether a must-fail image prints the EG2_INJECT markers (eg2_result.h): it does if it links
+    // eg2_inject_failed. scripts/eg2_results.py then counts the run only with EG2_INJECT_CAUGHT
+    // before its verdict. Read from the image's symbols, so also behind ROM_EXT.
+    if (cfg.sw_images.exists(SwTypeTestSlotA) &&
+        str_utils_pkg::str_has_substr(cfg.sw_images[SwTypeTestSlotA], "_inject_fail")) begin
+      longint unsigned addr, size;
+      bit markers = dv_utils_pkg::sw_symbol_get_addr_size(
+          $sformatf("%0s.elf", cfg.sw_images[SwTypeTestSlotA]), "eg2_inject_failed", 1'b1, addr, size);
+      `uvm_info(`gfn, $sformatf("EG2 must-fail image %0s the EG2_INJECT markers",
+                                markers ? "prints" : "does not print"), UVM_LOW)
+    end
     // Behind ROM_EXT the test is a signed owner image: a write into its .rodata would break the
     // signature, and ROM_EXT would rightly refuse to boot it. Until the overrides live outside the
     // signed region, a secure-boot run keeps the image's defaults (seed 0, default parameters).

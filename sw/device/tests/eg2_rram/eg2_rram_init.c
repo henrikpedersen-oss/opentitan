@@ -27,8 +27,8 @@
  * printed as `EG2 RRAM init reg off=0x<o> val=0x<v>`: the vseq checks no 32-bit
  * slice of the address key, the data key or either seed appears;
  *   4. `EG2 RRAM init seeds`: the vseq checks each seed's valid against
- * lc_seed_hw_rd_en (its life-cycle state drawn: RMA or DEV read the seeds,
- * TEST_UNLOCKED0 does not), and that the scrambler uses the sideloaded keys;
+ * lc_seed_hw_rd_en (its life-cycle state and SECRET2 drawn: RMA or DEV with SECRET2
+ * locked read the seeds, otherwise not), and that the scrambler uses the sideloaded keys;
  *   5. with `disable`: `EG2 RRAM init disable` and DIS.SW_DIS set (MuBi4True;
  * rw1s). RRAM is then disabled and the core fetches nothing more from it: the
  * vseq checks the scrambler's keys are the random keys and differ from the

@@ -4,8 +4,12 @@
 
 // chip_sw_rram_init (sw/device/tests/eg2_rram/eg2_rram_init.c; EG2 spec REQ_RRAM_21). The bench's
 // half:
-//   - the life-cycle state drawn before the boot (RMA, DEV: the seeds are read; TEST_UNLOCKED0:
-//     they are not, lc_seed_hw_rd_en Off);
+//   - the life-cycle state drawn before the boot (RMA, DEV, TEST_UNLOCKED0), and whether OTP's
+//     SECRET2 partition (the root keys) is locked: lc_ctrl theory_of_operation.md, "SEED_HW_RD_EN
+//     only becomes active if SECRET2_DIGEST has a nonzero value in DEV, PROD, PROD_END and RMA
+//     states", so the seeds are read only in RMA or DEV with SECRET2 locked. The default images
+//     leave SECRET2 unlocked (otp_ctrl_img_rma/dev.hjson); before 3 Nov the bench expected the seeds
+//     read in DEV and RMA regardless, and the first DEV run failed on it;
 //   - every `EG2 RRAM init reg off=.. val=..` line: no 32-bit slice of the scrambling keys or the
 //     seeds (taken at rram_ctrl's key and seed ports) is in a software-readable register;
 //   - `EG2 RRAM init seeds`: each seed's valid at the keymgr port is set exactly when
@@ -24,10 +28,12 @@ class chip_sw_eg2_rram_init_vseq extends chip_sw_eg2_chk_base_vseq;
   typedef enum int {LcRma, LcDev, LcTestUnlocked0} lc_class_e;
   rand lc_class_e lc_class;
   rand bit        disable_rram;
+  rand bit        secret2_locked;
 
   constraint knobs_c {
     lc_class dist {LcRma := 1, LcDev := 1, LcTestUnlocked0 := 1};
     disable_rram dist {1'b1 := 50, 1'b0 := 50};
+    secret2_locked dist {1'b1 := 50, 1'b0 := 50};
   }
 
   virtual function void write_params();
@@ -41,7 +47,19 @@ class chip_sw_eg2_rram_init_vseq extends chip_sw_eg2_chk_base_vseq;
       LcTestUnlocked0: otp_write_lc_partition_state(cfg.mem_bkdr_util_h[Otp], LcStTestUnlocked0);
       default: otp_write_lc_partition_state(cfg.mem_bkdr_util_h[Otp], LcStRma);
     endcase
-    `uvm_info(`gfn, $sformatf("EG2 RRAM init: life-cycle state %s", lc_class.name()), UVM_LOW)
+    // SECRET2 locked: random root keys and RMA token, written with the partition's digest
+    // (otp_ctrl_mem_bkdr_util_pkg), so SECRET2_DIGEST is nonzero.
+    if (secret2_locked) begin
+      bit [otp_ctrl_reg_pkg::RmaTokenSize*8-1:0]             token;
+      bit [otp_ctrl_reg_pkg::CreatorRootKeyShare0Size*8-1:0] share0;
+      bit [otp_ctrl_reg_pkg::CreatorRootKeyShare1Size*8-1:0] share1;
+      `DV_CHECK_STD_RANDOMIZE_FATAL(token)
+      `DV_CHECK_STD_RANDOMIZE_FATAL(share0)
+      `DV_CHECK_STD_RANDOMIZE_FATAL(share1)
+      otp_write_secret2_partition(cfg.mem_bkdr_util_h[Otp], token, share0, share1);
+    end
+    `uvm_info(`gfn, $sformatf("EG2 RRAM init: life-cycle state %s, SECRET2 %s", lc_class.name(),
+                              secret2_locked ? "locked" : "not locked"), UVM_LOW)
   endfunction
 
   protected function uvm_hdl_data_t rd(string path);
@@ -90,8 +108,9 @@ class chip_sw_eg2_rram_init_vseq extends chip_sw_eg2_chk_base_vseq;
       end else if (line == "EG2 RRAM init seeds") begin
         lc_ctrl_pkg::lc_tx_t en = lc_ctrl_pkg::lc_tx_t'(rd({RramCtrl, ".lc_seed_hw_rd_en_i"}));
         seeds_read = (en == lc_ctrl_pkg::On);
-        `DV_CHECK_EQ(seeds_read, lc_class != LcTestUnlocked0,
-                     $sformatf("lc_seed_hw_rd_en in %s", lc_class.name()))
+        `DV_CHECK_EQ(seeds_read, lc_class != LcTestUnlocked0 && secret2_locked,
+                     $sformatf("lc_seed_hw_rd_en in %s with SECRET2 %s", lc_class.name(),
+                               secret2_locked ? "locked" : "not locked"))
         check_seed_valid(seeds_read, "after INIT");
         if (!((rd({Scr, ".addr_key_q"})) == (rd({RramCtrl, ".addr_key"})))) `uvm_error(`gfn, $sformatf("Check failed rd({Scr, \".addr_key_q\"}) == rd({RramCtrl, \".addr_key\"}) (0x%0h vs 0x%0h) %s", rd({Scr, ".addr_key_q"}), rd({RramCtrl, ".addr_key"}), "scrambler address key is not the sideloaded key"))
         if (!((rd({Scr, ".data_key_q"})) == (rd({RramCtrl, ".data_key"})))) `uvm_error(`gfn, $sformatf("Check failed rd({Scr, \".data_key_q\"}) == rd({RramCtrl, \".data_key\"}) (0x%0h vs 0x%0h) %s", rd({Scr, ".data_key_q"}), rd({RramCtrl, ".data_key"}), "scrambler data key is not the sideloaded key"))

@@ -174,6 +174,31 @@ initial begin : eg2_mutate
             `EG2_LS.u_shadow_core.load_store_unit_i.data_offset,
             `EG2_LS.u_shadow_core.load_store_unit_i.data_be, `EG2_CHERIOT_ON);
       end
+      // In CHERIoT mode every fetched word reaches both cores with bit 20 flipped (an operand
+      // field: the instruction keeps its length and kind, only its result changes), its integrity
+      // re-encoded; RVFI records the word the core executed. Before dv_todo S5 CHERIoT-Sail was
+      // given that same word and agreed with it; now it takes the word from its own memory.
+      // main_core_instr_rdata is the instruction adapter's rdata_o, tl_i_fifo2ibex.d_data.
+      "cheriot_fetch_word_flip": begin
+        force `CPU_HIER.main_core_instr_rdata = `CPU_HIER.tl_i_fifo2ibex.d_data ^
+                                                 (`EG2_CHERIOT_ON ? 32'h0010_0000 : 32'h0);
+        force `CPU_HIER.main_core_instr_rdata_intg = `CPU_HIER.tl_i_fifo2ibex.d_user.data_intg ^
+            (`EG2_CHERIOT_ON ? (tlul_pkg::get_data_intg(32'h0010_0000) ^ tlul_pkg::get_data_intg(32'h0))
+                             : 7'h0);
+      end
+      // In CHERIoT mode a store that fails its capability check still goes out on the bus, in both
+      // cores; the trap is still taken (ibex_load_store_unit.sv cpu_req_valid: the request is
+      // normally suppressed by lsu_cheriot_err_i). dv_todo S6's red run.
+      "cheriot_faulting_store_issued": begin
+        force `EG2_CORE.u_ibex_core.load_store_unit_i.cpu_req_valid =
+            `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_req_i &
+            (`EG2_CORE.u_ibex_core.load_store_unit_i.lsu_we_i |
+             !`EG2_CORE.u_ibex_core.load_store_unit_i.lsu_cheriot_err_i);
+        force `EG2_LS.u_shadow_core.load_store_unit_i.cpu_req_valid =
+            `EG2_LS.u_shadow_core.load_store_unit_i.lsu_req_i &
+            (`EG2_LS.u_shadow_core.load_store_unit_i.lsu_we_i |
+             !`EG2_LS.u_shadow_core.load_store_unit_i.lsu_cheriot_err_i);
+      end
       // A capability store writes tag 0: only the TBRE's tag requests keep theirs.
       "store_tag_dropped":
         force `EG2_TF.tag_m_o = `EG2_TF.cap_tag_req.a_valid;
@@ -461,6 +486,13 @@ always @(posedge `CPU_HIER.clk_i or negedge `CPU_HIER.rst_ni) begin
           eg2_mut_capld_q.push_back(`EG2_CMS.cored_tl_d_i.a_opcode == tlul_pkg::Get &&
                                     `EG2_CMS.cored_tag_h2d_i);
       end
+      "cheriot_fetch_word_flip":
+        if (`EG2_CHERIOT_ON && `CPU_HIER.tl_i_fifo2ibex.d_valid) eg2_mut_active++;
+      "cheriot_faulting_store_issued":
+        if (`EG2_CHERIOT_ON && `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_req_i &&
+            `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_we_i &&
+            `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_cheriot_err_i)
+          eg2_mut_active++;
       "cheriot_store_lane_flip":
         if (`EG2_CHERIOT_ON && `EG2_CORE.u_ibex_core.load_store_unit_i.data_req_o &&
             `EG2_CORE.u_ibex_core.load_store_unit_i.data_we_o &&

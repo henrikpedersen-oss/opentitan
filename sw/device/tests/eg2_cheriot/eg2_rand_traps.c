@@ -102,10 +102,18 @@ static uint32_t insn_at(const char *stub) {
   return (lo & 3) != 3 ? lo : lo | (uint32_t)h[1] << 16;
 }
 
+// Set by the inject-fail build where it breaks the mcause that check_trap compares next: armed
+// after the trapped check, which has the same name (second review, 3 Nov).
+__attribute__((unused)) static bool arm_at_mcause;
+
 static void check_trap(eg2_tally_t *t, const char *what, uint32_t idx, bool trapped,
                        uint32_t mcause, uint32_t mtval, uint32_t mepc) {
   uint32_t failed = t->failed;
   eg2_check(t, what, idx, trapped ? 1u : 0u, 1u);
+  if (arm_at_mcause) {
+    arm_at_mcause = false;
+    eg2_inject_armed(what);
+  }
   eg2_check(t, what, idx, eg2_trap_rec.mcause, mcause);
   eg2_check(t, what, idx, eg2_trap_rec.mtval, mtval);
 #ifdef __CHERIOT__
@@ -515,17 +523,23 @@ static void jump_case(eg2_tally_t *t, const char *what, uint32_t idx, uint32_t s
   }
   // model_gaps: a CJALR with immediate -2 (the header).
   eg2_tally_t *ct = form == kEg2JumpCallM2 ? gap(t) : t;
+  bool arm = false;
 #ifdef EG2_RAND_TRAPS_INJECT_FAIL
   if (!injected && mcause == kEg2McauseCheri && mtval == eg2_cap_mtval(kEg2RegPcc, 1)) {
     mcause = kEg2McauseEcallM;  // a wrong expectation: the fetch past the top arrives
     injected = true;
-    eg2_inject_armed(what);
+    arm = true;
     ct = t;
   }
 #endif
   bool trapped = eg2_probe_jump(NULL, NULL, target.hw, form);
   uint32_t failed = ct->failed;
   eg2_check(ct, what, idx, trapped ? 1u : 0u, 1u);
+  // Armed only now: the trapped check above has the same name, and a probe that did not trap is
+  // not the broken mcause (second review, 3 Nov).
+  if (arm) {
+    eg2_inject_armed(what);
+  }
   eg2_check(ct, what, idx, eg2_trap_rec.mcause, mcause);
   // model_gaps: an ebreak's mtval, and the cause in mtval of a fetch below PCC's base (the
   // header).
@@ -800,7 +814,7 @@ static void exec_case(eg2_tally_t *t, uint32_t idx, uint32_t mode, uint32_t off,
   if (!injected && mcause == kEg2McauseFetchFault) {
     mcause = kEg2McauseEcallM;
     injected = true;
-    eg2_inject_armed("epmp exec");
+    arm_at_mcause = true;
   }
 #endif
   bool trapped = umode ? eg2_probe_call_umode(NULL, NULL, eg2_snip_nops)

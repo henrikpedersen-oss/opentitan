@@ -122,3 +122,30 @@ _TESTS = [
         ]),
     ]
 ]
+
+# chip_sw_rram_idle_low_power with an OTP write in flight (REQ_RRAM_26): the same source, its
+# `operation` knob defaulting to the OTP write (-DEG2_RRAM_IDLE_LOW_POWER_OTP), so eg2sim runs that
+# operation too.
+[
+    opentitan_test(
+        verilator = EG2_VERILATOR,
+        name = "eg2_rram_idle_low_power_otp" + mode + variant,
+        srcs = ["eg2_rram_idle_low_power.c"],
+        copts = _COPTS,
+        exec_env = _ENVS,
+        local_defines = ["EG2_RRAM_IDLE_LOW_POWER_OTP"] + defines,
+        platform = platform,
+        deps = _DEPS,
+    )
+    for mode, platform in [
+        ("", None),
+        ("_cheriot", CHERIOT_PLATFORM),
+    ]
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", [
+            "EG2_RRAM_IDLE_LOW_POWER_OTP_INJECT_FAIL",
+            "EG2_TEST_INJECT_FAIL",
+        ]),
+    ]
+]

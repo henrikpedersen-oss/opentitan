@@ -5,6 +5,7 @@
 #include "sw/device/lib/testing/eg2/eg2_result.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "hw/top/gpio_regs.h"         // Generated.
 #include "hw/top/rv_core_ibex_regs.h"  // Generated.
@@ -75,8 +76,10 @@ static void note_failure(char c) {
     return;
   }
   if (c == '\n' || c == '\r') {
-    if (failure_len != 0 && (failure_has("FAIL") || failure_has("MISMATCH") ||
-                             failure_has("STATUS ") || failure_has("TRAP"))) {
+    // The must-fail markers name a check ("NIST FAIL vector refused"); they are not its failure.
+    if (failure_len != 0 && !failure_has("EG2_INJECT_") &&
+        (failure_has("FAIL") || failure_has("MISMATCH") || failure_has("STATUS ") ||
+         failure_has("TRAP"))) {
       failure_kept = true;
       return;
     }
@@ -214,8 +217,12 @@ void eg2_result_report(bool passed) {
   }
 }
 
-// The check an _inject_fail build broke and that has not failed yet (eg2_inject_armed).
+// The check an _inject_fail build broke and that has not failed yet (eg2_inject_armed), and how
+// many checks the shared helpers have reported failed (eg2_inject_failed), saturating: the broken
+// check counts as caught only as the run's first failure. One byte: several CHERIoT images are
+// within a few bytes of their 4 KiB of globals (REQ_STE_12).
 static const char *inject_armed;
+static uint8_t inject_fails_seen;
 
 void eg2_inject_armed(const char *what) {
   inject_armed = what;
@@ -225,6 +232,9 @@ void eg2_inject_armed(const char *what) {
 }
 
 void eg2_inject_failed(const char *what) {
+  if (inject_fails_seen != UINT8_MAX) {
+    ++inject_fails_seen;
+  }
   const char *a = inject_armed;
   if (a == NULL) {
     return;
@@ -238,7 +248,9 @@ void eg2_inject_failed(const char *what) {
     return;
   }
   inject_armed = NULL;
-  eg2_puts("EG2_INJECT_CAUGHT ");
+  // Another check failed first (a run without kEg2StopOnFail, e.g. behind ROM_EXT, goes on after
+  // it): the run did not fail for the reason the build broke.
+  eg2_puts(inject_fails_seen == 1 ? "EG2_INJECT_CAUGHT " : "EG2_INJECT_OTHER_FIRST ");
   eg2_puts(what);
   eg2_puts("\r\n");
 }

@@ -254,14 +254,20 @@ run_one() {
   [[ -n "${err}" ]] && said="${said}; the test: ${err}"
   # A must-fail run counts only when the check its build broke is the one that failed
   # (eg2_result.h eg2_inject_armed/eg2_inject_failed; Codex review 2 Nov: any exit 3 was accepted).
-  # An image built before the markers says neither line: still graded on the exit, marked so.
+  # An image that can print the markers (its text has EG2_INJECT_CAUGHT: it links
+  # eg2_inject_failed) and shows no CAUGHT failed before its broken check, or for another reason.
+  # Only an image without them (built before, or an assembly test) is graded on its exit, marked so.
   if [[ ${outcome} == must-fail ]]; then
-    local armed caught
+    local armed caught other
     armed=$(grep -a -m1 -o "EG2_INJECT_ARMED .*" "${dir}/run.log" | cut -c18- | tr -d '\r')
     caught=$(grep -a -m1 -o "EG2_INJECT_CAUGHT .*" "${dir}/run.log" | cut -c19- | tr -d '\r')
+    other=$(grep -a -m1 -o "EG2_INJECT_OTHER_FIRST .*" "${dir}/run.log" | cut -c24- | tr -d '\r')
     local line
     line=$(awk -v t="${name}" '$1 == t { $1 = ""; sub(/^ /, ""); print; exit }' "${HERE}/inject_lines.txt")
-    if [[ -n "${caught}" ]]; then
+    if [[ -n "${other}" ]]; then
+      outcome=fail
+      said="another check failed before the one it broke (${other}); ${said}"
+    elif [[ -n "${caught}" ]]; then
       said="caught by the check it broke (${caught}); ${said}"
     elif [[ -n "${armed}" ]]; then
       outcome=fail
@@ -271,6 +277,9 @@ run_one() {
     elif [[ -n "${line}" ]]; then
       outcome=fail
       said="failed, but without its line \"${line}\" (inject_lines.txt); ${said}"
+    elif grep -a -q "EG2_INJECT_CAUGHT" "${img}"; then
+      outcome=fail
+      said="failed before the check it broke (no EG2_INJECT_CAUGHT); ${said}"
     else
       said="cause not checked (image without EG2_INJECT lines); ${said}"
     fi

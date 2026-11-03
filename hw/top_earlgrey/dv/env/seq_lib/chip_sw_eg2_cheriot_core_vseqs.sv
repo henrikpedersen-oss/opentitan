@@ -78,7 +78,12 @@ class chip_sw_eg2_switch_err_vseq extends chip_sw_eg2_cheriot_vseq;
       int unsigned bitpos = $urandom_range(0, 5);
       if (!uvm_hdl_read(path, v)) `uvm_fatal(`gfn, {"cannot read ", path})
       v[bitpos] = ~v[bitpos];
-      // TODO(inject-registry): announce this fault (the switch's state register, now).
+      // Announced to the instruction check: the model's switch does not see the flip, so what
+      // the chip does after it (the error state's halt) is EXPECTED; the model stops until the
+      // reset the fatal_hw_err alert must lead to (diverges).
+      void'(eg2_inject_registry::announce({"bench fault at ", path}, "insn", "switch state bit",
+                                          $realtime, eg2_inject_registry::UntilConsumed, 1'b0, 4,
+                                          1'b1));
       `uvm_info(`gfn, $sformatf("EG2 fault: CHERIoT switch state bit %0d flipped", bitpos),
                 UVM_LOW)
       if (!uvm_hdl_deposit(path, v)) `uvm_fatal(`gfn, {"cannot deposit ", path})
@@ -380,7 +385,15 @@ class chip_sw_eg2_rf_intg_vseq extends chip_sw_eg2_cheriot_vseq;
     repeat (cycles) cpu_clk();
     if (!uvm_hdl_read(path, v)) `uvm_fatal(`gfn, {"cannot read ", path})
     v[idx] = ~v[idx];
-    // TODO(inject-registry): announce this fault (register x<regidx>, site, bit, now, until written).
+    // Announced to the instruction check (2026-10-30, chip_sw_rv_core_ibex_alerts_cheriot: the
+    // flipped c1 showed as an unexplained capability mismatch): the model's register file does not
+    // see the flip, so a mismatch it causes is EXPECTED, and the model stops until the reset the
+    // integrity alert must lead to (diverges). A flip the core never reads changes nothing
+    // (must_detect 0).
+    void'(eg2_inject_registry::announce({"bench fault at ", path}, "insn",
+                                        $sformatf("register x%0d site %0d bit %0d", regidx, site, idx),
+                                        $realtime, eg2_inject_registry::UntilConsumed, 1'b0, 4,
+                                        1'b1));
     `uvm_info(`gfn, $sformatf("EG2 fault: x%0d site %0d bit %0d flipped (%s)", regidx, site, idx,
                               path), UVM_LOW)
     if (!uvm_hdl_deposit(path, v)) `uvm_fatal(`gfn, {"cannot deposit ", path})

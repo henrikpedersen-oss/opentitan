@@ -160,6 +160,30 @@
       caught_by: ["EG2_SB insn mismatch at .*bus store bytes differ"]
     }
     {
+      name: cheriot_fetch_word_flip
+      requirements: ["REQ_CIB_06", "REQ_STE_18"]
+      kind: rtl
+      interface: core_fetch
+      mechanism: "in CHERIoT mode the instruction bus's read data reaches both cores with bit 20 flipped and its integrity re-encoded: the core executes a word that is not the one in memory"
+      activation: "an instruction fetch response in CHERIoT mode"
+      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // dv_todo S5: CHERIoT-Sail takes each word from its own memory (set_fetch_check) and
+      // reports the chip's different word. Without it the model ran the chip's word and agreed.
+      caught_by: ["cheriot-sail model's memory holds insn"]
+    }
+    {
+      name: cheriot_faulting_store_issued
+      requirements: ["REQ_CIB_06", "REQ_STE_18"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "in CHERIoT mode a store that fails its capability check (bounds, permission, tag, seal) is still issued on the bus, in both cores; the trap is still taken"
+      activation: "a CHERIoT store with a capability fault"
+      tests: ["chip_sw_cheriot_periph_cap_random", "chip_sw_eg2_rand_mem_cheriot"]
+      // dv_todo S6: a trapping store's bytes reach the model only for the documented misaligned
+      // split; before 3 Nov they were copied into CHERIoT-Sail whatever the trap.
+      caught_by: ["a trapping store writes nothing"]
+    }
+    {
       name: revbm_rsp_ignored
       requirements: ["REQ_CMS_11"]
       kind: rtl

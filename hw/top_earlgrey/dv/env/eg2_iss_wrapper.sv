@@ -114,6 +114,15 @@ endclass
   // not need the rebuilt library.
   import "DPI-C" function int cheriot_sail_cosim_step_bus_error(bit [31:0] pc, int kind,
                                                                  bit [31:0] tval);
+  // dv_todo S7: a data bus error the model reaches itself (the errored bytes armed for the step,
+  // its own capability checks first, mtval as Ibex documents it); S5: each instruction word from
+  // the model's own memory. Also only here, for the same reason.
+  import "DPI-C" function int cheriot_sail_cosim_step_data_error(bit [31:0] insn, bit [31:0] pc,
+                                                                  bit [31:0] err_addr,
+                                                                  int err_bytes, bit [31:0] tval);
+  import "DPI-C" function void cheriot_sail_cosim_set_fetch_check(int on);
+  // dv_todo S10: whether the model revokes the capability at an address (the load barrier's rule).
+  import "DPI-C" function int cheriot_sail_cosim_tbre_revokes(int unsigned addr);
   // Reviews R15, R18, R19 (2026-10-26): the images' bytes (a Rewrite's expected word, the RRAM
   // image the bench puts back); CHERIoT-Sail's revocation layout and tag clears
   // (cheriot_sail_cosim_revocation.cc, in libcheriotsail_rvfi.so; imported here as the CHERIoT
@@ -289,6 +298,59 @@ class eg2_iss_wrapper extends uvm_component;
   // chip trapped on the fetch, the model ran the instruction).
   protected bit [31:0]   rram_exec;
   localparam bit [31:0]  RramExecMagic = 32'ha26a_38f7;
+  // rram_ctrl's disable (theory_of_operation.md "RRAM Escalation & Disable": software (DIS.SW_DIS,
+  // rw1s, any value but MuBi4False) or the global escalation (lc_escalate_en) disables RRAM until a
+  // full reset; "all host and controller requests are blocked"): DIS.SW_DIS as the core and the
+  // bench wrote it, and whether the controller's escalation input has been seen on. Cleared at a
+  // chip reset. The controller's local escalation (its own faults) is not modelled.
+  protected bit [3:0]    rram_sw_dis;
+  protected bit          rram_escalated;
+  // Main SRAM's fetch rule (sram_ctrl theory_of_operation.md "Code Execution from SRAM"): with OTP
+  // HW_CFG1.EN_SRAM_IFETCH MuBi8True the EXEC CSR decides (MuBi4True allows), otherwise the life
+  // cycle's HW_DEBUG_EN (on in TEST_UNLOCKED, DEV and RMA: doc/security/specs/device_life_cycle
+  // "Manufacturing States"). The two OTP values are read from the OTP image at each chip reset, as
+  // otp_ctrl reads its partitions then; EXEC and EXEC_REGWEN (rw0c) from the core's stores.
+  // sram_ctrl "Global and Local Escalation": once escalated, every request is blocked.
+  protected bit          sram_ifetch_otp;
+  protected bit          sram_hw_debug_en;
+  protected bit [3:0]    sram_exec;
+  protected bit          sram_exec_regwen;
+  protected bit          sram_escalated;
+  // rv_core_ibex's mode switch as the model knows it from the core's and the bench's stores
+  // (theory_of_operation.md "Execution Mode Switch": a MuBi4True write to CHERIOT_LOCK samples
+  // CHERIOT_ENA, MuBi4True CHERIoT, MuBi4False ePMP, both decoded strictly; any other LOCK value or
+  // an invalid ENA enters the terminal error state, which halts instruction fetch; afterwards
+  // writes have no effect; reset unlocked in ePMP mode). dv_todo S9: the handover followed the
+  // chip's cheriot_ena alone. The documents give no latency for the switch or the halt:
+  // SwitchMaxItems and ErrorMaxItems are this check's choice.
+  typedef enum int {SwUnlocked, SwLockedDis, SwLockedEna, SwError} sw_model_e;
+  protected sw_model_e   sw_model;
+  protected bit [3:0]    sw_ena;
+  protected int unsigned sw_items_after;  // RISC-V-mode items since SwLockedEna or SwError
+  protected bit          sw_reported;
+  localparam int unsigned SwitchMaxItems = 64;
+  // CHERIoT mode: retired instructions with an interrupt the model would take (S11).
+  protected int unsigned sail_irq_wait;
+  localparam int unsigned IrqMaxItems = 16;
+  localparam int unsigned ErrorMaxItems = 16;
+  localparam bit [31:0]  SwCfg = top_earlgrey_pkg::TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR;
+  // The revocation engine as the model knows it (dv_todo S10; cheriot_mem_sys
+  // theory_of_operation.md "Revocation Engine"): TBRE_BASE_ADDR and TBRE_NUM_CAPS from the stores, a
+  // START taken only with NUM non-zero, BASE in a tagged region (main SRAM, the NVM) and CHERIoT
+  // mode (the model's switch), the sweep clamped to the region's top; the registers locked while it
+  // runs. Every tag clear the chip's engine makes must be in the sweep and of a capability the
+  // model revokes (the load barrier's rule, cheriot_sail_cosim_tbre_revokes); when software sees
+  // the sweep end (an even TBRE_EPOCH), no capability of the sweep the model revokes may still be
+  // tagged. Capabilities the core wrote meanwhile are left out ("a capability written from then
+  // on until its clear is presented is not cleared"). Before 3 Nov the model followed the chip's
+  // clears.
+  protected bit [31:0]   tbre_base, tbre_num, tbre_lo, tbre_hi;
+  protected bit          tbre_active, tbre_end_pending;
+  protected bit          tbre_written[bit [31:0]];
+  protected int unsigned tbre_bad_clears, tbre_missed;
+  localparam bit [31:0]  CmsRegs = top_earlgrey_pkg::TOP_EARLGREY_CHERIOT_MEM_SYS_REGS_BASE_ADDR;
+  localparam bit [31:0]  SramMainRam = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR;
+  localparam bit [31:0]  SramMainRegs = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_REGS_BASE_ADDR;
   protected bit [31:0]   rram_op_base;
   protected int unsigned rram_op_num, rram_op_idx;
   protected bit [31:0]   rram_sw_words[bit [31:0]];
@@ -405,6 +467,7 @@ class eg2_iss_wrapper extends uvm_component;
 `ifdef EG2_SYSMODEL
     eg2_sysmodel::watch_clocks(cfg.chip_vif);
 `endif
+    fetch_rules_reset();
     fork
       watch_rram_writes();
       watch_tbre_clears();  // R18, 2026-10-26
@@ -436,6 +499,7 @@ class eg2_iss_wrapper extends uvm_component;
       end
       report_left("the chip reset");
       rram_exec   = '0;
+      fetch_rules_reset();
       sail_active = 1'b0;
       restart(item.boot_addr);
 `ifdef EG2_SYSMODEL
@@ -467,9 +531,11 @@ class eg2_iss_wrapper extends uvm_component;
     // since R19 (sram_ctrl_store, 2026-10-26).
     track_stores(item);
     apply_pending_writes(item);
+    if (tbre_end_pending) tbre_check_complete("software read an even TBRE_EPOCH");
     // The store to CHERIOT_LOCK that switches the mode retires after its write has changed
     // cheriot_ena, so its item already reads CHERIoT; it executed in RISC-V mode and is Spike's.
     // The handover is at the next instruction.
+    if (!item.irq_only) check_switch(item, item.cheriot && !sail_active && !is_lock_store(item));
     if (item.cheriot && !(!sail_active && is_lock_store(item))) begin
       if (!sail_active && !item.irq_only) handover(item);
       // Every data access, also an interrupt-only item's, is accounted for (R9).
@@ -514,7 +580,7 @@ class eg2_iss_wrapper extends uvm_component;
     riscv_cosim_set_ic_scr_key_valid(cosim, item.ic_scr_key_valid);
     // A fetch error the chip took on this instruction at a word the bench armed: Spike's fetch there
     // fails in this step (R11, 2026-10-25).
-    rram_fetch_rule(item);
+    fetch_rules(item);
     if (item.iside_err) begin
       if (iside_armed.exists(item.iside_err_addr)) begin
         void'(riscv_cosim_set_iside_error(cosim, item.iside_err_addr));
@@ -770,6 +836,16 @@ class eg2_iss_wrapper extends uvm_component;
       if (a.err) continue;
       if (a.store) begin
         rram_reg_store(a.addr, a.wdata, a.t_resp, "the core");
+        sram_reg_store(a.addr, a.wdata);
+        switch_reg_store(a.addr, a.wdata);
+        tbre_reg_store(a.addr, a.wdata);
+        if (tbre_active && a.addr >= tbre_lo && a.addr < tbre_hi) begin
+          tbre_written[{a.addr[31:3], 3'b000}] = 1'b1;
+        end
+      end else if (tbre_active &&
+                   a.addr == CmsRegs + 32'(cheriot_mem_sys_reg_pkg::CHERIOT_MEM_SYS_TBRE_EPOCH_OFFSET) &&
+                   a.be[0] && !a.rdata[0]) begin
+        tbre_end_pending = 1'b1;  // checked after this item's writes behind the core (handle)
       end else if (a.addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_OP_STATUS_OFFSET) &&
                    a.be[0] && a.rdata[0]) begin
         // OP_STATUS.done (bit 0): every word of the operation is programmed (programmers_guide.md
@@ -797,6 +873,8 @@ class eg2_iss_wrapper extends uvm_component;
       rram_addr_reg = {11'b0, wdata[20:0]};  // ADDR.START, 20:0
     end else if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_EXEC_OFFSET)) begin
       rram_exec = wdata;
+    end else if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_DIS_OFFSET)) begin
+      rram_sw_dis |= wdata[3:0];  // DIS.SW_DIS, rw1s
     end else if (addr == RramCore + 32'(rram_ctrl_reg_pkg::RRAM_CTRL_CONTROL_OFFSET) && wdata[0]) begin
       resolve_rram_programmed(t);
       rram_close_op("the next START", 1'b1);
@@ -1123,6 +1201,14 @@ class eg2_iss_wrapper extends uvm_component;
     cheriot_sail_cosim_set_rom(32'h0000_0000, 32'h8000_0000);
     cheriot_sail_cosim_set_ram_size(32'h7fff_0000);
     cheriot_sail_cosim_init(boot_addr_q);
+    // Each instruction word from the model's own memory, the chip's compared with it (dv_todo S5;
+    // Codex review, 2 Nov: the word came from RVFI, so a chip that fetched the wrong one passed).
+    // +eg2_sail_fetch_check=0 turns it off for triage only.
+    begin
+      int fetch_check = 1;
+      void'($value$plusargs("eg2_sail_fetch_check=%d", fetch_check));
+      cheriot_sail_cosim_set_fetch_check(fetch_check);
+    end
     // The chip's revocation layout (RevHeapBase): CHERIoT-Sail's load barrier reads the bitmap from
     // its own memory, which the core's stores to the window keep in step, as they do the chip's.
     // Review R18, 2026-10-26.
@@ -1181,7 +1267,8 @@ class eg2_iss_wrapper extends uvm_component;
     // R9, R12, 2026-10-25.
     eg2_dside_access_t claimed[$];
     bit        bus_err, err_store;
-    bit [31:0] err_tval;
+    bit [31:0] err_tval, err_addr;
+    int        sail_rc;
     exp.order = item.order;
     exp.pc    = item.pc;
     exp.act   = item;
@@ -1218,6 +1305,22 @@ class eg2_iss_wrapper extends uvm_component;
                                             item.csr_mcause, item.csr_mtval, m, t)};
       end
     end
+    // An interrupt the model would take (MIE, mie and mip set: Ibex exception_interrupts.rst) that
+    // the chip keeps not taking (dv_todo S11): before 3 Nov the model took interrupts only when
+    // the chip did, so a chip that dropped or held back an enabled one passed. The documents give
+    // no latency; IrqMaxItems retired instructions is this check's choice.
+    if (item.intr || item.debug_req) begin
+      sail_irq_wait = 0;
+    end else if (cheriot_sail_cosim_irq_would_take(item.pre_mip) != 0) begin
+      if (++sail_irq_wait == IrqMaxItems + 1) begin
+        exp.match  = 1'b0;
+        exp.errors = {exp.errors, $sformatf({"the chip retired %0d instructions with an enabled, ",
+                                             "pending interrupt (mip %08h) it does not take; "},
+                                            IrqMaxItems + 1, item.pre_mip)};
+      end
+    end else begin
+      sail_irq_wait = 0;
+    end
     // The core entered an interrupt handler: the model takes the interrupt from its own state.
     if (item.intr && !sail_prev_trap && !item.nmi && !item.nmi_int && !item.debug_req) begin
       void'(cheriot_sail_cosim_take_interrupt(item.pre_mip));
@@ -1242,14 +1345,30 @@ class eg2_iss_wrapper extends uvm_component;
       // as an event, as Spike's misaligned_store_second_half / misaligned_pmp_fixup apply them.
       // Not checked: Spike checks them against its own rs2, CHERIoT-Sail has no register read for
       // that. Reported. R14, 2026-10-26.
+      // Only that case (dv_todo S6): Ibex load_store_unit.rst documents the split ("If an error
+      // response is received for the first transaction, the second transaction will still be
+      // issued"), so a half is written only when the instruction's other access got the bus
+      // error. Any other trapping store that reached memory (a CHERI bounds, permission, tag or
+      // seal fault, or an aligned store) is an error, and its bytes stay out of the model: before
+      // 3 Nov they were copied into CHERIoT-Sail whatever the trap.
       if (item.trap && claimed[i].store && !claimed[i].err) begin
-        for (int b = 0; b < 4; b++) begin
-          if (claimed[i].be[b]) model_write_byte(claimed[i].addr + b, claimed[i].wdata[8 * b +: 8]);
+        bit other_half_err = 1'b0;
+        foreach (claimed[j]) other_half_err |= j != i && claimed[j].err;
+        if (other_half_err) begin
+          for (int b = 0; b < 4; b++) begin
+            if (claimed[i].be[b]) model_write_byte(claimed[i].addr + b, claimed[i].wdata[8 * b +: 8]);
+          end
+          `uvm_info(`gfn, $sformatf({"EG2_ISS the trapping store at order %0d wrote [%08h/%h]=%08h ",
+                                     "(the half without a fault): given to CHERIoT-Sail"},
+                                    item.order, claimed[i].addr, claimed[i].be, claimed[i].wdata),
+                    UVM_LOW)
+        end else begin
+          exp.match  = 1'b0;
+          exp.errors = {exp.errors, $sformatf({"the chip wrote [%08h/%h]=%08h on a store that trapped ",
+                                               "without a bus error on another access: a trapping ",
+                                               "store writes nothing; "},
+                                              claimed[i].addr, claimed[i].be, claimed[i].wdata)};
         end
-        `uvm_info(`gfn, $sformatf({"EG2_ISS the trapping store at order %0d wrote [%08h/%h]=%08h ",
-                                   "(the half without a fault): given to CHERIoT-Sail"},
-                                  item.order, claimed[i].addr, claimed[i].be, claimed[i].wdata),
-                  UVM_LOW)
       end
       if (claimed[i].err && !bus_err) begin
         bus_err   = 1'b1;
@@ -1257,6 +1376,7 @@ class eg2_iss_wrapper extends uvm_component;
         // Ibex's mtval for a data bus error: the access's address, the second word's for an error
         // on the second half of a misaligned access (ibex_controller.sv lsu_addr_last).
         err_tval  = claimed[i].misaligned_second ? claimed[i].addr : item.mem_addr;
+        err_addr  = claimed[i].addr;  // the errored transaction (S7: armed for the model's step)
       end
     end
     if ((corrupt_rd && stepped >= 100 || corrupt_cheriot_rd && sail_steps >= 100) &&
@@ -1277,7 +1397,7 @@ class eg2_iss_wrapper extends uvm_component;
     // A bus error the chip took, on a fetch the bench armed or on a data access: the model takes the
     // access fault instead of executing the instruction (R12, 2026-10-25; it ran on before, and
     // diverged from the chip at the fault).
-    rram_fetch_rule(item);
+    fetch_rules(item);
     if (item.iside_err && !iside_armed.exists(item.iside_err_addr)) report_unarmed_iside(item);
     if (item.iside_err && iside_armed.exists(item.iside_err_addr)) begin
       bit [31:0] tval = item.iside_err_addr == {item.pc[31:2], 2'b00} ? item.pc : item.pc + 2;
@@ -1291,8 +1411,20 @@ class eg2_iss_wrapper extends uvm_component;
                                 item.iside_err_addr, item.order), UVM_LOW)
     end else if (bus_err) begin
       sail_bus_errors++;  // R14, 2026-10-26
-      exp.match = cheriot_sail_cosim_step_bus_error(item.pc, err_store ? 2 : 1, err_tval) == 0 &&
-                  exp.match;
+      // The model executes the instruction with the errored transaction's word answering an
+      // error (dv_todo S7): it takes the access fault only where its own address and capability
+      // checks let the access through. Before 3 Nov it took the chip's fault without executing,
+      // so a chip that skipped a CHERI check, or erred at another address, passed. The bus error
+      // itself is the chip scoreboard's to predict (dv_todo S8). err_store stays for the report.
+      sail_rc   = cheriot_sail_cosim_step_data_error(item.insn, item.pc, {err_addr[31:2], 2'b00},
+                                                     4, err_tval);
+      exp.match = sail_rc == 0 && exp.match;
+      if (sail_rc == 0 && err_store != (cheriot_sail_cosim_get_mcause() == 32'd7)) begin
+        exp.match  = 1'b0;
+        exp.errors = {exp.errors, $sformatf("bus error on a %s, CHERIoT-Sail's access fault is a %s; ",
+                                            err_store ? "store" : "load",
+                                            cheriot_sail_cosim_get_mcause() == 32'd7 ? "store" : "load")};
+      end
       if (!item.trap) begin
         exp.match  = 1'b0;
         exp.errors = {exp.errors, "the chip's data access got a bus error and it did not trap; "};
@@ -1300,6 +1432,17 @@ class eg2_iss_wrapper extends uvm_component;
     end else begin
       exp.match = cheriot_sail_cosim_step(item.insn, item.pc, cheri_we, item.rd_addr,
                                           item.rd_wcap[32], rd_wdata, item.trap) == 0 && exp.match;
+      // The destination register too (dv_todo S12): the step compares an integer result's value
+      // only, so a chip that wrote the right value to the wrong register passed. As TestRIG's
+      // scoreboard does (ibex_dii_scoreboard.sv, cheriot_sail_cosim_get_rd_addr).
+      begin
+        int unsigned sail_rd = cheriot_sail_cosim_get_rd_addr();
+        if (!item.trap && !item.rf_wr_suppress && sail_rd != 0 && sail_rd != item.rd_addr) begin
+          exp.match  = 1'b0;
+          exp.errors = {exp.errors, $sformatf("destination register: CHERIoT-Sail x%0d, chip x%0d; ",
+                                              sail_rd, item.rd_addr)};
+        end
+      end
     end
     for (int i = 0; i < cheriot_sail_cosim_get_num_errors(); i++) begin
       exp.errors = {exp.errors, cheriot_sail_cosim_get_error(i), "; "};
@@ -1622,6 +1765,11 @@ class eg2_iss_wrapper extends uvm_component;
     if (addr >= RramCore && addr - RramCore < top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_CORE_SIZE_BYTES) begin
       inst.rram_reg_store(addr, data, $realtime, "the bench's SBA");
     end
+    // main sram_ctrl's EXEC and rv_core_ibex's mode switch, written over SBA, for the fetch rule
+    // and the model's switch.
+    inst.sram_reg_store(addr, data);
+    inst.switch_reg_store(addr, data);
+    inst.tbre_reg_store(addr, data);
   endfunction
 
   // The bench made memory in [base, base + size) undefined behind the core's back
@@ -1721,7 +1869,7 @@ class eg2_iss_wrapper extends uvm_component;
       end
       if (cfg.chip_vif.cms_tbre_clear_rmw === 1'b1 && pending) begin
         pending = 1'b0;
-        if (cfg.chip_vif.cms_tbre_clear_stale !== 1'b1) begin
+        if (cfg.chip_vif.cms_tbre_clear_stale !== 1'b1 && tbre_clear_ok(addr)) begin
           tbre_clears++;
           pending_wr.push_back('{t: $realtime, kind: WrUntag, addr: addr, size: 8, data: 0,
                                  untag: 1});
@@ -1770,18 +1918,225 @@ class eg2_iss_wrapper extends uvm_component;
   //   - the chip executed it: an error, as execution from RRAM is documented as blocked.
   // A fetch error the chip takes while EXEC allows execution stays unarmed: the model executes,
   // and the instruction check reports the difference.
+  // The same for RRAM disabled (DIS.SW_DIS or the global escalation) and, below, for main SRAM.
   protected function void rram_fetch_rule(eg2_rvfi_item item);
-    if (item.irq_only || rram_exec == RramExecMagic) return;
+    string why;
+    rram_escalated |= cfg.chip_vif.rram_ctrl_escalated;
+    if (item.irq_only) return;
     if (item.pc < RramHost || item.pc - RramHost >= top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) return;
+    if (rram_sw_dis != prim_mubi_pkg::MuBi4False) why = $sformatf("DIS.SW_DIS is %0h (RRAM disabled)", rram_sw_dis);
+    else if (rram_escalated) why = "the global escalation disabled RRAM";
+    else if (rram_exec != RramExecMagic) why = $sformatf("EXEC is %08h, not the value that allows execution", rram_exec);
+    else return;
+    fetch_blocked(item, "RRAM", {"rram_ctrl ", why});
+  endfunction
+
+  // Main SRAM's fetch rule (sram_ifetch_otp, sram_hw_debug_en, sram_exec; the table in sram_ctrl
+  // "Code Execution from SRAM"), and its global escalation.
+  protected function void sram_fetch_rule(eg2_rvfi_item item);
+    string why;
+    sram_escalated |= cfg.chip_vif.sram_main_escalated;
+    if (item.irq_only) return;
+    if (item.pc < SramMainRam ||
+        item.pc - SramMainRam >= top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES) return;
+    if (sram_escalated) why = "the global escalation blocks every request";
+    else if (sram_ifetch_otp && sram_exec != prim_mubi_pkg::MuBi4True)
+      why = $sformatf("OTP EN_SRAM_IFETCH is MuBi8True and EXEC is %0h, not MuBi4True", sram_exec);
+    else if (!sram_ifetch_otp && !sram_hw_debug_en)
+      why = "OTP EN_SRAM_IFETCH is not MuBi8True and the life cycle's HW_DEBUG_EN is off";
+    else return;
+    fetch_blocked(item, "main SRAM", {"sram_ctrl ", why});
+  endfunction
+
+  protected function void fetch_rules(eg2_rvfi_item item);
+    rram_fetch_rule(item);
+    sram_fetch_rule(item);
+  endfunction
+
+  // A check of the model's own rules (fetch, mode switch, revocation engine) the chip failed: an
+  // error, or EXPECTED while a bench fault announced on "insn" is open (eg2_inject_registry), as
+  // an instruction mismatch is.
+  protected function void model_error(string msg);
+    string src = eg2_inject_registry::in_use() ? eg2_inject_registry::consult("insn") : "";
+    if (src != "") `uvm_info(`gfn, {msg, " EXPECTED (injected by ", src, ")"}, UVM_LOW)
+    else `uvm_error(`gfn, msg)
+  endfunction
+
+  // An instruction at item.pc in a region whose fetch rule blocks it, for `why`: a fetch error the
+  // chip took there is the documented one, armed so that both models trap; an executed instruction
+  // is an error.
+  protected function void fetch_blocked(eg2_rvfi_item item, string region, string why);
     if (item.iside_err) begin
       if (iside_armed.exists(item.iside_err_addr)) return;
-      `uvm_info(`gfn, $sformatf({"EG2_ISS fetch error at %08h expected: rram_ctrl EXEC is %08h, not the ",
-                                 "value that allows execution"}, item.iside_err_addr, rram_exec), UVM_LOW)
+      `uvm_info(`gfn, $sformatf("EG2_ISS fetch error at %08h expected: %s", item.iside_err_addr, why),
+                UVM_LOW)
       iside_armed[item.iside_err_addr] = 1'b1;
     end else begin
-      `uvm_error(`gfn, $sformatf({"EG2_ISS the chip executed the instruction at %08h (order %0d) from RRAM ",
-                                  "while rram_ctrl EXEC is %08h: execution from RRAM is documented as ",
-                                  "blocked"}, item.pc, item.order, rram_exec))
+      model_error($sformatf({"EG2_ISS the chip executed the instruction at %08h (order %0d) from %s ",
+                                  "while %s: execution there is documented as blocked"},
+                                 item.pc, item.order, region, why))
+    end
+  endfunction
+
+  // The fetch rules' state after a chip reset: rram_ctrl's and main sram_ctrl's registers at their
+  // reset values, the escalations ended, and the two OTP values main SRAM's rule reads at boot.
+  protected function void fetch_rules_reset();
+    lc_ctrl_state_pkg::lc_state_e lc;
+    rram_sw_dis      = prim_mubi_pkg::MuBi4False;
+    rram_escalated   = 1'b0;
+    sw_model         = SwUnlocked;
+    sw_ena           = prim_mubi_pkg::MuBi4False;  // CHERIOT_ENA's reset value, 0x9
+    sw_items_after   = 0;
+    sw_reported      = 1'b0;
+    sail_irq_wait    = 0;
+    tbre_base        = '0;
+    tbre_num         = '0;
+    tbre_active      = 1'b0;
+    tbre_end_pending = 1'b0;
+    tbre_written.delete();
+    sram_exec        = prim_mubi_pkg::MuBi4False;
+    sram_exec_regwen = 1'b1;
+    sram_escalated   = 1'b0;
+    sram_ifetch_otp  = cfg.mem_bkdr_util_h[Otp].read8(otp_ctrl_reg_pkg::EnSramIfetchOffset) ==
+                       prim_mubi_pkg::MuBi8True;
+    lc = otp_read_lc_partition_state(cfg.mem_bkdr_util_h[Otp]);
+    sram_hw_debug_en = lc inside {LcStTestUnlocked0, LcStTestUnlocked1, LcStTestUnlocked2,
+                                  LcStTestUnlocked3, LcStTestUnlocked4, LcStTestUnlocked5,
+                                  LcStTestUnlocked6, LcStTestUnlocked7, LcStDev, LcStRma};
+    `uvm_info(`gfn, $sformatf("EG2_ISS fetch rules at reset: OTP EN_SRAM_IFETCH %0s, %s (HW_DEBUG_EN %0s)",
+                              sram_ifetch_otp ? "MuBi8True" : "not MuBi8True", lc.name(),
+                              sram_hw_debug_en ? "on" : "off"), UVM_MEDIUM)
+  endfunction
+
+  // A store to rv_core_ibex's CHERIOT_ENA or CHERIOT_LOCK, by the core or the bench (sw_model).
+  protected function void switch_reg_store(bit [31:0] addr, bit [31:0] wdata);
+    if (sw_model != SwUnlocked) return;  // "Further writes to either register have no effect"
+    if (addr == SwCfg + 32'(rv_core_ibex_reg_pkg::RV_CORE_IBEX_CHERIOT_ENA_OFFSET)) begin
+      sw_ena = wdata[3:0];
+    end else if (addr == SwCfg + 32'(rv_core_ibex_reg_pkg::RV_CORE_IBEX_CHERIOT_LOCK_OFFSET)) begin
+      if (wdata[3:0] != prim_mubi_pkg::MuBi4True) sw_model = SwError;
+      else if (sw_ena == prim_mubi_pkg::MuBi4True) sw_model = SwLockedEna;
+      else if (sw_ena == prim_mubi_pkg::MuBi4False) sw_model = SwLockedDis;
+      else sw_model = SwError;
+      sw_items_after = 0;
+      `uvm_info(`gfn, $sformatf("EG2_ISS mode switch: CHERIOT_LOCK %0h with CHERIOT_ENA %0h: %s",
+                                wdata[3:0], sw_ena, sw_model.name()), UVM_LOW)
+    end
+  endfunction
+
+  // The chip's mode against the model's switch, for an item that retired (not interrupt-only):
+  // CHERIoT mode only once the switch is locked enabled; ePMP mode no longer than SwitchMaxItems
+  // instructions after that; nothing retiring ErrorMaxItems instructions after the error state.
+  protected function void check_switch(eg2_rvfi_item item, bit entering_cheriot);
+    if (sw_reported) return;
+    if (entering_cheriot && sw_model != SwLockedEna) begin
+      model_error($sformatf({"EG2_ISS the chip entered CHERIoT mode at order %0d (pc %08h) ",
+                                  "while the switch is %s (CHERIOT_ENA %0h): only a MuBi4True ",
+                                  "CHERIOT_LOCK with CHERIOT_ENA MuBi4True enables it"},
+                                 item.order, item.pc, sw_model.name(), sw_ena))
+      sw_reported = 1'b1;
+    end else if (!entering_cheriot && (sw_model == SwLockedEna || sw_model == SwError)) begin
+      sw_items_after++;
+      if (sw_model == SwLockedEna && sw_items_after > SwitchMaxItems) begin
+        model_error($sformatf({"EG2_ISS the chip still runs in ePMP mode %0d instructions after ",
+                                    "the lock that enabled CHERIoT mode (order %0d, pc %08h)"},
+                                   sw_items_after, item.order, item.pc))
+        sw_reported = 1'b1;
+      end else if (sw_model == SwError && sw_items_after > ErrorMaxItems) begin
+        model_error($sformatf({"EG2_ISS the chip retired %0d instructions after the mode switch's ",
+                                    "error state, which halts instruction fetch (order %0d, pc %08h)"},
+                                   sw_items_after, item.order, item.pc))
+        sw_reported = 1'b1;
+      end
+    end
+  endfunction
+
+  // A store to cheriot_mem_sys's revocation engine registers, by the core or the bench (tbre_*).
+  protected function void tbre_reg_store(bit [31:0] addr, bit [31:0] wdata);
+    bit [31:0] top;
+    if (addr == CmsRegs + 32'(cheriot_mem_sys_reg_pkg::CHERIOT_MEM_SYS_TBRE_BASE_ADDR_OFFSET)) begin
+      if (!tbre_active) tbre_base = {wdata[31:3], 3'b000};  // locked while active (TBRE_REGWEN)
+    end else if (addr == CmsRegs + 32'(cheriot_mem_sys_reg_pkg::CHERIOT_MEM_SYS_TBRE_NUM_CAPS_OFFSET)) begin
+      if (!tbre_active) tbre_num = wdata;
+    end else if (addr == CmsRegs + 32'(cheriot_mem_sys_reg_pkg::CHERIOT_MEM_SYS_TBRE_START_OFFSET) &&
+                 wdata[0]) begin
+      // A start while a sweep the model knows of has not been seen to end: the earlier sweep is
+      // checked now (its end not read by software), then this start is judged.
+      if (tbre_active) tbre_check_complete("the next start");
+      if (tbre_base >= SramMainRam &&
+          tbre_base - SramMainRam < top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES) begin
+        top = SramMainRam + top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES;
+      end else if (tbre_base >= RramHost &&
+                   tbre_base - RramHost < top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) begin
+        top = RramHost + top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES;
+      end else begin
+        top = '0;
+      end
+      if (tbre_num == 0 || top == '0 || sw_model != SwLockedEna) return;  // ignored (start_err)
+      tbre_lo = tbre_base;
+      tbre_hi = tbre_base + 32'd8 * ((tbre_num < (top - tbre_base) / 8) ? tbre_num :
+                                                                          (top - tbre_base) / 8);
+      tbre_active = 1'b1;
+      tbre_written.delete();
+      `uvm_info(`gfn, $sformatf("EG2_ISS revocation engine: sweep [%08h, %08h)", tbre_lo, tbre_hi),
+                UVM_LOW)
+    end
+  endfunction
+
+  // A tag clear the chip's engine made (watch_tbre_clears): applied to the model only if the model
+  // agrees with it.
+  protected function int model_revokes(bit [31:0] addr);
+`ifdef EG2_COSIM
+    return cheriot_sail_cosim_tbre_revokes(addr);
+`else
+    return 0;
+`endif
+  endfunction
+
+  protected function bit tbre_clear_ok(bit [31:0] addr);
+    string why;
+    if (!sail_active) return 1'b1;  // CHERIoT-Sail not running (or no model): nothing to decide from
+    if (!tbre_active || addr < tbre_lo || addr >= tbre_hi) why = "outside any sweep the model knows of";
+    else if (!tbre_written.exists(addr) && model_revokes(addr) != 1)
+      why = "a capability the model does not revoke";
+    if (why == "") return 1'b1;
+    if (tbre_bad_clears++ < 4) begin
+      model_error($sformatf("EG2_ISS the revocation engine cleared the tag at %08h: %s", addr,
+                                 why))
+    end
+    return 1'b0;
+  endfunction
+
+  // The sweep has ended (software read an even TBRE_EPOCH, or started the next one): no capability
+  // in it that the model revokes may still be tagged.
+  protected function void tbre_check_complete(string seen_by);
+    int unsigned n = 0;
+    if (!sail_active) begin
+      tbre_active      = 1'b0;
+      tbre_end_pending = 1'b0;
+      return;
+    end
+    for (bit [31:0] a = tbre_lo; a < tbre_hi; a += 8) begin
+      if (!tbre_written.exists(a) && model_revokes(a) == 1) begin
+        if (n++ < 4) begin
+          model_error($sformatf({"EG2_ISS the revocation engine's sweep [%08h, %08h) ended (%s) ",
+                                      "with the revoked capability at %08h still tagged"},
+                                     tbre_lo, tbre_hi, seen_by, a))
+        end
+      end
+    end
+    tbre_missed += n;
+    tbre_active = 1'b0;
+    tbre_end_pending = 1'b0;
+  endfunction
+
+  // A store to main sram_ctrl's EXEC_REGWEN (rw0c) or EXEC (rw, gated by EXEC_REGWEN).
+  protected function void sram_reg_store(bit [31:0] addr, bit [31:0] wdata);
+    if (addr == SramMainRegs + 32'(sram_ctrl_reg_pkg::SRAM_CTRL_EXEC_REGWEN_OFFSET)) begin
+      if (!wdata[0]) sram_exec_regwen = 1'b0;
+    end else if (addr == SramMainRegs + 32'(sram_ctrl_reg_pkg::SRAM_CTRL_EXEC_OFFSET) &&
+                 sram_exec_regwen) begin
+      sram_exec = wdata[3:0];
     end
   endfunction
 
