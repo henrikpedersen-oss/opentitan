@@ -89,6 +89,7 @@ bool eg2_test_main(void) {
     ok = eg2_boot_svc_check_response(kBootSvcOwnershipUnlockResType, &msg) && ok;
     bool accepted = msg.ownership_unlock_res.status == kErrorOk;
 #ifdef EG2_OWNERSHIP_POWER_LOSS_INJECT_FAIL
+    eg2_inject_armed("unlock accepted");
     accepted = !accepted;
 #endif
     ok = eg2_boot_expect("unlock accepted", accepted, msg.ownership_unlock_res.status) && ok;

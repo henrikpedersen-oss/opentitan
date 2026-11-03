@@ -187,6 +187,7 @@ static void part_a(uint32_t mask, uint32_t contention) {
   eg2_check(&tally, "A: TBRE_STATUS", 0, eg2_ms_tbre_status(), 0);
   uint32_t exp_epoch = epoch0 + 2;
 #ifdef EG2_TBRE_CORNERS_INJECT_FAIL
+  eg2_inject_armed("A: epoch");
   exp_epoch += 2;
 #endif
   eg2_check(&tally, "A: epoch", 0, eg2_ms_tbre_epoch(), exp_epoch);

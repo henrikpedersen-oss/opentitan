@@ -97,6 +97,7 @@ bool eg2_test_main(void) {
   }
   uint32_t crc = crc32_ieee(bytes, sizeof(bytes));
 #ifdef EG2_SEC_DEVICE_ID_INJECT_FAIL
+  eg2_inject_armed("hardware half CRC-32");
   crc ^= 1;
 #endif
   ok = eg2_boot_check("hardware half CRC-32", crc, lc[3]) && ok;

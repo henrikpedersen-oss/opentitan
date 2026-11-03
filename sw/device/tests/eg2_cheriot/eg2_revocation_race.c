@@ -219,6 +219,7 @@ static void part_b(void) {
 #ifdef EG2_REVOCATION_RACE_INJECT_FAIL
       if (!m && !injected) {
         injected = true;
+        eg2_inject_armed("B: tag during the sweep");
         exp = 0;
       }
 #endif

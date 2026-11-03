@@ -134,6 +134,7 @@ static bool check_row(uint32_t i, bool first) {
   uint32_t after = eg2_dev_read32(dev, r->reg_off);
 #ifdef EG2_SEC_LOCKS_AFTER_SWITCH_INJECT_FAIL
   if (first) {
+    eg2_inject_armed(i == 0 ? "RRAM MP_REGION_CFG_0 unchanged" : "  guarded register unchanged");
     before = value;
   }
 #endif

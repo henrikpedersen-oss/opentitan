@@ -46,6 +46,9 @@ void eg2_pbf_begin(const char *area, bool inject_fail) {
 bool eg2_pbf_step(const char *what, bool ok) {
   put_head(ok ? "ok" : "FAIL", what);
   eg2_puts("\r\n");
+  if (!ok) {
+    eg2_inject_failed(what);
+  }
   return ok;
 }
 
@@ -58,6 +61,9 @@ static bool take_corruption(void) {
 
 bool eg2_pbf_check(const char *what, uint32_t expected, uint32_t got) {
   bool corrupt = take_corruption();
+  if (corrupt) {
+    eg2_inject_armed(what);
+  }
   uint32_t exp = corrupt ? expected ^ 1u : expected;
   bool ok = exp == got;
   put_head(ok ? "ok" : "FAIL", what);
@@ -69,12 +75,18 @@ bool eg2_pbf_check(const char *what, uint32_t expected, uint32_t got) {
     eg2_puts(" (expected value corrupted: EG2_PBF_INJECT_FAIL)");
   }
   eg2_puts("\r\n");
+  if (!ok) {
+    eg2_inject_failed(what);
+  }
   return ok;
 }
 
 bool eg2_pbf_check_bytes(const char *what, const uint8_t *expected, const uint8_t *got,
                          size_t len) {
   bool corrupt = take_corruption();
+  if (corrupt) {
+    eg2_inject_armed(what);
+  }
   size_t bad = len;
   for (size_t i = 0; i < len; ++i) {
     uint8_t e = (corrupt && i == 0) ? (uint8_t)(expected[i] ^ 1u) : expected[i];
@@ -100,12 +112,18 @@ bool eg2_pbf_check_bytes(const char *what, const uint8_t *expected, const uint8_
     eg2_puts(" (expected value corrupted: EG2_PBF_INJECT_FAIL)");
   }
   eg2_puts("\r\n");
+  if (!ok) {
+    eg2_inject_failed(what);
+  }
   return ok;
 }
 
 bool eg2_pbf_check_words(const char *what, const uint32_t *expected, const uint32_t *got,
                          size_t n) {
   bool corrupt = take_corruption();
+  if (corrupt) {
+    eg2_inject_armed(what);
+  }
   size_t bad = n;
   for (size_t i = 0; i < n; ++i) {
     uint32_t e = (corrupt && i == 0) ? expected[i] ^ 1u : expected[i];
@@ -131,6 +149,9 @@ bool eg2_pbf_check_words(const char *what, const uint32_t *expected, const uint3
     eg2_puts(" (expected value corrupted: EG2_PBF_INJECT_FAIL)");
   }
   eg2_puts("\r\n");
+  if (!ok) {
+    eg2_inject_failed(what);
+  }
   return ok;
 }
 

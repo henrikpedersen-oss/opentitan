@@ -267,6 +267,7 @@ static bool boot_2(eg2_ms_rec_t *rec, bool bench) {
     }
   }
   if (INJECT) {
+    eg2_inject_armed("crash dump cause");
     int u = eg2_status_alert_find("uart0_fatal_fault");
     any = u >= 0 && eg2_ms_crashdump_cause((size_t)u);
   }

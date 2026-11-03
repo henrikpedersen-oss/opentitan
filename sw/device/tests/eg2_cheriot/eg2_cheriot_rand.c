@@ -142,7 +142,10 @@ bool eg2_check(eg2_tally_t *t, const char *what, uint32_t idx, uint32_t got, uin
     eg2_puthex(exp);
     eg2_puts("\r\n");
   }
-  eg2_fail_stop();
+  if (!t->model_gaps) {
+    eg2_inject_failed(what);
+    eg2_fail_stop();
+  }
   return false;
 }
 
@@ -160,7 +163,12 @@ void eg2_tally_print(const char *phase, const eg2_tally_t *t) {
   eg2_puts(" failed\r\n");
 }
 
-bool eg2_tally_ok(const eg2_tally_t *t) { return t->failed == 0 && t->done == t->planned; }
+bool eg2_tally_ok(const eg2_tally_t *t) {
+  if (t->done != t->planned) {
+    eg2_inject_failed("every planned check done");
+  }
+  return t->failed == 0 && t->done == t->planned;
+}
 
 // ----------------------------------------- Memory --------------------------------------------
 

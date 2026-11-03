@@ -244,6 +244,7 @@ static void roundtrip(region_t r, uint32_t g, bool int_store_first, uint32_t idx
   }
 #ifdef EG2_TAG_ROUNDTRIP_INJECT_FAIL
   if (r == kMain && first_main) {
+    eg2_inject_armed("tag");
     exp_tag = 0;
   }
 #endif

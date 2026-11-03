@@ -93,6 +93,7 @@ static bool check(ctx_t *c, const char *what, uint32_t addr, uint32_t got, uint3
 #ifdef EG2_REGMEM_INJECT_FAIL
   if (!c->injected) {
     c->injected = true;
+    eg2_inject_armed("MEM value check");
     exp ^= 1;
   }
 #endif
@@ -110,6 +111,7 @@ static bool check(ctx_t *c, const char *what, uint32_t addr, uint32_t got, uint3
     eg2_rm_hex(" expected ", exp);
     eg2_puts("\r\n");
   }
+  eg2_inject_failed("MEM value check");
   eg2_fail_stop();
   return false;
 }

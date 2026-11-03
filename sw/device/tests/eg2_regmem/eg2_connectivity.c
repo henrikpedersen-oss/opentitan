@@ -97,6 +97,7 @@ static bool check(ctx_t *c, const char *chk, const char *what, uint32_t got, uin
   eg2_rm_hex(" expected ", exp);
   eg2_rm_hex(" mask ", mask);
   eg2_puts("\r\n");
+  eg2_inject_failed(what);
   eg2_fail_stop();
   return false;
 }
@@ -207,6 +208,7 @@ static bool one_intr(ctx_t *c, const eg2_rm_block_t *b, const eg2_rm_intr_t *it)
 #ifdef EG2_REGMEM_INJECT_FAIL
   if (!c->injected) {
     c->injected = true;
+    eg2_inject_armed("claimed source ID");
     want = id + 1;  // the wrong source ID
   }
 #endif

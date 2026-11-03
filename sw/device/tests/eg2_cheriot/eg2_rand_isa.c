@@ -520,6 +520,7 @@ bool eg2_test_main(void) {
     ++tally.done;
   }
 #ifdef EG2_RAND_ISA_INJECT_FAIL
+  eg2_inject_armed("every planned check done");
   ++tally.planned;
 #endif
   eg2_put_kv("EG2 rand_isa instructions", made);

@@ -75,6 +75,7 @@ static uint32_t bad_value(uint32_t v) {
 #ifdef EG2_MEM_SYS_E2E_INJECT_FAIL
   if (!injected) {
     injected = true;
+    eg2_inject_armed("store_load");
     return v ^ 1;
   }
 #endif

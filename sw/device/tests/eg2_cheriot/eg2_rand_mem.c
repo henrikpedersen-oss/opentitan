@@ -702,6 +702,9 @@ static void phase_edges(eg2_tally_t *t) {
         inject = !injected && op == kOpLw && k == 7;  // lw at the top: must trap
 #endif
         injected = injected || inject;
+        if (inject) {
+          eg2_inject_armed("edge");
+        }
         access(t, "edge", idx++, (op_t)op, at, global, eg2_rand(), inject);
       }
     }
@@ -1183,6 +1186,9 @@ static void phase_epmp(eg2_tally_t *t) {
               inject = !injected && enforced && perm == 0 && k == 2 && !op_store((op_t)op);
 #endif
               injected = injected || inject;
+              if (inject) {
+                eg2_inject_armed("epmp");
+              }
               pmp_access(t, "epmp", idx++, (op_t)op, addrs[k], umode, enforced, lo, hi, perm,
                          inject);
             }

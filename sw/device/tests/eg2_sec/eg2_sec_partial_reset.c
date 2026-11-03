@@ -74,6 +74,7 @@ static bool pair_lockstep(void) {
   bool core_err = (err & (1u << RV_CORE_IBEX_ERR_STATUS_FATAL_CORE_ERR_BIT)) != 0;
   bool together = raised == core_err;
 #ifdef EG2_SEC_PARTIAL_RESET_INJECT_FAIL
+  eg2_inject_armed("lockstep: alert and FATAL_CORE_ERR together");
   together = !together;
 #endif
   ok = eg2_boot_expect("lockstep: alert and FATAL_CORE_ERR together", together, err) && ok;

@@ -122,6 +122,7 @@ bool eg2_test_main(void) {
       ok = eg2_boot_svc_check_response(kBootSvcOwnershipUnlockResType, &msg) && ok;
       bool refused = msg.ownership_unlock_res.status != kErrorOk;
 #ifdef EG2_BOOT_SVC_TEST_INJECT_FAIL
+      eg2_inject_armed("unlock with a bad signature: status");
       refused = !refused;
 #endif
       ok = eg2_boot_expect("unlock with a bad signature: status", refused,

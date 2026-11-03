@@ -92,6 +92,7 @@ bool eg2_test_main(void) {
       break;
     case 3:
 #ifdef EG2_BOOT_ROLLBACK_INJECT_FAIL
+      eg2_inject_armed("lower minimum refused");
       lower_refused = !min_response("lower minimum refused", true, kImageVersion);
 #else
       lower_refused = min_response("lower minimum refused", false, kImageVersion);

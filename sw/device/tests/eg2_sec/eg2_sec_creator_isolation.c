@@ -95,6 +95,7 @@ static bool controller_paths(void) {
     uint32_t exp = kEg2RramErrMp;
 #ifdef EG2_SEC_CREATOR_ISOLATION_INJECT_FAIL
     if (i == 1) {
+      eg2_inject_armed(kReadLabels[i]);
       exp = 0;
     }
 #endif

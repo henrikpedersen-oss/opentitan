@@ -108,6 +108,7 @@ bool eg2_test_main(void) {
   eg2_check(&tally, "boot 1 armed", 0, rec->data[kRecArmed], 1);
   uint32_t exp_reason = kEg2MsResetEscalation;
 #ifdef EG2_SWITCH_ERR_INJECT_FAIL
+  eg2_inject_armed("reset reason");
   exp_reason = kEg2MsResetSw;
 #endif
   eg2_check(&tally, "reset reason", 0, eg2_ms_reset_reason() & exp_reason, exp_reason);

@@ -157,6 +157,7 @@ bool eg2_test_main(void) {
   uint32_t exp_again = 1;
 #ifdef EG2_TRVK_FAULT_INJECT_FAIL
   if (!bench) {
+    eg2_inject_armed("slot 0 tagged again with the bitmap clear");
     exp_again = 0;
   }
 #endif
@@ -179,6 +180,7 @@ bool eg2_test_main(void) {
     eg2_check(&tally, "effective injections > 0", 0, effective != 0 ? 1u : 0u, 1u);
     uint32_t exp_tagged = effective;
 #ifdef EG2_TRVK_FAULT_INJECT_FAIL
+    eg2_inject_armed("revoked CLCs loaded tagged");
     exp_tagged += 1;
 #endif
     eg2_check(&tally, "revoked CLCs loaded tagged", 0, n_tagged, exp_tagged);

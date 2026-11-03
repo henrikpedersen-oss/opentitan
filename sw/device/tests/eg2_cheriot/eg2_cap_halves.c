@@ -152,6 +152,7 @@ static void one_run(uint32_t run, bool bench, uint32_t main_arena) {
     uint32_t exp_addr = eg2_ms_read32(kAddr + 4 * i);
 #ifdef EG2_CAP_HALVES_INJECT_FAIL
     if (run == 0 && i == 0) {
+      eg2_inject_armed("copy address");
       exp_addr += 8;
     }
 #endif

@@ -126,6 +126,7 @@ bool eg2_test_main(void) {
     uint32_t before = eg2_boot_rd32(kRram + kRomExtSlotA + 0x400);
     uint32_t cause = eg2_boot_probe(kRram + kRomExtSlotA + 0x400, kEg2BootStore, ~before, &out);
 #ifdef EG2_BOOT_HANDOVER_PROTECTION_INJECT_FAIL
+    eg2_inject_armed("host store into ROM_EXT's slot");
     ok = eg2_boot_check("host store into ROM_EXT's slot", kEg2CauseNone, cause) && ok;
 #else
     ok = eg2_boot_check("host store into ROM_EXT's slot", kEg2CauseStoreFault, cause) && ok;

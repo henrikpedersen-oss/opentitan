@@ -4,6 +4,8 @@
 
 #include "sw/device/lib/testing/eg2/eg2_result.h"
 
+#include <stddef.h>
+
 #include "hw/top/gpio_regs.h"         // Generated.
 #include "hw/top/rv_core_ibex_regs.h"  // Generated.
 #include "hw/top/uart_regs.h"          // Generated.
@@ -210,6 +212,35 @@ void eg2_result_report(bool passed) {
   for (;;) {
     __asm__ volatile("wfi");
   }
+}
+
+// The check an _inject_fail build broke and that has not failed yet (eg2_inject_armed).
+static const char *inject_armed;
+
+void eg2_inject_armed(const char *what) {
+  inject_armed = what;
+  eg2_puts("EG2_INJECT_ARMED ");
+  eg2_puts(what);
+  eg2_puts("\r\n");
+}
+
+void eg2_inject_failed(const char *what) {
+  const char *a = inject_armed;
+  if (a == NULL) {
+    return;
+  }
+  const char *w = what;
+  while (*a != '\0' && *a == *w) {
+    ++a;
+    ++w;
+  }
+  if (*a != *w) {
+    return;
+  }
+  inject_armed = NULL;
+  eg2_puts("EG2_INJECT_CAUGHT ");
+  eg2_puts(what);
+  eg2_puts("\r\n");
 }
 
 void eg2_fail_stop(void) {

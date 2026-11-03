@@ -77,6 +77,7 @@ static void check_mode(uint32_t idx) {
   uint32_t exp = kMisaE;
   if (INJECT && !injected) {
     injected = true;
+    eg2_inject_armed("misa");
     exp = kMisaI;
   }
   eg2_check(&tally, "misa", idx, misa & (kMisaE | kMisaI), exp);

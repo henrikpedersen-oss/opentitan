@@ -379,6 +379,7 @@ bool eg2_test_main(void) {
   }
   eg2_probe_end();
 #ifdef EG2_TESTRIG_SEQ_INJECT_FAIL
+  eg2_inject_armed("every planned check done");
   ++tally.planned;
 #endif
   eg2_put_kv("EG2 testrig_seq completed", completed);

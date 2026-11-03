@@ -69,6 +69,9 @@ void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
   eg2_result_in_test();
   eg2_puts("EG2 ePMP at reset (boot ROM probes)\r\n");
   uint32_t failed = 0;
+#ifdef EG2_BOOT_EPMP_RESET_INJECT_FAIL
+  eg2_inject_armed("RRAM fetch");
+#endif
   for (uint32_t i = 0; i < kProbes; ++i) {
     uint32_t got = (regs[i / 4] >> (8 * (i % 4))) & 0xff;
     eg2_puts(got == kExpected[i] ? "EG2CHK ok " : "EG2CHK FAIL ");
@@ -78,6 +81,9 @@ void eg2_epmp_reset_report(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3) {
     eg2_puts(" got ");
     eg2_putdec(got);
     eg2_puts("\r\n");
+    if (got != kExpected[i]) {
+      eg2_inject_failed(kNames[i]);
+    }
     failed += got == kExpected[i] ? 0 : 1;
   }
   eg2_puts("EG2CHK checks ");

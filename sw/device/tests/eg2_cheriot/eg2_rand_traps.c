@@ -78,7 +78,7 @@ EG2_TEST_PARAMS(RAND_TRAPS_PARAMS);
 
 // model_gaps: the checks of MPACT-CHERIoT's known differences go to `gap_tally` (see above).
 static bool gaps;
-static eg2_tally_t gap_tally;
+static eg2_tally_t gap_tally = {.model_gaps = true};
 __attribute__((unused)) static eg2_tally_t *gap(eg2_tally_t *t) { return gaps ? &gap_tally : t; }
 
 enum { kMstatusMie = 1u << 3, kMstatusMpie = 1u << 7 };
@@ -519,6 +519,7 @@ static void jump_case(eg2_tally_t *t, const char *what, uint32_t idx, uint32_t s
   if (!injected && mcause == kEg2McauseCheri && mtval == eg2_cap_mtval(kEg2RegPcc, 1)) {
     mcause = kEg2McauseEcallM;  // a wrong expectation: the fetch past the top arrives
     injected = true;
+    eg2_inject_armed(what);
     ct = t;
   }
 #endif
@@ -799,6 +800,7 @@ static void exec_case(eg2_tally_t *t, uint32_t idx, uint32_t mode, uint32_t off,
   if (!injected && mcause == kEg2McauseFetchFault) {
     mcause = kEg2McauseEcallM;
     injected = true;
+    eg2_inject_armed("epmp exec");
   }
 #endif
   bool trapped = umode ? eg2_probe_call_umode(NULL, NULL, eg2_snip_nops)

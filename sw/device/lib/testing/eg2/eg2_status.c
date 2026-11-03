@@ -138,6 +138,9 @@ static bool check_alert_handler(void) {
     bool cause = ah_read(ALERT_HANDLER_ALERT_CAUSE_0_REG_OFFSET + 4 * (uint32_t)i) & 1;
     if (cause != alert_expected(i)) {
       report(cause ? "unexpected alert" : "missing alert", kAlerts[i].name, NULL, cause);
+      if (cause) {
+        eg2_inject_failed(kAlerts[i].name);  // eg2_status_smoketest_inject_fail's undeclared alert
+      }
       ok = false;
     }
   }

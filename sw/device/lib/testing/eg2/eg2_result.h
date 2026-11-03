@@ -95,6 +95,25 @@ void eg2_result_report(bool passed) __attribute__((noreturn));
  */
 void eg2_fail_stop(void);
 
+/**
+ * Which check an _inject_fail build broke, and whether that check is what failed. A must-fail run
+ * counts as the red run only when the check it broke failed; before 3 Nov any failure was accepted,
+ * also one from a different check, a hang or a tool error (Codex review, 2 Nov).
+ *
+ * eg2_inject_armed(what): called where the build breaks the expected value of check `what` (before
+ * that check runs); prints `EG2_INJECT_ARMED <what>`.
+ * eg2_inject_failed(what): called by every shared check helper when check `what` fails, after its
+ * failure line and before eg2_fail_stop(); when `what` is the armed check it prints
+ * `EG2_INJECT_CAUGHT <what>` (once).
+ *
+ * The graders (scripts/eg2_results.py, the sw-suite runner) need the CAUGHT line before the verdict:
+ * ARMED without CAUGHT is a failure for another reason; neither line is an image built before this.
+ * With kEg2StopOnFail the run ends at its first failed check, so CAUGHT also says that the broken
+ * check was the first to fail.
+ */
+void eg2_inject_armed(const char *what);
+void eg2_inject_failed(const char *what);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

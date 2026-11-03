@@ -100,6 +100,9 @@ static bool dai_checks(uint32_t state, bool creator_en) {
       uint32_t err = eg2_otp_dai(kEg2OtpDaiRead, part_offset(p), NULL, r);
       bool expect_ok = read_allowed;
 #ifdef EG2_SEC_LC_COLLATERAL_INJECT_FAIL
+      eg2_inject_armed(p == 0   ? "DAI read SECRET0 error code"
+                       : p == 1 ? "DAI read SECRET1 error code"
+                                : "DAI read SECRET2 error code");
       expect_ok = true;
 #endif
       ok = eg2_boot_check(p == 0   ? "DAI read SECRET0 error code"

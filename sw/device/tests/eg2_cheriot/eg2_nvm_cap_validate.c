@@ -143,6 +143,7 @@ bool eg2_test_main(void) {
   eg2_check(&tally, "sweep done", 0, sw.done ? 1 : 0, 1);
   uint32_t exp_epoch = sw.epoch_before + 2;
 #ifdef EG2_NVM_CAP_VALIDATE_INJECT_FAIL
+  eg2_inject_armed("epoch");
   exp_epoch += 2;
 #endif
   eg2_check(&tally, "epoch", 0, sw.epoch_after, exp_epoch);

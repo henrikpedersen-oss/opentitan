@@ -86,6 +86,9 @@ typedef struct eg2_tally {
   uint32_t failed;
   uint32_t planned;
   uint32_t done;
+  // A model_gaps tally: the checks of the model's known differences. Its failures are counted
+  // and printed but never end a must-fail run (eg2_fail_stop) nor count as its broken check.
+  bool model_gaps;
 } eg2_tally_t;
 
 /** Counts a check; on a mismatch prints `MISMATCH <what> #<idx>: got <got> expected <exp>`. */

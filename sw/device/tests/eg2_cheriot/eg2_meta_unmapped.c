@@ -184,6 +184,7 @@ bool eg2_test_main(void) {
   eg2_ms_revbm_clear();
 #endif
 #ifdef EG2_META_UNMAPPED_INJECT_FAIL
+  eg2_inject_armed("every planned check done");
   ++tally.planned;
 #endif
   eg2_tally_print("meta_unmapped", &tally);

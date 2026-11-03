@@ -101,6 +101,7 @@ bool eg2_test_main(void) {
     uint32_t exp_tag = 0;
 #ifdef EG2_HANDOVER_INJECT_FAIL
     if (i == 1) {
+      eg2_inject_armed("x tag");
       exp_tag = 1;
     }
 #endif

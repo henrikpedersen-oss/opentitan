@@ -211,6 +211,7 @@ bool eg2_test_main(void) {
     }
   }
 #ifdef EG2_RAND_REVOCATION_INJECT_FAIL
+  eg2_inject_armed("every planned check done");
   ++tally.planned;
 #endif
   eg2_tally_print("rand_revocation", &tally);

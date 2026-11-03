@@ -30,6 +30,7 @@ bool eg2_test_main(void) {
 #else
   eg2_boot_note("life-cycle state", eg2_lc_state_decoded());
 #ifdef EG2_BOOT_OUTCOME_INJECT_FAIL
+  eg2_inject_armed("boot_log bl0_slot");
   bool ok = eg2_boot_log_check(kEg2BootSlotA, kEg2BootSlotB);
 #else
   bool ok = eg2_boot_log_check(kEg2BootSlotA, kEg2BootSlotA);

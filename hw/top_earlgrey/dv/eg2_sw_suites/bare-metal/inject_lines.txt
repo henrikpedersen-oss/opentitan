@@ -1,0 +1,8 @@
+# Must-fail images that cannot print the EG2_INJECT markers (eg2_result.h): assembly tests that
+# write their failure straight to UART0 before any C runs. Each must fail with this line, the one
+# check its build broke; any other failure is graded fail. Format: <test> <fixed text in run.log>.
+#
+# Not listed: cheriot_periph_smoketest_inject_fail (`FAIL b`). It writes UART0 without enabling its
+# transmitter, so eg2sim shows none of its text (its plain build's PASS line neither): graded on
+# its exit only, "cause not checked".
+eg2_switch_cheriot_inject_fail EG2 late FAIL 00000021

@@ -79,6 +79,7 @@ static bool slot_enabled(bool ibus) {
                                                           : RV_CORE_IBEX_DBUS_ADDR_EN_0_REG_OFFSET);
   uint32_t exp_bits = 0;
 #ifdef EG2_ADDR_TRANSLATION_INJECT_FAIL
+  eg2_inject_armed("addr_en");
   exp_bits = 2;
 #endif
   eg2_check(&tally, "addr_en", ibus ? 1 : 0, en & 2, exp_bits);

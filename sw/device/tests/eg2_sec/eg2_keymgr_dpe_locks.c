@@ -195,6 +195,7 @@ bool eg2_test_main(void) {
   }
   if (EG2_PARAM(versions) & 4) {
 #ifdef EG2_KEYMGR_DPE_LOCKS_INJECT_FAIL
+    eg2_inject_armed("generate above max");
     ok = generate("generate above max", max_ver + 1, true) && ok;
 #else
     ok = generate("generate above max", max_ver + 1, false) && ok;

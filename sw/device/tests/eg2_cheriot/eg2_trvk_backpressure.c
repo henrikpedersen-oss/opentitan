@@ -289,6 +289,7 @@ bool eg2_test_main(void) {
       static bool injected;
       if (!injected && e.tag) {
         injected = true;
+        eg2_inject_armed("burst tag");
         e.tag = false;
       }
 #endif

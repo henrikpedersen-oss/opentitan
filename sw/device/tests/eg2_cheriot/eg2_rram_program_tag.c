@@ -93,6 +93,9 @@ bool eg2_test_main(void) {
     eg2_ms_csc(slot(i), c);
     uint32_t before = 1;
 #ifdef EG2_RRAM_PROGRAM_TAG_INJECT_FAIL
+    if (i == 0) {
+      eg2_inject_armed("tagged before");
+    }
     before = i == 0 ? 0 : 1;
 #endif
     eg2_check(&tally, "tagged before", i, eg2_ms_tag(slot(i)), before);

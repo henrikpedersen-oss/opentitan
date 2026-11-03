@@ -84,6 +84,7 @@ static void ignored_start(uint32_t idx, uint32_t base, uint32_t n) {
   uint32_t exp = kStartErr;
 #ifdef EG2_TBRE_REGS_INJECT_FAIL
   if (idx == 0) {
+    eg2_inject_armed("start_err");
     exp = 0;
   }
 #endif

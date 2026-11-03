@@ -74,7 +74,7 @@ EG2_TEST_PARAMS(CAP_OPS_PARAMS);
 
 // model_gaps: the checks of MPACT-CHERIoT's known differences go to `gap_tally` (see above).
 static bool gaps;
-static eg2_tally_t gap_tally;
+static eg2_tally_t gap_tally = {.model_gaps = true};
 // Checks never subject to model_gaps (the inject-fail build's).
 static eg2_tally_t kept;
 
@@ -239,6 +239,7 @@ static void phase_exponents(eg2_tally_t *t) {
         eg2_tally_t *ct = gap(t);
 #ifdef EG2_RAND_CAP_OPS_INJECT_FAIL
         if (len == 1001 && j == 0 && kind == kEg2BoundsExact) {
+          eg2_inject_armed("CSetBoundsExact");
           r.m.tag = !r.m.tag;  // a wrong expectation: 1001 is not representable
           ct = &kept;
         }

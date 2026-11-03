@@ -133,6 +133,7 @@ bool eg2_test_main(void) {
     uint32_t exp = 1;
 #ifdef EG2_SRAM_REKEY_TAG_INJECT_FAIL
     if (i == 0) {
+      eg2_inject_armed("main tag");
       exp = 0;
     }
 #endif

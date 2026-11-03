@@ -98,6 +98,7 @@ static bool binding_in_one_boot(const uint32_t binding[8], const uint32_t salt[8
   ok = expect_change("same inputs, same K1", false, a1, b1) && ok;
   ok = expect_change("same inputs, same K2", false, a2, b2) && ok;
 #ifdef EG2_KEYMGR_DPE_DIVERSIFICATION_INJECT_FAIL
+  eg2_inject_armed("K1 changed with the input");
   ok = expect_change("K1 changed with the input", false, a1, c1) && ok;
 #else
   ok = expect_change("K1 changed with the input", true, a1, c1) && ok;
@@ -182,6 +183,7 @@ bool eg2_test_main(void) {
   bool k2_changes = input != kInputNone;
 #ifdef EG2_KEYMGR_DPE_DIVERSIFICATION_INJECT_FAIL
   k1_changes = !k1_changes;
+  eg2_inject_armed(k1_changes ? "K1 changed with the input" : "K1 unchanged");
 #endif
   ok = expect_change(k1_changes ? "K1 changed with the input" : "K1 unchanged", k1_changes, k1,
                      &st->data[kSaved]) &&

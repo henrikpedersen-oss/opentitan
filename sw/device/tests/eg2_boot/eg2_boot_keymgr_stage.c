@@ -91,6 +91,7 @@ bool eg2_test_main(void) {
   if (empty < kEg2KmgrSlots) {
     uint32_t st = eg2_kmgr_op(kEg2KmgrOpLoadRoot, 0, 0, empty, false, &err);
 #ifdef EG2_BOOT_KEYMGR_STAGE_INJECT_FAIL
+    eg2_inject_armed("Load Root Key refused");
     ok = eg2_boot_check("Load Root Key refused", kEg2KmgrDone, st) && ok;
 #else
     ok = eg2_boot_check("Load Root Key refused", kEg2KmgrDoneError, st) && ok;

@@ -200,6 +200,7 @@ bool eg2_test_main(void) {
     }
     bool cleared = !eg2_boot_key_eq(d, secret);
 #ifdef EG2_SEC_RESET_RESIDUE_INJECT_FAIL
+    eg2_inject_armed("hmac digest cleared by the reset");
     cleared = !cleared;
 #endif
     ok = eg2_boot_expect("hmac digest cleared by the reset", cleared, d[0]) && ok;

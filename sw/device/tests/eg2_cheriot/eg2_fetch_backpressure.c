@@ -174,6 +174,7 @@ static void one_run(uint32_t run, bool gaps, uint32_t main_arena) {
     exp |= ((exp >> 2) & 1) << 3;
 #ifdef EG2_FETCH_BACKPRESSURE_INJECT_FAIL
     if (run == 0 && i == 0) {
+      eg2_inject_armed("tags of iteration");
       exp ^= 8;
     }
 #endif

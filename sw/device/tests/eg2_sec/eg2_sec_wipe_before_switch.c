@@ -32,6 +32,7 @@ EG2_TEST_CONFIG();
 
 bool eg2_test_main(void) {
 #ifdef EG2_SEC_WIPE_BEFORE_SWITCH_INJECT_FAIL
+  eg2_inject_armed("boot_log bl0_slot");
   bool ok = eg2_boot_log_check(kEg2BootSlotA, kEg2BootSlotB);
 #else
   bool ok = eg2_boot_log_check(kEg2BootSlotA, kEg2BootSlotA);

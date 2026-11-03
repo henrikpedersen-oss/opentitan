@@ -82,6 +82,7 @@ bool eg2_test_main(void) {
     uint32_t w[2] = {new_value(), new_value()};
     uint32_t err = eg2_otp_dai(kEg2OtpDaiWrite, OTP_CTRL_PARAM_LC_STATE_OFFSET, w, NULL);
 #ifdef EG2_LC_RRAM_ROLLBACK_INJECT_FAIL
+    eg2_inject_armed("DAI write LC_STATE refused");
     ok = eg2_boot_check("DAI write LC_STATE refused", kEg2OtpErrNone, err) && ok;
 #else
     ok = eg2_boot_check("DAI write LC_STATE refused", kEg2OtpErrAccess, err) && ok;

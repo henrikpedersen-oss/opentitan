@@ -33,6 +33,7 @@ bool eg2_test_main(void) {
   // RAW .. RMA: the defined states below SCRAP (the CPU never runs in SCRAP or INVALID).
   bool defined = s < kEg2LcScrap;
 #ifdef EG2_LC_INVALID_ENCODINGS_INJECT_FAIL
+  eg2_inject_armed("CPU runs only in a defined state");
   defined = !defined;
 #endif
   bool ok = eg2_boot_expect("CPU runs only in a defined state", defined, s);

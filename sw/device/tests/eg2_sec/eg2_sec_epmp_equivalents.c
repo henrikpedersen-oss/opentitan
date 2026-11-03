@@ -143,6 +143,7 @@ bool eg2_test_main(void) {
   if (rules & 32) {
     uint32_t cause = root_probe(TOP_EARLGREY_UART0_BASE_ADDR + 0x10, kEg2BootFetch, 0);
 #ifdef EG2_SEC_EPMP_EQUIVALENTS_INJECT_FAIL
+    eg2_inject_armed("rule 5: fetch from a device");
     ok = eg2_boot_expect("rule 5: fetch from a device", cause != kEg2CauseFetchFault, cause) && ok;
 #else
     ok = eg2_boot_check("rule 5: fetch from a device", kEg2CauseFetchFault, cause) && ok;

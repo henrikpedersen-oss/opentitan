@@ -304,6 +304,7 @@ static void part2(void) {
 #ifdef EG2_REVOCATION_IRQ_INJECT_FAIL
       if (!m && !injected) {
         injected = true;
+        eg2_inject_armed("2: tag during the sweep");
         exp = 0;
       }
 #endif

@@ -51,9 +51,11 @@ static eg2_nist_result_t verdict(const eg2_nist_vec_t *v, bool valid, bool corru
   // the generator does not provide, so it is built here from the FAIL flag.
   uint8_t exp = (v->flags & kEg2NistFail) ? 0 : 1;
   if (corrupt) {
+    eg2_inject_armed("NIST signature verdict");
     exp ^= 1;
   }
   if (got != exp) {
+    eg2_inject_failed("NIST signature verdict");
     return eg2_nist_result(eg2_nist_error(
         v, corrupt ? "verdict differs from the expected one (corrupted: -D..._INJECT_FAIL)"
                    : valid ? "invalid signature accepted" : "valid signature refused"));

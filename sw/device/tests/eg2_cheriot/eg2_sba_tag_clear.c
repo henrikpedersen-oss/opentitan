@@ -98,6 +98,9 @@ bool eg2_test_main(void) {
     }
     uint32_t exp = 1;
 #ifdef EG2_SBA_TAG_CLEAR_INJECT_FAIL
+    if (i == 0) {
+      eg2_inject_armed("outside tag");
+    }
     exp = i == 0 ? 0 : 1;
 #endif
     void *c = eg2_ms_clc(kEg2ArenaA + 8 * i);

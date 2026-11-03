@@ -89,9 +89,11 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
   bool valid = ran && memcmp(result, em, nw * sizeof(uint32_t)) == 0;
   bool expect_valid = !(v->flags & kEg2NistFail);
   if (corrupt) {
+    eg2_inject_armed("NIST signature verdict");
     expect_valid = !expect_valid;
   }
   if (valid != expect_valid) {
+    eg2_inject_failed("NIST signature verdict");
     return eg2_nist_result(eg2_nist_error(
         v, corrupt ? "verdict differs from the expected one (corrupted: -D..._INJECT_FAIL)"
                    : valid ? "invalid signature accepted" : "valid signature refused"));

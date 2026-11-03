@@ -77,6 +77,7 @@ static void one_case(uint32_t w, uint32_t b, bool sba) {
   uint32_t exp_clear = 1;
 #ifdef EG2_REVBM_WRITE_ORDER_INJECT_FAIL
   if (i == 0) {
+    eg2_inject_armed("tag after the clear");
     exp_clear = 0;
   }
 #endif

@@ -202,6 +202,9 @@ bool eg2_test_main(void) {
     (void)eg2_ms_revbm_bit(eg2_ms_read32(kMarks + 4 * i), &w, &b);
     uint32_t exp_bit = 1;
 #ifdef EG2_REVOCATION_INJECT_FAIL
+    if (i == 0) {
+      eg2_inject_armed("bitmap bit");
+    }
     exp_bit = i == 0 ? 0 : 1;
 #endif
     eg2_check(&tally, "bitmap bit", i, (eg2_ms_revbm_read(w) >> b) & 1, exp_bit);

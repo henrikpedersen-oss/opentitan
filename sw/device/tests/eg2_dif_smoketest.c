@@ -85,6 +85,7 @@ static bool uart_loopback(void) {
     uint8_t expected = sent;
 #ifdef EG2_DIF_INJECT_FAIL
     if (i == 0) {
+      eg2_inject_armed("UART1 loopback byte");
       expected = (uint8_t)(sent + 1);
     }
 #endif
@@ -108,6 +109,7 @@ static bool uart_loopback(void) {
       eg2_puts(", received 0x");
       eg2_puthex(got);
       eg2_puts("\r\n");
+      eg2_inject_failed("UART1 loopback byte");
       ok = false;
     }
   }

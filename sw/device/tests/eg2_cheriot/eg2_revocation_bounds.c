@@ -118,6 +118,7 @@ static void run_case(const char *what, void *v, uint32_t mark, uint32_t n_granul
   uint32_t exp_clear = e_clear.tag;
 #ifdef EG2_REVOCATION_BOUNDS_INJECT_FAIL
   if (i == 0) {
+    eg2_inject_armed("tag, bit clear");
     exp_clear = 0;
   }
 #endif

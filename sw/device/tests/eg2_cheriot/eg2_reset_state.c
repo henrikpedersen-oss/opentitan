@@ -139,6 +139,9 @@ static bool boot_2(const plan_t *p) {
     exp_reason = kEg2MsResetPor;
   }
   eg2_check(&tally, "reset reason", 0, reason & exp_reason, exp_reason);
+  if (INJECT) {
+    eg2_inject_armed("CHERIOT_ENA after the reset");
+  }
   eg2_check(&tally, "CHERIOT_ENA after the reset", 0, ena & 0xf, INJECT ? 0x6u : 0x9u);
   eg2_check(&tally, "misa I,E after the reset", 0, misa & ((1u << 8) | (1u << 4)), 1u << 8);
 

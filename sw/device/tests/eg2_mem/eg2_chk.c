@@ -27,6 +27,7 @@ void eg2_chk_step(const char *what, uint32_t value) {
 bool eg2_chk_eq(const char *what, uint32_t exp, uint32_t got) {
   if (kEg2ChkInjectFail && !injected_) {
     injected_ = true;
+    eg2_inject_armed(what);
     exp ^= 1;
   }
   ++checks_;
@@ -42,6 +43,7 @@ bool eg2_chk_eq(const char *what, uint32_t exp, uint32_t got) {
   eg2_puts(" got 0x");
   eg2_puthex(got);
   eg2_puts("\r\n");
+  eg2_inject_failed(what);
   eg2_fail_stop();
   return false;
 }
@@ -56,6 +58,7 @@ bool eg2_chk_true(const char *what, bool cond) {
   eg2_puts("FAIL ");
   eg2_puts(what);
   eg2_puts("\r\n");
+  eg2_inject_failed(what);
   eg2_fail_stop();
   return false;
 }

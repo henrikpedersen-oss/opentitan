@@ -77,6 +77,7 @@ static void check_window(uint32_t i, bool first) {
   uint32_t exp_len = kWindows[i].size;
 #ifdef EG2_OTTF_SMOKE_INJECT_FAIL
   if (first) {
+    eg2_inject_armed("window length");
     exp_len += 1;
   }
 #else

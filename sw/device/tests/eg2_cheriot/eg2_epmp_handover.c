@@ -44,6 +44,7 @@ static void fetch(uint32_t idx) {
   uint32_t got = eg2_epmp_target();
   uint32_t exp = 0x5a1e;
 #ifdef EG2_EPMP_HANDOVER_INJECT_FAIL
+  eg2_inject_armed("fetch");
   exp = 0;
 #endif
   eg2_check(&tally, "fetch", idx, got, exp);

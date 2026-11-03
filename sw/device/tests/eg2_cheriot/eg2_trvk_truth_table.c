@@ -294,6 +294,7 @@ static void check(const char *phase, uint32_t lo, uint32_t hi, bool clear) {
     uint32_t exp_tag = e.tag;
 #ifdef EG2_TRVK_TRUTH_TABLE_INJECT_FAIL
     if (clear && i == 0) {
+      eg2_inject_armed("tag, bitmap clear");
       exp_tag = !exp_tag;
     }
 #endif

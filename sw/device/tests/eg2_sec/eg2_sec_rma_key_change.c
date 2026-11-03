@@ -86,6 +86,7 @@ bool eg2_test_main(void) {
     ok = eg2_kmgr_chain(1, binding, salt, again1, again2) && ok;
     bool same = eg2_boot_key_eq(k1, again1) && eg2_boot_key_eq(k2, again2);
 #ifdef EG2_SEC_RMA_KEY_CHANGE_INJECT_FAIL
+    eg2_inject_armed("model: same inputs give the same keys");
     same = !same;
 #endif
     ok = eg2_boot_expect("model: same inputs give the same keys", same, again1[0]) && ok;
@@ -111,6 +112,7 @@ bool eg2_test_main(void) {
   }
   bool k1_differs = !eg2_boot_key_eq(k1, prev1);
 #ifdef EG2_SEC_RMA_KEY_CHANGE_INJECT_FAIL
+  eg2_inject_armed("K1 differs across RMA");
   k1_differs = !k1_differs;
 #endif
   ok = eg2_boot_expect("K1 differs across RMA", k1_differs, k1[0]) && ok;

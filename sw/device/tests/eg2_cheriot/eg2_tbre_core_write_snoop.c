@@ -213,6 +213,7 @@ bool eg2_test_main(void) {
   }
   uint32_t exp_epoch = epoch0 + 2 * sweeps;
 #ifdef EG2_TBRE_CORE_WRITE_SNOOP_INJECT_FAIL
+  eg2_inject_armed("epoch");
   exp_epoch += 2;
 #endif
   eg2_check(&tally, "epoch", 0, eg2_ms_tbre_epoch(), exp_epoch);

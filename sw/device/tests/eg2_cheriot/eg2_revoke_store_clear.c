@@ -100,6 +100,7 @@ static void one_case(uint32_t i, uint32_t main_arena, bool in_main, uint32_t wid
   uint32_t exp_tag = 0;
 #ifdef EG2_REVOKE_STORE_CLEAR_INJECT_FAIL
   if (i == 0) {
+    eg2_inject_armed("tag after the store");
     exp_tag = 1;
   }
 #endif

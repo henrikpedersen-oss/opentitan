@@ -75,6 +75,8 @@ bool eg2_test_main(void) {
   eg2_puts("\r\n");
 #ifndef EG2_STATUS_INJECT_FAIL
   eg2_status_expect_alert(alert);
+#else
+  eg2_inject_armed(eg2_status_alert_name(alert));
 #endif
   eg2_status_raise_alert(alert);
 

@@ -56,6 +56,9 @@ bool eg2_nist_expect(const eg2_nist_vec_t *v, int field, const uint8_t *got, uin
                      bool corrupt) {
   const uint8_t *exp = eg2_nist_data(v, field);
   bool ok = true;
+  if (corrupt && len > 0) {
+    eg2_inject_armed("NIST expected value");
+  }
   for (uint32_t i = 0; i < len; ++i) {
     uint8_t e = exp[i];
     if (corrupt && i == 0) {
@@ -76,6 +79,7 @@ bool eg2_nist_expect(const eg2_nist_vec_t *v, int field, const uint8_t *got, uin
     }
     put_bytes(exp, len);
     eg2_puts("\r\n");
+    eg2_inject_failed("NIST expected value");
   }
   return ok;
 }

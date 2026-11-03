@@ -82,6 +82,9 @@ bool eg2_rng_step(const char *what, bool ok) {
 bool eg2_rng_check(const char *what, uint32_t expected, uint32_t got) {
   bool corrupt = rng_corrupt;
   rng_corrupt = false;
+  if (corrupt) {
+    eg2_inject_armed(what);
+  }
   uint32_t exp = corrupt ? expected ^ 1u : expected;
   bool ok = exp == got;
   head(ok ? "ok" : "FAIL", what);
@@ -93,6 +96,9 @@ bool eg2_rng_check(const char *what, uint32_t expected, uint32_t got) {
     eg2_puts(" (expected value corrupted: EG2_RNG_INJECT_FAIL)");
   }
   eg2_puts("\r\n");
+  if (!ok) {
+    eg2_inject_failed(what);
+  }
   return ok;
 }
 

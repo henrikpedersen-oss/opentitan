@@ -121,6 +121,7 @@ static void check_retention(const char *what, uint32_t idx, eg2_ms_rec_t *rec) {
   uint32_t exp_tag = 0;
 #ifdef EG2_REVOCATION_SLEEP_INJECT_FAIL
   if (idx == 0) {
+    eg2_inject_armed(what);
     exp_tag = 1;
   }
 #endif

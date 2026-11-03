@@ -166,6 +166,7 @@ static void one_access(uint32_t idx, uint32_t fault) {
 #ifdef EG2_PERIPH_CAP_RANDOM_INJECT_FAIL
   if (fault == kFaultAbove && !injected) {
     injected = true;
+    eg2_inject_armed("mcause");
     exp_mcause = 0;
   }
 #endif

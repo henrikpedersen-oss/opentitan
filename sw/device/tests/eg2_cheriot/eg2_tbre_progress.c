@@ -108,6 +108,7 @@ static void one_region(uint32_t idx, bool sram, uint32_t n, uint32_t idle_passes
     uint32_t exp = 0x1000u * i + total;
 #ifdef EG2_TBRE_PROGRESS_INJECT_FAIL
     if (idx == 0 && i == 0) {
+      eg2_inject_armed("buffer word");
       exp += 1;
     }
 #endif

@@ -165,6 +165,7 @@ bool eg2_test_main(void) {
   tally.planned = total;
   tally.done = rec->data[kRecDone];
 #ifdef EG2_FI_META_INJECT_FAIL
+  eg2_inject_armed("every planned check done");
   ++tally.planned;
 #endif
   eg2_put_kv("EG2 fi_meta rounds", total);

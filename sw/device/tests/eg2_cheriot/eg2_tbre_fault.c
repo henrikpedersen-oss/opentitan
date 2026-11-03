@@ -169,6 +169,7 @@ static void one_case(fault_kind_t kind, uint32_t idx) {
   uint32_t exp_epoch = epoch1 + 2;
 #ifdef EG2_TBRE_FAULT_INJECT_FAIL
   if (idx == 0) {
+    eg2_inject_armed("epoch after the next sweep");
     exp_epoch += 2;
   }
 #endif

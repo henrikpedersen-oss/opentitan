@@ -179,6 +179,9 @@ static void error_case(error_case_t c, uint32_t field) {
   eg2_put_kv(" bench", ans);
   eg2_puts("\r\n");
 
+  if (INJECT) {
+    eg2_inject_armed("neighbour keeps its tag");
+  }
   eg2_check(&tally, "neighbour keeps its tag", n, tag_n, INJECT ? 0u : 1u);
   if (!gaps) {
     eg2_check(&tally, "injection took effect", t, ans & kAnsHit, kAnsHit);
@@ -303,6 +306,9 @@ static void reset_boot_2(uint32_t kind) {
   eg2_rv_op_revbm(&o, w, 0);
   eg2_rv_ops_run(&o, kOut);
   eg2_check(&tally, "unmarked slot after the reset", t, eg2_ms_read32(kOut + 4 * o_before), 1);
+  if (INJECT) {
+    eg2_inject_armed("marked slot after the reset");
+  }
   eg2_check(&tally, "marked slot after the reset", t, eg2_ms_read32(kOut + 4 * o_marked),
             INJECT ? 1u : 0u);
   eg2_check(&tally, "other slot after the reset", n, eg2_ms_read32(kOut + 4 * o_n), 1);

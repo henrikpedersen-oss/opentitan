@@ -8,7 +8,8 @@
 #
 # Each run ends in one of six outcomes, from eg2sim's exit status or the suite policy:
 #   pass        the test passed (status word 0x900d; exit 0)
-#   must-fail   an _inject_fail variant failed, as it must (exit 3); reports show it as
+#   must-fail   an _inject_fail variant failed, as it must (exit 3), on the check its build broke
+#               (EG2_INJECT_CAUGHT; one failing elsewhere first is a fail); reports show it as
 #               "pass (must fail)"
 #   fail        the test finished and reported a failure (exit 3; or an _inject_fail that passed)
 #   model-stop  the model stopped the run: the test needs something it does not model, most often a
@@ -154,6 +155,9 @@ run_one() {
   # Checks a test marks as not evaluable by the model are skipped. Monte Carlo is not enabled
   # implicitly: variants.txt gives each weekly Monte Carlo setting a separately reported run.
   grep -q -a kEg2Param_model_gaps "${img}" && knobs+=(--param model_gaps=1)
+  # A must-fail image stops at its first failed check, as the chip bench runs it
+  # (chip_sw_eg2_base_vseq): the check it broke must be the first to fail.
+  [[ ${name} == *_inject_fail* ]] && grep -q -a kEg2StopOnFail "${img}" && knobs+=(--sym kEg2StopOnFail=1)
   # A variant's settings (variants.txt), then what the chip bench would do for this run (bench.txt:
   # the run's own lines, else, for a variant, its image's lines); an {image:...} in them becomes the
   # image's file.
@@ -248,6 +252,29 @@ run_one() {
   err=$(grep -a -m1 "CHECK-fail\|CHECK-STATUS-fail\|DIF-fail\|^sw: E \|^sw: W \|^uart0| FAIL! MISMATCH" \
     "${dir}/run.log" | sed 's/^sw: [IEW] //; s/^uart0| //' | cut -c1-140)
   [[ -n "${err}" ]] && said="${said}; the test: ${err}"
+  # A must-fail run counts only when the check its build broke is the one that failed
+  # (eg2_result.h eg2_inject_armed/eg2_inject_failed; Codex review 2 Nov: any exit 3 was accepted).
+  # An image built before the markers says neither line: still graded on the exit, marked so.
+  if [[ ${outcome} == must-fail ]]; then
+    local armed caught
+    armed=$(grep -a -m1 -o "EG2_INJECT_ARMED .*" "${dir}/run.log" | cut -c18- | tr -d '\r')
+    caught=$(grep -a -m1 -o "EG2_INJECT_CAUGHT .*" "${dir}/run.log" | cut -c19- | tr -d '\r')
+    local line
+    line=$(awk -v t="${name}" '$1 == t { $1 = ""; sub(/^ /, ""); print; exit }' "${HERE}/inject_lines.txt")
+    if [[ -n "${caught}" ]]; then
+      said="caught by the check it broke (${caught}); ${said}"
+    elif [[ -n "${armed}" ]]; then
+      outcome=fail
+      said="failed, but not on the check it broke (${armed}); ${said}"
+    elif [[ -n "${line}" ]] && grep -a -q -F -- "${line}" "${dir}/run.log"; then
+      said="caught by the check it broke (${line}, inject_lines.txt); ${said}"
+    elif [[ -n "${line}" ]]; then
+      outcome=fail
+      said="failed, but without its line \"${line}\" (inject_lines.txt); ${said}"
+    else
+      said="cause not checked (image without EG2_INJECT lines); ${said}"
+    fi
+  fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${name}" "${outcome}" "${wall}" "${insns:--}" "${sim:--}" "${said}" \
     "${iname}"
 }

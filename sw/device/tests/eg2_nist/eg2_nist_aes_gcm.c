@@ -118,7 +118,11 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
     // The tag over this ciphertext differs from the file's: the decryption must not authenticate.
     // With `corrupt` the expectation is reversed, so the inject-fail build fails here too.
     bool refused = success != kHardenedBoolTrue;
+    if (corrupt) {
+      eg2_inject_armed("NIST FAIL vector refused");
+    }
     if (refused == corrupt) {
+      eg2_inject_failed("NIST FAIL vector refused");
       return eg2_nist_result(eg2_nist_error(
           v, corrupt ? "FAIL vector refused (expectation reversed, -D..._INJECT_FAIL)"
                      : "a FAIL vector authenticated"));

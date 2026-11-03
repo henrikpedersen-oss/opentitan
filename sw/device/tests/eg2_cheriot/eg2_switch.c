@@ -55,6 +55,7 @@ bool eg2_test_main(void) {
     __asm__ volatile("fence.i");
     uint32_t exp = 1u << 4;
 #ifdef EG2_SWITCH_INJECT_FAIL
+    eg2_inject_armed("misa after a request");
     exp = 1u << 8;
 #endif
     eg2_check(&tally, "misa after a request", v, misa_mode(), exp);

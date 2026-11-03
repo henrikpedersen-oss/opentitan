@@ -132,6 +132,7 @@ static bool check(ctx_t *c, const eg2_rm_block_t *b, const eg2_rm_reg_t *r, cons
 #ifdef EG2_REGMEM_INJECT_FAIL
   if (!c->injected) {
     c->injected = true;
+    eg2_inject_armed("REG value check");
     exp ^= mask & (~mask + 1);
   }
 #endif
@@ -149,6 +150,7 @@ static bool check(ctx_t *c, const eg2_rm_block_t *b, const eg2_rm_reg_t *r, cons
     eg2_rm_hex(" mask ", mask);
     eg2_puts("\r\n");
   }
+  eg2_inject_failed("REG value check");
   eg2_fail_stop();
   return false;
 }
