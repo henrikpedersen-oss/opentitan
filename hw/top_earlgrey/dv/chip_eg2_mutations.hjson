@@ -996,6 +996,26 @@
       reseed: 1
     }
     {
+      uvm_test_seq: chip_sw_eg2_rram_exec_en_vseq
+      sw_images:
+      [
+        "//sw/device/tests/eg2_rram:eg2_rram_exec_en_cheriot:1:new_rules"
+      ]
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      build_mode: en_eg2_periph
+      run_opts:
+      [
+        +sw_test_timeout_ns=50_000_000
+        +eg2_mutate=rram_exec_ignored
+      ]
+      run_timeout_mins: 120
+      name: chip_sw_rram_exec_en_cheriot__mut__rram_exec_ignored
+      reseed: 1
+    }
+    {
       build_mode: cover_reg_top
       uvm_test_seq: "{name}_common_vseq"
       run_opts:
@@ -1188,6 +1208,7 @@
       [
         "//sw/device/tests:otp_ctrl_mem_access_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_sw_otp_ctrl_dai_lock_cheriot__mut__otp_dai_rdata_words_swapped
       reseed: 1
     }
@@ -1226,6 +1247,7 @@
       [
         "//sw/device/tests:otp_ctrl_mem_access_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_sw_otp_ctrl_dai_lock_cheriot__mut__otp_dai_lock_ignored
       reseed: 1
     }
@@ -1478,6 +1500,7 @@
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_plic_all_irqs_0_cheriot__mut__rv_plic_claim_id_neighbour
       run_opts:
       [
@@ -1512,6 +1535,7 @@
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_plic_all_irqs_0_cheriot__mut__rv_plic_masked_irq_let_through
       run_opts:
       [
@@ -1610,6 +1634,7 @@
       [
         "//sw/device/tests:alert_handler_escalation_test_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_sw_alert_handler_escalation_cheriot__mut__escalation_to_core_dropped
       reseed: 1
     }
@@ -1740,6 +1765,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_sw_rv_core_ibex_lockstep_glitch_cheriot__mut__lockstep_comparator_disabled
       reseed: 1
     }
@@ -1759,6 +1785,7 @@
       [
         "//sw/device/tests:aes_smoketest_cheriot:1:new_rules"
       ]
+      build_mode: en_eg2_periph
       name: chip_sw_aes_enc_cheriot__mut__aes_data_out_byte_swap_cheriot
       reseed: 1
     }

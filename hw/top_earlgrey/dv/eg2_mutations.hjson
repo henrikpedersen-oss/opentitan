@@ -399,9 +399,10 @@
       interface: rram
       mechanism: "rram_ctrl's host adapter instr_error forced 0: a fetch is answered although EXEC (or the RRAM disable) refuses it"
       activation: "a fetch reaches the host port while its execution enable is false"
-      tests: ["chip_sw_rram_exec_en"]
-      // Spike fetches from any address, so the instruction check cannot see a missing fault.
-      caught_by: []
+      tests: ["chip_sw_rram_exec_en", "chip_sw_rram_exec_en_cheriot"]
+      // The instruction model decides the fetch from its own copy of EXEC (eg2_iss_wrapper
+      // rram_fetch_rule, 2026-11-03, dv_todo S1): an answered fetch with EXEC off is its error.
+      caught_by: ["EG2_ISS the chip executed the instruction at [0-9a-f]+ .*from RRAM"]
       test_checks: ["CHECK-fail"]
     }
     {
