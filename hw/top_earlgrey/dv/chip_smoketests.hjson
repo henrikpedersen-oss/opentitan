@@ -800,43 +800,99 @@
       run_timeout_mins: 240
     }
     {
-      // Slice 0 of 4 (uart3, gpio, i3c0, rv_timer, spi_host1, rstmgr, ast, rv_dm.mem, aes, hmac, kmac, sram_ctrl_main.regs).
-      name: chip_sw_eg2_connectivity_cheriot_slice0
+      // Half of CHERIoT slice 0: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 0a of 4 (uart3, gpio, i3c0, rv_timer, spi_host1, rstmgr).
+      name: chip_sw_eg2_connectivity_cheriot_slice0a
       uvm_test_seq: chip_sw_eg2_connectivity_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107888664", "+eg2_param_blocks_hi=1038", "+eg2_param_links=1"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=592408", "+eg2_param_blocks_hi=0", "+eg2_param_links=1"]
       run_timeout_mins: 240
     }
     {
-      // Slice 1 of 4 (uart0, uart2, lc_ctrl.regs, alert_handler, usbdev, clkmgr, rram_macro.prim, otbn, csrng, edn1, sram_ctrl_sec.regs, cheriot_mem_sys.regs).
-      name: chip_sw_eg2_connectivity_cheriot_slice1
+      // Half of CHERIoT slice 0: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 0b of 4 (ast, rv_dm.mem, aes, hmac, kmac, sram_ctrl_main.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice0b
       uvm_test_seq: chip_sw_eg2_connectivity_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=538075141", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107296256", "+eg2_param_blocks_hi=1038", "+eg2_param_links=0"]
       run_timeout_mins: 240
     }
     {
-      // Slice 2 of 4 (spi_device, i2c0, i2c2, i3c1, pwrmgr, sysrst_ctrl, pinmux, aon_timer, rv_dm.regs, entropy_src, edn0, rom_ctrl.regs).
-      name: chip_sw_eg2_connectivity_cheriot_slice2
+      // Half of CHERIoT slice 1: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 1a of 4 (uart0, uart2, lc_ctrl.regs, alert_handler, usbdev, clkmgr).
+      name: chip_sw_eg2_connectivity_cheriot_slice1a
       uvm_test_seq: chip_sw_eg2_connectivity_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2175010144", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1204229", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
       run_timeout_mins: 240
     }
     {
-      // Slice 3 of 4 (uart1, i2c1, otp_ctrl.core, spi_host0, adc_ctrl, sensor_ctrl, sram_ctrl_ret.regs, rram_ctrl.core, rv_plic, keymgr_dpe, rv_core_ibex.cfg, sram_ctrl_meta.regs).
-      name: chip_sw_eg2_connectivity_cheriot_slice3
+      // Half of CHERIoT slice 1: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 1b of 4 (rram_macro.prim, otbn, csrng, edn1, sram_ctrl_sec.regs, cheriot_mem_sys.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice1b
       uvm_test_seq: chip_sw_eg2_connectivity_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=473993346", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=536870912", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Half of CHERIoT slice 2: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 2a of 4 (spi_device, i2c0, i2c2, i3c1, pwrmgr, sysrst_ctrl).
+      name: chip_sw_eg2_connectivity_cheriot_slice2a
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2360672", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Half of CHERIoT slice 2: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 2b of 4 (pinmux, aon_timer, rv_dm.regs, entropy_src, edn0, rom_ctrl.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice2b
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2172649472", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Half of CHERIoT slice 3: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 3a of 4 (uart1, i2c1, otp_ctrl.core, spi_host0, adc_ctrl, sensor_ctrl).
+      name: chip_sw_eg2_connectivity_cheriot_slice3a
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=71340162", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Half of CHERIoT slice 3: CHERIoT-mode runs take about twice the wall time of plain ones
+      // and the whole slice outran the 240-minute limit (3 Nov).
+      // Slice 3b of 4 (sram_ctrl_ret.regs, rram_ctrl.core, rv_plic, keymgr_dpe, rv_core_ibex.cfg, sram_ctrl_meta.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice3b
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=402653184", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
       run_timeout_mins: 240
     }
     {
@@ -1034,10 +1090,14 @@
               "chip_sw_eg2_connectivity_slice1",
               "chip_sw_eg2_connectivity_slice2",
               "chip_sw_eg2_connectivity_slice3",
-              "chip_sw_eg2_connectivity_cheriot_slice0",
-              "chip_sw_eg2_connectivity_cheriot_slice1",
-              "chip_sw_eg2_connectivity_cheriot_slice2",
-              "chip_sw_eg2_connectivity_cheriot_slice3",
+              "chip_sw_eg2_connectivity_cheriot_slice0a",
+              "chip_sw_eg2_connectivity_cheriot_slice0b",
+              "chip_sw_eg2_connectivity_cheriot_slice1a",
+              "chip_sw_eg2_connectivity_cheriot_slice1b",
+              "chip_sw_eg2_connectivity_cheriot_slice2a",
+              "chip_sw_eg2_connectivity_cheriot_slice2b",
+              "chip_sw_eg2_connectivity_cheriot_slice3a",
+              "chip_sw_eg2_connectivity_cheriot_slice3b",
               "chip_sw_eg2_mem_test",
               "chip_sw_eg2_mem_test_cheriot",
             ]
