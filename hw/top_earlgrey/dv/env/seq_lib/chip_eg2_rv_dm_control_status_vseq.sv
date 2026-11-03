@@ -55,12 +55,12 @@ class chip_eg2_rv_dm_control_status_vseq extends chip_eg2_rv_dm_base_vseq;
 
     for (int i = 0; i < n_halts; i++) begin
       #(halt_gap_ns[i] * 1ns);
-      cfg.debugger.set_haltreq(1);
+      set_haltreq(1);
       cfg.debugger.wait_cpu_halted();
       csr_rd(.ptr(cfg.jtag_dmi_ral.dmstatus), .value(v), .blocking(1));
       `DV_CHECK_EQ(get_field_val(cfg.jtag_dmi_ral.dmstatus.allhalted, v), 1, "allhalted")
       `DV_CHECK_EQ(get_field_val(cfg.jtag_dmi_ral.dmstatus.allrunning, v), 0, "allrunning")
-      cfg.debugger.set_haltreq(0);
+      set_haltreq(0);
       cfg.debugger.set_resumereq(1);
       cfg.debugger.wait_cpu_resumed();
       csr_rd(.ptr(cfg.jtag_dmi_ral.dmstatus), .value(v), .blocking(1));

@@ -389,9 +389,9 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
   // The core halted by haltreq; the entry checked.
   protected task halt_checked(string what, bit check_gprs = 1'b1);
     int unsigned n0 = debug_entries;
-    cfg.debugger.set_haltreq(1);
+    set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
-    cfg.debugger.set_haltreq(0);
+    set_haltreq(0);
     wait_debug_entry(n0, what);
     check_entry(what, RvDebugCauseHaltReq, check_gprs);
   endtask
@@ -605,7 +605,25 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
     sberror = get_field_val(cfg.jtag_dmi_ral.sbcs.sberror, v);
     rdata = '0;
     if (!write) sbdata_rd(rdata);
+    if (write && sberror == 0 && !get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusyerror, v)) begin
+      sba_written(addr, size, wdata);
+    end
   endtask
+
+  // An SBA write that went through: the instruction-set model reads its own memory, so it is told
+  // of the bytes, as sba_wr32 does (2026-11-02: sba_raw's writes reached no model, and the core's
+  // later load of a byte written so mismatched, chip_eg2_rv_dm_sba_corners_cheriot). The write is
+  // reported when its JTAG accesses return; a word the core reads while the bench writes it is a
+  // mailbox (backdoor_mailbox).
+  protected function void sba_written(bit [31:0] addr, bit [2:0] size, bit [31:0] wdata);
+    if (size == 3'd2) begin
+      eg2_iss_wrapper::backdoor_write32(addr, wdata);
+    end else begin
+      bit [7:0] b[] = new[1 << size];
+      foreach (b[i]) b[i] = wdata[8 * i +: 8];
+      eg2_iss_wrapper::backdoor_write(addr, b);
+    end
+  endfunction
 
   // ---------------------------------------------------------------- the run
 

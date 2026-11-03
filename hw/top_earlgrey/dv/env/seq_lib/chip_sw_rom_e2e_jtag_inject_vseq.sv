@@ -44,6 +44,8 @@ class chip_sw_rom_e2e_jtag_inject_vseq extends chip_sw_base_vseq;
     // Halt the CPU.
     cfg.debugger.set_elf_file(elf_file);
     cfg.debugger.set_dmactive(1);
+    // The instruction-set model stops at the debug-mode entry (eg2_iss_wrapper debug_session).
+    eg2_iss_wrapper::debug_session(get_type_name());
     cfg.debugger.set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
     cfg.debugger.set_haltreq(0);

@@ -41,7 +41,9 @@
 //   to the RVFI order, as the Ibex UVM bench does, R11) at a word the bench armed
 //   (iside_error_event): a corrupted prefetch the chip discards is never the model's. Spike's
 //   decoded instructions are flushed whenever memory is written behind its back.
-// - Interrupts, NMI and debug requests are taken where RVFI shows them taken.
+// - Interrupts and NMI are taken where RVFI shows them taken. At debug-mode entry the model stops
+//   until the next chip reset, as the Ibex UVM bench stops a model without debug mode: neither
+//   model can follow the core into rv_dm's debug ROM (debug_stopped, 2026-11-02).
 // - Spike starts from the core's reset state, including its PMP and mseccfg reset values.
 // - At the CHERIoT lock (the first instruction RVFI shows in CHERIoT mode) the state passes from
 //   Spike to CHERIoT-Sail, never from the chip (REQ_SOC_07): Spike's next PC must be where the chip
@@ -74,8 +76,9 @@
 //
 // Plusargs: +sb_corrupt=insn.rd (corrupts one register result before it is checked, from the 100th
 // instruction), +sb_corrupt=insn.cheriot_rd (the same from the 100th CHERIoT-mode instruction, so
-// CHERIoT-Sail's check is the one shown to fail); the run must fail. +eg2_spike_log=1 (Spike's
-// commit log, spike.model.log).
+// CHERIoT-Sail's check is the one shown to fail); the run must fail. +eg2_iss_ignore_debug_session=1
+// (the sequences' debug sessions are not taken: a debug test must fail at its first debug-mode
+// entry). +eg2_spike_log=1 (Spike's commit log, spike.model.log).
 
 class eg2_rvfi_exp_item extends uvm_sequence_item;
   bit [63:0]    order;
@@ -239,6 +242,37 @@ class eg2_iss_wrapper extends uvm_component;
   protected bit          stop_open;
   protected realtime     stop_t;
   protected int unsigned dropped, dropped_total;
+
+  // Debug mode (2026-11-02). Neither model can follow the core into debug mode on this chip:
+  //  - Spike enters debug mode at DEBUG_ROM_ENTRY, 0x8000_0000, and takes debug-mode exceptions at
+  //    DEBUG_ROM_TVEC, 0x8000_0008: constants of the Spike build (riscv/debug_rom_defines.h), where
+  //    the Ibex UVM bench's riscv-dv programs put their debug code (its compile_tb.py:
+  //    DEBUG_MODE_HALT_ADDR 8000_0000). The core here goes to its DmHaltAddr (Ibex
+  //    doc/03_reference/debug.rst), rv_dm's debug ROM at the debug memory's base + 0x800
+  //    (top_earlgrey_pkg RV_DM_MEM, 0x0001_0000; pulp_riscv_dbg doc/debug-system.md "Debug
+  //    Memory"). Spike fetched nothing at 0x8000_0000, trapped to 0x8000_0008 and failed every
+  //    debug test at the first debug-ROM instruction ("Synchronous trap was expected at ISS PC:
+  //    80000008 but the DUT didn't report one at PC 10800"). Besides, the debug ROM's flags, the
+  //    abstract commands and the program buffer are rv_dm's, which the model does not have.
+  //  - CHERIoT-Sail has no debug mode at all (ibex_platform_csrs.c: "only in debug mode, which the
+  //    model does not have"); it ran on in the interrupted program ("cheriot-sail model PC
+  //    0x3000082c differs from DUT PC 0x00010800").
+  // So, as the Ibex UVM bench does for a model without debug mode (ibex_cosim_scoreboard.sv
+  // riscv_sail_unmodelled(): a debug request, an instruction in the debug module's window, dret;
+  // with the real debug module its core_ibex_dm_test runs with the co-simulation off), the model
+  // stops at debug-mode entry and starts again with Spike at the next chip reset (restart). No
+  // model state is taken from the chip. The stop is reported and its instructions counted; it is
+  // not a failure, because the test's sequence checks the debug session itself (dcsr, dpc, the
+  // registers at entry and after resume: chip_eg2_rv_dm_corners_base_vseq). It is a failure when
+  // no sequence of the run started a debug session (debug_session), so that an unexpected debug
+  // entry is never hidden.
+  localparam bit [31:0] DmMemBase = top_earlgrey_pkg::TOP_EARLGREY_RV_DM_MEM_BASE_ADDR;
+  localparam bit [31:0] DmMemSize = top_earlgrey_pkg::TOP_EARLGREY_RV_DM_MEM_SIZE_BYTES;
+  localparam bit [31:0] InsnDret  = 32'h7b20_0073;
+  protected bit          debug_expected;
+  protected string       debug_by;
+  protected bit          debug_stopped;
+  protected int unsigned debug_stops, debug_dropped;
   // Data-access bus errors on the item that took them (mem_error), and those CHERIoT-Sail was given
   // (cheriot_sail_cosim_step_bus_error): reported, so a run shows they reached the model. R14,
   // 2026-10-26.
@@ -388,6 +422,11 @@ class eg2_iss_wrapper extends uvm_component;
                                   stop_why, dropped), UVM_LOW)
         stop_open = 1'b0;
       end
+      if (debug_stopped) begin
+        `uvm_info(`gfn, $sformatf({"EG2_ISS the chip reset ends the stop at debug-mode entry: %0d ",
+                                   "items not compared"}, dropped), UVM_LOW)
+        debug_stopped = 1'b0;
+      end
       report_left("the chip reset");
       sail_active = 1'b0;
       restart(item.boot_addr);
@@ -397,6 +436,11 @@ class eg2_iss_wrapper extends uvm_component;
       return;
     end
     if (cosim == null) return;
+    // Debug-mode entry: the model stops (see debug_stopped). 2026-11-02.
+    if (!stopped && !item.irq_only) begin
+      string why = debug_entry(item);
+      if (why != "") stop_at_debug_entry(item, why);
+    end
     if (stopped) begin
       // rram_ctrl's operations are still followed, so their words are accounted for (R15,
       // 2026-10-26: a word programmed by no operation the wrapper saw is an error now).
@@ -405,6 +449,7 @@ class eg2_iss_wrapper extends uvm_component;
       if (!item.irq_only) begin
         dropped++;
         dropped_total++;
+        if (debug_stopped) debug_dropped++;
       end
       return;
     end
@@ -1383,6 +1428,38 @@ class eg2_iss_wrapper extends uvm_component;
   endfunction
 `endif
 
+  // Why this item is in debug mode, or "": the core took a debug request (RVFI's debug_req, set
+  // on the first debug-mode instruction), it executes in rv_dm's debug memory (the debug ROM,
+  // abstract commands, program buffer: a halt by ebreak or single step shows no request), or a
+  // dret. As the Ibex UVM bench's riscv_sail_unmodelled(). 2026-11-02.
+  protected function string debug_entry(eg2_rvfi_item item);
+    if (item.debug_req) return "a debug request taken";
+    if (item.pc >= DmMemBase && item.pc - DmMemBase < DmMemSize) begin
+      return $sformatf("an instruction in rv_dm's debug memory at %08h", item.pc);
+    end
+    if (item.insn == InsnDret) return "dret";
+    return "";
+  endfunction
+
+  protected function void stop_at_debug_entry(eg2_rvfi_item item, string why);
+    string model = sail_active ? "CHERIoT-Sail has no debug mode" :
+                   "Spike's debug entry is fixed at 0x80000000, not rv_dm's debug ROM";
+    debug_stops++;
+    if (!debug_expected) begin
+      `uvm_error(`gfn, $sformatf({"EG2_ISS the core entered debug mode at order %0d, pc %08h (%s), ",
+                                  "and no sequence of this run started a debug session"},
+                                 item.order, item.pc, why))
+    end
+    report_left("debug-mode entry");
+    `uvm_info(`gfn, $sformatf({"EG2_ISS stopped until the next reset at debug-mode entry: order %0d, ",
+                               "pc %08h, %s (%s; debug session of %s), after %0d instructions"},
+                              item.order, item.pc, why, model,
+                              debug_expected ? debug_by : "no sequence", stepped), UVM_LOW)
+    stopped       = 1'b1;
+    debug_stopped = 1'b1;
+    dropped       = 0;
+  endfunction
+
   // At the end (R8, R9, R11; 2026-10-25): a stop no chip reset ended leaves the rest of the run
   // unchecked, which fails it; the accesses still in flight and the fetch errors the bench armed
   // that no instruction took are reported.
@@ -1426,6 +1503,11 @@ class eg2_iss_wrapper extends uvm_component;
                               rram_words_rewrite_unknown, rram_words_other, rram_words_otp,
                               rram_words_rma, rram_words_unexplained, mem_faults, sail_bus_errors,
                               tbre_clears), UVM_LOW)
+    if (debug_stops != 0) begin
+      `uvm_info(`gfn, $sformatf({"EG2_ISS %0d debug-mode entries: the model stopped at each until ",
+                                 "the next chip reset, %0d instructions not compared after them"},
+                                debug_stops, debug_dropped), UVM_LOW)
+    end
   endfunction
 
   function void final_phase(uvm_phase phase);
@@ -1499,6 +1581,24 @@ class eg2_iss_wrapper extends uvm_component;
   static function void backdoor_mailbox(bit [31:0] addr, int unsigned len);
     if (inst == null) return;
     for (int unsigned i = 0; i < len; i++) inst.mailbox[addr + i] = 1'b1;
+  endfunction
+
+  // A sequence of this run halts the core through rv_dm (`by` names it): a debug-mode entry stops
+  // the model until the next chip reset (see debug_stopped) instead of failing the run.
+  // 2026-11-02.
+  // Must-fail knob +eg2_iss_ignore_debug_session=1: the call is ignored, so the run must fail at the
+  // first debug-mode entry ("no sequence of this run started a debug session").
+  static function void debug_session(string by);
+    if (inst == null) return;
+    if ($test$plusargs("eg2_iss_ignore_debug_session")) return;
+    if (!inst.debug_expected) begin
+      inst.uvm_report_info("eg2_iss_wrapper",
+                           $sformatf({"EG2_ISS %s starts a debug session: the model stops at ",
+                                      "debug-mode entry until the next chip reset"}, by),
+                           UVM_LOW, `__FILE__, `__LINE__);
+    end
+    inst.debug_expected = 1'b1;
+    inst.debug_by       = by;
   endfunction
 
   static function void backdoor_write32(bit [31:0] addr, bit [31:0] data);

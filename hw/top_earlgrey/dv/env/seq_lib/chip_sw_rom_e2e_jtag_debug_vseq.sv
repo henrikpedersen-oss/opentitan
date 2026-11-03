@@ -33,6 +33,8 @@ class chip_sw_rom_e2e_jtag_debug_vseq extends chip_sw_base_vseq;
     `DV_WAIT(cfg.chip_vif.pinmux_lc_hw_debug_en)
     cfg.chip_vif.aon_clk_por_rst_if.wait_clks(1);
     cfg.debugger.set_dmactive(1);
+    // The instruction-set model stops at the debug-mode entry (eg2_iss_wrapper debug_session).
+    eg2_iss_wrapper::debug_session(get_type_name());
     cfg.debugger.set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
     cfg.debugger.set_haltreq(0);

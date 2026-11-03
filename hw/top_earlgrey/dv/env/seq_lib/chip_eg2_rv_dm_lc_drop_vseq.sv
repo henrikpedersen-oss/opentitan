@@ -82,13 +82,15 @@ class chip_eg2_rv_dm_lc_drop_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     sbaddr_wr(probe_vals[0] & ~32'h3);
     sbaddr_rd(a);
     chk_eq("late debug pending: DMI reachable (sbaddress0 read back)", a, probe_vals[0] & ~32'h3);
+    // Not set_haltreq: this request must halt nothing, so the instruction-set model is not told of a
+    // debug session (a debug-mode entry here fails it too).
     cfg.debugger.set_haltreq(1);
     for (int i = 0; i < 2000; i++) begin
       #(10ns);
       req_seen |= probe("debug_req_i");
     end
     csr_rd(.ptr(cfg.jtag_dmi_ral.dmstatus), .value(v), .blocking(1));
-    cfg.debugger.set_haltreq(0);
+    set_haltreq(0);
     chk_true("late debug pending: haltreq raises no debug_req_i", !req_seen);
     chk_eq("late debug pending: dmstatus.anyhalted", get_field_val(
            cfg.jtag_dmi_ral.dmstatus.anyhalted, v), 0);
@@ -118,9 +120,9 @@ class chip_eg2_rv_dm_lc_drop_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     uvm_reg_data_t v;
     case (session)
       SessHalted: begin
-        cfg.debugger.set_haltreq(1);
+        set_haltreq(1);
         cfg.debugger.wait_cpu_halted();
-        cfg.debugger.set_haltreq(0);
+        set_haltreq(0);
       end
       SessSba: begin
         for (int unsigned i = 0; !dropped; i++) begin
@@ -129,9 +131,9 @@ class chip_eg2_rv_dm_lc_drop_vseq extends chip_eg2_rv_dm_corners_base_vseq;
         end
       end
       default: begin
-        cfg.debugger.set_haltreq(1);
+        set_haltreq(1);
         cfg.debugger.wait_cpu_halted();
-        cfg.debugger.set_haltreq(0);
+        set_haltreq(0);
         progbuf_wr({InsnLuiT1, InsnAddiT1M1, InsnBnezT1, InsnEbreak});
         while (!dropped) begin
           csr_wr(.ptr(cfg.jtag_dmi_ral.command), .value(reg_cmd(16'h0, 1'b0, 1'b0, 1'b1)),

@@ -70,6 +70,8 @@ class chip_sw_eg2_pbf_debug_sb_vseq extends chip_sw_eg2_pbf_mem_base_vseq;
       default: cfg.chip_vif.cpu_clk_rst_if.wait_clks(halt_delay);
     endcase
     cfg.debugger.set_dmactive(1);
+    // The instruction-set model stops at the debug-mode entry (eg2_iss_wrapper debug_session).
+    eg2_iss_wrapper::debug_session(get_type_name());
     cfg.debugger.set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
     cfg.debugger.set_haltreq(0);
@@ -156,6 +158,8 @@ class chip_sw_eg2_pbf_debug_fault_vseq extends chip_sw_eg2_pbf_mem_base_vseq;
       return;
     end
     cfg.debugger.set_dmactive(1);
+    // The instruction-set model stops at the debug-mode entry (eg2_iss_wrapper debug_session).
+    eg2_iss_wrapper::debug_session(get_type_name());
     cfg.debugger.set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
     cfg.debugger.set_haltreq(0);

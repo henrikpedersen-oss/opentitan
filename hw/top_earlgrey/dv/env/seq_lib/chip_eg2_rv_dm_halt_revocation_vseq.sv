@@ -72,10 +72,10 @@ class chip_eg2_rv_dm_halt_revocation_vseq extends chip_eg2_rv_dm_cap_base_vseq;
     // The halt by hand: TBRE_STATUS is read as soon as the core reports halted, before the slower
     // dcsr and dpc checks.
     n = debug_entries;
-    cfg.debugger.set_haltreq(1);
+    set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
     sba_rd32(status_addr, v, st);
-    cfg.debugger.set_haltreq(0);
+    set_haltreq(0);
     wait_debug_entry(n, "phase 0: halt during the sweep");
     check_entry("phase 0: halt during the sweep", RvDebugCauseHaltReq, 1'b0);
     chk_true("phase 0: dpc in the stage's wait loop",

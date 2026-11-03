@@ -219,6 +219,9 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
       sba_wait(v);
       chk_eq($sformatf("auto-increment write %0d: sberror", i), get_field_val(
              cfg.jtag_dmi_ral.sbcs.sberror, v), 0);
+      if (get_field_val(cfg.jtag_dmi_ral.sbcs.sberror, v) == 0) begin
+        sba_written(base + 4 * i, 3'd2, words[i]);
+      end
     end
     sbaddr_rd(a);
     chk_eq("sbaddress0 after the auto-increment writes", a, base + 4 * n_words, 1'b1);
@@ -264,6 +267,10 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
 
   protected task case_race();
     bit ok;
+    // The core reads byte 2 while the bench writes it over SBA: the model takes the chip's value
+    // for the word, a bench mailbox (2026-11-02, chip_eg2_rv_dm_sba_corners_cheriot: the core read
+    // the bench's first write, 1, the model 0).
+    eg2_iss_wrapper::backdoor_mailbox(scratch_addr, 4);
     sba_wr(scratch_addr, 0);
     send_cmd(8'h10, n_race, ok);  // RACE
     if (!ok) return;

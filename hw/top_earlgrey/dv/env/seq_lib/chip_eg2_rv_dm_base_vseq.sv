@@ -101,6 +101,14 @@ class chip_eg2_rv_dm_base_vseq extends chip_sw_eg2_chk_base_vseq;
     cfg.debugger.set_dmactive(1);
   endtask
 
+  // dmcontrol.haltreq. Before the first raise the instruction-set model is told that this run halts
+  // the core: it stops at the debug-mode entry until the next chip reset, as it cannot follow the
+  // core into rv_dm's debug ROM (eg2_iss_wrapper debug_session). 2026-11-02.
+  protected task set_haltreq(bit value);
+    if (value) eg2_iss_wrapper::debug_session(get_type_name());
+    cfg.debugger.set_haltreq(value);
+  endtask
+
   // Ends the software's loop: the magic word of test `id` (eg2_debug.h) to `done` over SBA.
   protected task finish(int unsigned id);
     sba_access_err_e st;

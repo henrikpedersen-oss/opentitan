@@ -230,11 +230,11 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     c0 = core_resets;
     n0 = debug_entries;
     cfg.debugger.set_ndmreset(1);
-    cfg.debugger.set_haltreq(1);
+    set_haltreq(1);
     cfg.clk_rst_vif.wait_clks(20);
     cfg.debugger.set_ndmreset(0);
     cfg.debugger.wait_cpu_halted();
-    cfg.debugger.set_haltreq(0);
+    set_haltreq(0);
     wait_debug_entry(n0, "halt at the first instruction after ndmreset");
     chk_true("a core reset seen before the halt", core_resets > c0);
     exp_dpc = {rvfi.boot_addr[31:8], 8'h80};

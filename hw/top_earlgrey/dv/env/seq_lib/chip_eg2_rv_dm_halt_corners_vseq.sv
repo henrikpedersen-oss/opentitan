@@ -206,7 +206,7 @@ class chip_eg2_rv_dm_halt_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     end
     t0 = $realtime;
     fork
-      cfg.debugger.set_haltreq(1);
+      set_haltreq(1);
       watch_launch(kind, target, t_dbg, hit, sub);
     join
     lat_est = lat_est == 0 ? t_dbg - t0 : (lat_est + (t_dbg - t0)) / 2;
@@ -216,7 +216,7 @@ class chip_eg2_rv_dm_halt_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     `uvm_info(`gfn, $sformatf("EG2 DM %s: request latency %0t, hit %0d, sub-state %0d", what,
                               t_dbg - t0, hit, sub), UVM_LOW)
     cfg.debugger.wait_cpu_halted();
-    cfg.debugger.set_haltreq(0);
+    set_haltreq(0);
     wait_debug_entry(n0, what);
     // Every GPR at the first halt of a kernel, six drawn ones at the others.
     gpr_sample = tries[kind] == 1 ? 0 : 6;
@@ -263,7 +263,7 @@ class chip_eg2_rv_dm_halt_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
       if (t_launch > $realtime) #(t_launch - $realtime);
       t0 = $realtime;
       fork
-        cfg.debugger.set_haltreq(1);
+        set_haltreq(1);
         wait_debug_req(t_dbg);
       join
       hit = !cfg_store_after_reset.exists(lock_addr);
@@ -273,7 +273,7 @@ class chip_eg2_rv_dm_halt_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
                                 what, t_dbg - reset_release_time, t_lock,
                                 hit ? "before the store: base mode" : "after it"), UVM_LOW)
       cfg.debugger.wait_cpu_halted();
-      cfg.debugger.set_haltreq(0);
+      set_haltreq(0);
       wait_debug_entry(n0, what);
       check_entry(what, RvDebugCauseHaltReq, 1'b1);
       resume_checked(what);

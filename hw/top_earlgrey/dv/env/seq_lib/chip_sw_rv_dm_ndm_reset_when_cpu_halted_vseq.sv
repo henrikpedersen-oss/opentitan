@@ -32,6 +32,8 @@ class chip_sw_rv_dm_ndm_reset_when_cpu_halted_vseq extends chip_sw_base_vseq;
     csr_rd(.ptr(jtag_dmi_ral.dmstatus), .value(rw_data), .blocking(1));
     `DV_CHECK_EQ(dv_base_reg_pkg::get_field_val(jtag_dmi_ral.dmstatus.anyrunning, rw_data), 1)
     `DV_CHECK_EQ(dv_base_reg_pkg::get_field_val(jtag_dmi_ral.dmstatus.allrunning, rw_data), 1)
+    // The instruction-set model stops at the debug-mode entry (eg2_iss_wrapper debug_session).
+    eg2_iss_wrapper::debug_session(get_type_name());
     cfg.debugger.set_haltreq(1);
     cfg.debugger.wait_cpu_halted();
 
