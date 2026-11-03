@@ -906,13 +906,61 @@
       run_timeout_mins: 240
     }
     {
-      // Slice 1 of 8 (alert_handler, sram_ctrl_main.regs).
-      name: chip_sw_eg2_rand_regs_slice1
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1a of 8 (alert_handler registers 1-90).
+      name: chip_sw_eg2_rand_regs_slice1a
       uvm_test_seq: chip_sw_eg2_rand_regs_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=1024"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1b of 8 (alert_handler registers 91-181).
+      name: chip_sw_eg2_rand_regs_slice1b
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=1"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1c of 8 (alert_handler registers 182-271).
+      name: chip_sw_eg2_rand_regs_slice1c
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=2"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1d of 8 (alert_handler registers 272-362).
+      name: chip_sw_eg2_rand_regs_slice1d
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=3"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1e of 8 (sram_ctrl_main.regs).
+      name: chip_sw_eg2_rand_regs_slice1e
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=0", "+eg2_param_windows_hi=1024"]
       run_timeout_mins: 240
     }
     {
@@ -986,13 +1034,61 @@
       run_timeout_mins: 240
     }
     {
-      // Slice 1 of 8 (alert_handler, sram_ctrl_main.regs).
-      name: chip_sw_eg2_rand_regs_cheriot_slice1
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1a of 8 (alert_handler registers 1-90).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1a
       uvm_test_seq: chip_sw_eg2_rand_regs_vseq
       sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=1024"]
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1b of 8 (alert_handler registers 91-181).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1b
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=1"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1c of 8 (alert_handler registers 182-271).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1c
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=2"]
+      run_timeout_mins: 240
+    }
+    {
+      // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
+      // sram_ctrl_main.regs had passed): four runs of a quarter of its registers each.
+      // Slice 1d of 8 (alert_handler registers 272-362).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1d
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=3"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1e of 8 (sram_ctrl_main.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1e
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=0", "+eg2_param_windows_hi=1024"]
       run_timeout_mins: 240
     }
     {
@@ -1108,7 +1204,11 @@
       // the run-time limit).
       name: eg2_regmem_regs
       tests: ["chip_sw_eg2_rand_regs_slice0",
-              "chip_sw_eg2_rand_regs_slice1",
+              "chip_sw_eg2_rand_regs_slice1a",
+              "chip_sw_eg2_rand_regs_slice1b",
+              "chip_sw_eg2_rand_regs_slice1c",
+              "chip_sw_eg2_rand_regs_slice1d",
+              "chip_sw_eg2_rand_regs_slice1e",
               "chip_sw_eg2_rand_regs_slice2",
               "chip_sw_eg2_rand_regs_slice3",
               "chip_sw_eg2_rand_regs_slice4",
@@ -1116,7 +1216,11 @@
               "chip_sw_eg2_rand_regs_slice6",
               "chip_sw_eg2_rand_regs_slice7",
               "chip_sw_eg2_rand_regs_cheriot_slice0",
-              "chip_sw_eg2_rand_regs_cheriot_slice1",
+              "chip_sw_eg2_rand_regs_cheriot_slice1a",
+              "chip_sw_eg2_rand_regs_cheriot_slice1b",
+              "chip_sw_eg2_rand_regs_cheriot_slice1c",
+              "chip_sw_eg2_rand_regs_cheriot_slice1d",
+              "chip_sw_eg2_rand_regs_cheriot_slice1e",
               "chip_sw_eg2_rand_regs_cheriot_slice2",
               "chip_sw_eg2_rand_regs_cheriot_slice3",
               "chip_sw_eg2_rand_regs_cheriot_slice4",

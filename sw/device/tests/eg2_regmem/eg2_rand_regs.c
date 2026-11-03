@@ -30,6 +30,11 @@
  * phase locks the REGWENs drawn (a 0 written: it reads 0 and a 1 does not reopen it) and checks
  * that a write to the locked register changes nothing.
  *
+ * `reg_parts` and `reg_part` (default 1 and 0: every register) take only part `reg_part` of
+ * `reg_parts` equal parts of each window's registers, in table order: a regression slice splits a
+ * window too big for one run (alert_handler, 362 registers) into runs that together check all of
+ * it. The lock phase then locks only REGWENs of that part.
+ *
  * `model_gaps` (default 0) skips what the EG2 SystemC model does not model (the table's gaps,
  * shadowed staging outside the alert handler, the bus error of a narrow write): set by eg2sim
  * runs only, and counted.
@@ -71,6 +76,8 @@ EG2_TEST_CONFIG();
   X(alias_reads, 8, 0, 64)                                \
   X(windows_lo, 0xffffffffu, 0, 0xffffffffu)              \
   X(windows_hi, 0xffffffffu, 0, 0xffffffffu)              \
+  X(reg_parts, 1, 1, 16)                                  \
+  X(reg_part, 0, 0, 15)                                   \
   X(model_gaps, 0, 0, 1)
 EG2_RM_PARAMS(RAND_REGS_PARAMS)
 
@@ -589,6 +596,10 @@ bool eg2_test_main(void) {
   if (!eg2_rm_params_begin()) {
     return false;
   }
+  if (EG2_PARAM(reg_part) >= EG2_PARAM(reg_parts)) {
+    eg2_puts("REG FAIL reg_part must be below reg_parts\r\n");
+    return false;
+  }
   ctx_t c = {0};
   c.gaps = EG2_PARAM(model_gaps) != 0;
 
@@ -642,22 +653,25 @@ bool eg2_test_main(void) {
     volatile uint8_t *blk = (volatile uint8_t *)eg2_rm_ptr(b->base);
     uint32_t fails0 = c.fails, checks0 = c.checks;
     c.block_lines = 0;
-    for (uint32_t i = 0; i < b->count; ++i) {
-      regs[i] = (uint16_t)(b->first + i);
+    // This run's part of the window's registers (all of them unless `reg_parts` > 1).
+    uint32_t lo = b->count * EG2_PARAM(reg_part) / EG2_PARAM(reg_parts);
+    uint32_t cnt = b->count * (EG2_PARAM(reg_part) + 1) / EG2_PARAM(reg_parts) - lo;
+    for (uint32_t i = 0; i < cnt; ++i) {
+      regs[i] = (uint16_t)(b->first + lo + i);
     }
     if (EG2_PARAM(reset_read_first)) {
-      for (uint32_t i = 0; i < b->count; ++i) {
+      for (uint32_t i = 0; i < cnt; ++i) {
         if (resettable(&c, &kEg2RmRegs[regs[i]], regs[i])) {
           op_reset(&c, blk, b, &kEg2RmRegs[regs[i]], true);
         }
       }
     }
     if (EG2_PARAM(order) == 2) {
-      shuffle(regs, b->count);
+      shuffle(regs, cnt);
     } else {
-      ordered(regs, b->count, true);
+      ordered(regs, cnt, true);
     }
-    uint32_t n = b->count < EG2_PARAM(max_regs) ? b->count : EG2_PARAM(max_regs);
+    uint32_t n = cnt < EG2_PARAM(max_regs) ? cnt : EG2_PARAM(max_regs);
     for (uint32_t i = 0; i < n; ++i) {
       one_register(&c, blk, b, regs[i]);
     }
