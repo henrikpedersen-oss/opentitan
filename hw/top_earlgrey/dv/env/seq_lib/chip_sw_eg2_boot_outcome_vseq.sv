@@ -22,7 +22,12 @@
 //
 // The shutdown code is logged, not compared: the ROM and ROM_EXT try both slots, and the code
 // they print is the last slot's (an empty slot B reports a bad identifier), so it does not name
-// the corruption of slot A.
+// the corruption of slot A. One code is ruled out: kErrorSigverifyBadAuthPartition
+// (`BFV:08535603`). The ROM checks the digest of its code-signing keys in OTP
+// (ROT_CREATOR_AUTH_CODESIGN) before it looks at any image (rom/doc/root_keys.md, "Integrity
+// Protection"), so that code means the OTP image has no valid keys and no image was judged at all.
+// The run's OTP must carry the keys: the dvsim entry gives a Bazel OTP image (image index 4,
+// +use_otp_image=OtpTypeCustom).
 //
 // +eg2_inject_fail=1 (the bench's must-fail entries) inverts the expected stage of a refusal, or
 // the expected mode of a boot: the run must fail with `EG2CHK FAIL refused by <stage>` or
@@ -40,6 +45,8 @@ class chip_sw_eg2_boot_outcome_vseq extends chip_sw_eg2_boot_sec_base_vseq;
   // +eg2_boot_final_log=<boots>:<slots>: the boot_svc end-to-end tests' expected state (below).
   string final_log;
   localparam int unsigned RetOwner = 2048;
+  // kErrorSigverifyBadAuthPartition (silicon_creator/lib/error.h) as the ROM prints it.
+  localparam string BadAuthPartition = "BFV:08535603";
 
   virtual task pre_start();
     void'($value$plusargs("eg2_boot_expect=%s", expect_outcome));
@@ -70,6 +77,12 @@ class chip_sw_eg2_boot_outcome_vseq extends chip_sw_eg2_boot_sec_base_vseq;
     wait_uart_line("BFV:", bfv, cfg.sw_test_timeout_ns);
     void'(check("boot refused with a shutdown code on UART0", bfv >= 0,
                 bfv >= 0 ? uart_lines[bfv] : "no BFV line"));
+    if (bfv >= 0) begin
+      void'(check("the ROM's code-signing keys in OTP passed their digest check",
+                  !(uart_lines[bfv].len() >= BadAuthPartition.len() &&
+                    uart_lines[bfv].substr(0, BadAuthPartition.len() - 1) == BadAuthPartition),
+                  {uart_lines[bfv], " (", BadAuthPartition, " = bad auth partition)"}));
+    end
     // Anything the image could still do after the code.
     #(settle_ns * 1ns);
     banner = find_uart_line("ROM_EXT:");

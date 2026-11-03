@@ -350,6 +350,19 @@ otp_image(
     overlays = STD_OTP_OVERLAYS + [":otp_json_eg2_device_id"],
 )
 
+# The OTP image of every ROM-booting test in RMA state (chip_eg2_boot_tests.hjson, image index 4,
+# +use_otp_image=OtpTypeCustom): the content of //hw/top_earlgrey/data/otp:img_rma, which carries
+# the creator code-signing keys the ROM needs (the dvsim-generated otp_ctrl_img_*.hjson images do
+# not). Its own target because img_rma is also the sim_dv exec env's `otp`: listed as an image,
+# build_sw_collateral_for_sim.py then looks for its RRAM-layout file (.128.vmem) in the exec env's
+# configuration, where it is not built. The other states use img_test_unlocked0, img_dev and
+# img_prod directly.
+otp_image(
+    name = "otp_img_eg2_boot_rma",
+    src = "//hw/top_earlgrey/data/otp:otp_json_rma",
+    overlays = STD_OTP_OVERLAYS,
+)
+
 _USAGE_CASES = {
     # case: (manifest fields, must the image boot)
     "this_device": ({"device_id": _DEVICE_ID}, True),

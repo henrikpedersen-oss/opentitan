@@ -9,6 +9,13 @@
 // `rom_ext`); chip_sw_eg2_boot_outcome_vseq checks each image's outcome as the documents give it
 // (+eg2_boot_expect, +eg2_boot_refused_by, +eg2_boot_cheriot). Every `_inject_fail` run must
 // FAIL (REQ_STE_03: Makefile MUST_FAIL_TESTS) and is in no regression list.
+// Every ROM-booting test loads a Bazel OTP image (image index 4, +use_otp_image=OtpTypeCustom):
+// //hw/top_earlgrey/data/otp:img_<state> for the state the entry names, otherwise
+// otp_img_eg2_boot_rma (the bench default state RMA). The ROM uses its code-signing keys only if
+// their OTP digest is right (sw/device/silicon_creator/rom/doc/root_keys.md), and the
+// dvsim-generated otp_ctrl_img_*.hjson images carry no keys. chip_sw_eg2_boot_epmp_reset prints
+// its results over UART0 from ROM and needs about 21 ms with the modelled AST power-up
+// (FAST_POWER_UP=0); its timeout is 30 ms.
 {
   tests: [
     {
@@ -17,7 +24,7 @@
       sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_epmp_reset:0:test_in_rom:new_rules"]
       en_run_modes: ["sw_test_mode_common"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=20_000_000"]
+      run_opts: ["+sw_test_timeout_ns=30_000_000"]
       run_timeout_mins: 480
     }
     {
@@ -26,378 +33,378 @@
       sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_epmp_reset_inject_fail:0:test_in_rom:new_rules"]
       en_run_modes: ["sw_test_mode_common"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=20_000_000"]
+      run_opts: ["+sw_test_timeout_ns=30_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_handover_protection
       uvm_test_seq: chip_sw_eg2_boot_handover_protection_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_handover_protection_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_handover_protection_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_handover_protection_cheriot
       uvm_test_seq: chip_sw_eg2_boot_handover_protection_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_handover_protection_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_handover_protection_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_cheriot_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_handover_protection_cheriot_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+use_jtag_dmi=1", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_keymgr_stage
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_keymgr_stage_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_keymgr_stage_cheriot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_keymgr_stage_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_cheriot_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_keymgr_stage_cheriot_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_cheriot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_cheriot_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_test_cheriot_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_rom_ext_signature
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_signature:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_signature:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_rom_ext_digest
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_digest:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_digest:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_rom_ext_key_id
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_key_id:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_rom_ext_key_id:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_owner_signature
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_signature:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_signature:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_owner_digest
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_digest:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_digest:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_owner_key_id
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_key_id:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_key_id:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
       // Must fail: the bench expects the ROM to refuse (EG2CHK FAIL refused by the ROM).
     {
       name: chip_sw_cheriot_secure_boot_bad_sig_owner_signature_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_signature:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_cheriot_secure_boot_bad_sig_owner_signature:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_test_tu0
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext", "//hw/top_earlgrey/data/otp:img_test_unlocked0:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStTestUnlocked0"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_test_dev
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext", "//hw/top_earlgrey/data/otp:img_dev:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStDev", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_test_prod
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext", "//hw/top_earlgrey/data/otp:img_prod:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStProd", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_test_rma
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_dev_tu0
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext", "//hw/top_earlgrey/data/otp:img_test_unlocked0:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStTestUnlocked0", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_dev_dev
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext", "//hw/top_earlgrey/data/otp:img_dev:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStDev"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_dev_prod
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext", "//hw/top_earlgrey/data/otp:img_prod:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStProd", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_dev_rma
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_prod_tu0
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext", "//hw/top_earlgrey/data/otp:img_test_unlocked0:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStTestUnlocked0"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_prod_dev
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext", "//hw/top_earlgrey/data/otp:img_dev:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStDev"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_prod_prod
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext", "//hw/top_earlgrey/data/otp:img_prod:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStProd"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_prod_rma
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_unknown_tu0
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext", "//hw/top_earlgrey/data/otp:img_test_unlocked0:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStTestUnlocked0", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_unknown_dev
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext", "//hw/top_earlgrey/data/otp:img_dev:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStDev", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_unknown_prod
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext", "//hw/top_earlgrey/data/otp:img_prod:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStProd", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_unknown_rma
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_test_rma_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_test_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_prod_rma_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_prod_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_key_role_dev_dev_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_dev_inject_fail:1:rom_ext", "//hw/top_earlgrey/data/otp:img_dev:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStDev"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom"]
       run_timeout_mins: 480
     }
       // Must fail: the bench expects ROM_EXT to refuse (EG2CHK FAIL refused by ROM_EXT).
     {
       name: chip_sw_eg2_boot_key_role_unknown_rma_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_key_role_unknown:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeLcStRma", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom", "+eg2_inject_fail=1"]
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+use_otp_image=OtpTypeCustom", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
@@ -458,254 +465,254 @@
     {
       name: chip_sw_eg2_boot_manifest_bad_identifier_zero
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_zero:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_zero:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_manifest_bad_identifier_all_ones
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_all_ones:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_all_ones:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_manifest_bad_entry_at_code_end
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_entry_at_code_end:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_entry_at_code_end:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_manifest_bad_code_empty
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_code_empty:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_code_empty:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_manifest_bad_code_outside_slot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_code_outside_slot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_code_outside_slot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_manifest_bad_length_past_slot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_length_past_slot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_length_past_slot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext"]
       run_timeout_mins: 480
     }
       // Must fail: the bench expects the ROM to refuse (EG2CHK FAIL refused by the ROM).
     {
       name: chip_sw_eg2_boot_manifest_bad_identifier_zero_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_zero:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_manifest_bad_identifier_zero:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_expect=refuse", "+eg2_boot_refused_by=rom_ext", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_rollback
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_rollback:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_rollback:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_rollback_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_rollback_inject_fail:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_rollback_inject_fail:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_empty
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_empty_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_empty_cheriot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_empty_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_empty_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_boot_cheriot=1", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=4:AAAA", "+eg2_boot_cheriot=1", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_next_aab
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aab:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aab:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAB"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAB"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_next_aab_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aab:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aab:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAB", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAB", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_next_aba
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aba:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aba:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_next_aba_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aba:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_aba:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_next_abb
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_abb:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_abb:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABB"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABB"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_next_abb_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_abb:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_next_abb:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABB", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABB", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_primary
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_primary:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_primary:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=5:ABBBA"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=5:ABBBA"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_primary_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_primary:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_primary:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=5:ABBBA", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=5:ABBBA", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_next
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_next_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_next_cheriot
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_boot_cheriot=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_boot_cheriot=1"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_next_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next_cheriot:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_next_cheriot:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_boot_cheriot=1", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:AAA", "+eg2_boot_cheriot=1", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_primary
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_primary:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_primary:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA"]
       run_timeout_mins: 480
     }
       // Must fail: EG2CHK FAIL boot_svc FinalBootLog.
     {
       name: chip_sw_eg2_boot_svc_e2e_bad_primary_inject_fail
       uvm_test_seq: chip_sw_eg2_boot_outcome_vseq
-      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_primary:1:rom_ext"]
+      sw_images: ["//sw/device/tests/eg2_boot:eg2_boot_svc_e2e_bad_primary:1:rom_ext", "//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA", "+eg2_inject_fail=1"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+sw_test_timeout_ns=300_000_000", "+eg2_boot_final_log=3:ABA", "+eg2_inject_fail=1"]
       run_timeout_mins: 480
     }
   ]
