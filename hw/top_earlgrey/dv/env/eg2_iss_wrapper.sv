@@ -2035,7 +2035,9 @@ class eg2_iss_wrapper extends uvm_component;
                                   "CHERIOT_LOCK with CHERIOT_ENA MuBi4True enables it"},
                                  item.order, item.pc, sw_model.name(), sw_ena))
       sw_reported = 1'b1;
-    end else if (!entering_cheriot && (sw_model == SwLockedEna || sw_model == SwError)) begin
+    end else if (!item.cheriot && (sw_model == SwLockedEna || sw_model == SwError)) begin
+      // Only items the chip runs in ePMP mode count (3 Nov: every item after the handover was
+      // counted, so each CHERIoT run failed 65 instructions after its lock).
       sw_items_after++;
       if (sw_model == SwLockedEna && sw_items_after > SwitchMaxItems) begin
         model_error($sformatf({"EG2_ISS the chip still runs in ePMP mode %0d instructions after ",
