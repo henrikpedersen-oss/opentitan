@@ -1258,8 +1258,15 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
           alert_fifo[k].get(a);
           if (a.m_trans_type != alert_agent_pkg::AlertSigTrans) continue;
           if (a.m_alert_handshake_sta != alert_agent_pkg::AlertReceived) continue;
+          // The time of every alert and of each episode's first, in run.log and in the item's
+          // note (not compared), so a repeat can be placed against the test's own lines (the
+          // low-power entry and wake-up), 2026-11-03.
+          `uvm_info(`gfn, $sformatf("EG2_SB sensor_ctrl %s alert received at %0.3f us",
+                                    k == 0 ? "recov" : "fatal", $realtime / 1us), UVM_MEDIUM)
           if (!seen_act[k] || $realtime - last_act[k] > quiet_cycles * aon_period) begin
-            pin_port.write(event_item(k, ""));
+            `uvm_info(`gfn, $sformatf("EG2_SB sensor_ctrl %s alert episode (chip) at %0.3f us",
+                                      k == 0 ? "recov" : "fatal", $realtime / 1us), UVM_LOW)
+            pin_port.write(event_item(k, $sformatf("at %0.3f us", $realtime / 1us)));
           end
           seen_act[k] = 1'b1;
           last_act[k] = $realtime;
@@ -1278,7 +1285,9 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
 
   protected function void expect_alert(int k, string why);
     if (!seen_exp[k] || $realtime - last_exp[k] > quiet_cycles * aon_period) begin
-      tl_exp_port.write(event_item(k, why));
+      `uvm_info(`gfn, $sformatf("EG2_SB sensor_ctrl %s alert episode (predicted, %s) at %0.3f us",
+                                k == 0 ? "recov" : "fatal", why, $realtime / 1us), UVM_LOW)
+      tl_exp_port.write(event_item(k, $sformatf("%s, at %0.3f us", why, $realtime / 1us)));
       n_events++;
     end
     seen_exp[k] = 1'b1;
