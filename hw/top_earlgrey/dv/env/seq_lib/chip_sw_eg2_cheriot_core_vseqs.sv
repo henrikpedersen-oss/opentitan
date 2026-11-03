@@ -206,7 +206,13 @@ endclass
 // this OTTF image (test ROM, OTTF's own cache setting).
 class chip_sw_eg2_ottf_smoke_vseq extends chip_sw_eg2_cheriot_vseq;
   `uvm_object_utils(chip_sw_eg2_ottf_smoke_vseq)
-  `uvm_object_new
+  // An OTTF image: OTTF reports on the DV log (sim_dv), its PASS! included, and nothing reaches
+  // UART0, so the EG2 scoreboard must not require UART0 traffic (2026-11-03: the run passed and
+  // was failed for "uart0: the test uses it but its monitor saw nothing").
+  function new(string name = "");
+    super.new(name);
+    uart0_console = 1'b0;
+  endfunction
   rand int unsigned n_windows, window_order;
   constraint knobs_c {
     // 50 % every window (any value above the table's count), 50 % uniform.

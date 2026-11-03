@@ -121,7 +121,7 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
 
   virtual task body();
     configure_uart_agent(.uart_idx(0), .enable(1));
-    cfg.eg2_sb_uart_required[0] = 1'b1;
+    cfg.eg2_sb_uart_required[0] = uart0_console;
     fork
       forward_dv_console();
       uart_lines_and_steps();

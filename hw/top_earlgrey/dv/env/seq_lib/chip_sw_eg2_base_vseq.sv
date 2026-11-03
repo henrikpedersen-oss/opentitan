@@ -52,6 +52,11 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
   // checks) sees one stream.
   bit dv_console = 1'b1;
 
+  // The image prints on UART0 (the EG2 framework's console, or at least its verdict), so the EG2
+  // scoreboard requires UART0 traffic. A vseq whose image does not (an OTTF image: OTTF reports on
+  // the DV log in sim_dv, the verdict included) clears it before body().
+  protected bit uart0_console = 1'b1;
+
   // What a console line came with: its channel and, from the DV channel, its verbosity.
   typedef struct {
     bit           dv;
@@ -63,7 +68,7 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
 
   virtual task body();
     configure_uart_agent(.uart_idx(0), .enable(1));
-    cfg.eg2_sb_uart_required[0] = 1'b1;
+    cfg.eg2_sb_uart_required[0] = uart0_console;
     fork
       forward_dv_console();
       log_uart_lines(0);
