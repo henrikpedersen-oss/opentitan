@@ -69,6 +69,8 @@ EG2_TEST_CONFIG();
   X(order, 2, 0, 2)                                       \
   X(reset_read_first, 1, 0, 1)                            \
   X(alias_reads, 8, 0, 64)                                \
+  X(windows_lo, 0xffffffffu, 0, 0xffffffffu)              \
+  X(windows_hi, 0xffffffffu, 0, 0xffffffffu)              \
   X(model_gaps, 0, 0, 1)
 EG2_RM_PARAMS(RAND_REGS_PARAMS)
 
@@ -618,7 +620,17 @@ bool eg2_test_main(void) {
     win[i] = (uint16_t)i;
   }
   shuffle(win, EG2_RM_BLOCK_COUNT);
-  uint32_t nwin = EG2_PARAM(n_windows);
+  // Only the windows `windows_lo`/`windows_hi` select (a bit per window, in table order): a slice
+  // of the regression checks a fixed set of windows, so the slices together check every window.
+  uint32_t nsel = 0;
+  for (uint32_t i = 0; i < EG2_RM_BLOCK_COUNT; ++i) {
+    uint32_t k = win[i];
+    uint32_t sel = k < 32 ? EG2_PARAM(windows_lo) >> k : EG2_PARAM(windows_hi) >> (k - 32);
+    if (sel & 1) {
+      win[nsel++] = (uint16_t)k;
+    }
+  }
+  uint32_t nwin = EG2_PARAM(n_windows) < nsel ? EG2_PARAM(n_windows) : nsel;
   if (EG2_PARAM(order) != 2) {
     ordered(win, nwin, false);
   }

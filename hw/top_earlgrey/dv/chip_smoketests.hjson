@@ -749,6 +749,250 @@
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
       run_timeout_mins: 480
     }
+    // The connectivity and register tests split into fixed slices of blocks (2026-11-03): a whole
+    // run took 4.5 to 8 hours and was stopped by the run-time limit. Together the slices cover
+    // every block once per mode; the block sets are balanced by interrupts and alerts
+    // (connectivity) and by registers (rand_regs). The links between blocks run in slice 0.
+    {
+      // Slice 0 of 4 (uart3, gpio, i3c0, rv_timer, spi_host1, rstmgr, ast, rv_dm.mem, aes, hmac, kmac, sram_ctrl_main.regs).
+      name: chip_sw_eg2_connectivity_slice0
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107888664", "+eg2_param_blocks_hi=1038", "+eg2_param_links=1"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1 of 4 (uart0, uart2, lc_ctrl.regs, alert_handler, usbdev, clkmgr, rram_macro.prim, otbn, csrng, edn1, sram_ctrl_sec.regs, cheriot_mem_sys.regs).
+      name: chip_sw_eg2_connectivity_slice1
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=538075141", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 2 of 4 (spi_device, i2c0, i2c2, i3c1, pwrmgr, sysrst_ctrl, pinmux, aon_timer, rv_dm.regs, entropy_src, edn0, rom_ctrl.regs).
+      name: chip_sw_eg2_connectivity_slice2
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2175010144", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 3 of 4 (uart1, i2c1, otp_ctrl.core, spi_host0, adc_ctrl, sensor_ctrl, sram_ctrl_ret.regs, rram_ctrl.core, rv_plic, keymgr_dpe, rv_core_ibex.cfg, sram_ctrl_meta.regs).
+      name: chip_sw_eg2_connectivity_slice3
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=473993346", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 0 of 4 (uart3, gpio, i3c0, rv_timer, spi_host1, rstmgr, ast, rv_dm.mem, aes, hmac, kmac, sram_ctrl_main.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice0
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107888664", "+eg2_param_blocks_hi=1038", "+eg2_param_links=1"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1 of 4 (uart0, uart2, lc_ctrl.regs, alert_handler, usbdev, clkmgr, rram_macro.prim, otbn, csrng, edn1, sram_ctrl_sec.regs, cheriot_mem_sys.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice1
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=538075141", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 2 of 4 (spi_device, i2c0, i2c2, i3c1, pwrmgr, sysrst_ctrl, pinmux, aon_timer, rv_dm.regs, entropy_src, edn0, rom_ctrl.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice2
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2175010144", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 3 of 4 (uart1, i2c1, otp_ctrl.core, spi_host0, adc_ctrl, sensor_ctrl, sram_ctrl_ret.regs, rram_ctrl.core, rv_plic, keymgr_dpe, rv_core_ibex.cfg, sram_ctrl_meta.regs).
+      name: chip_sw_eg2_connectivity_cheriot_slice3
+      uvm_test_seq: chip_sw_eg2_connectivity_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_connectivity_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=473993346", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 0 of 8 (pinmux).
+      name: chip_sw_eg2_rand_regs_slice0
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=8388608", "+eg2_param_windows_hi=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1 of 8 (alert_handler, sram_ctrl_main.regs).
+      name: chip_sw_eg2_rand_regs_slice1
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=1024"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 2 of 8 (i2c0, spi_host1, aon_timer, sensor_ctrl, rram_macro.prim, rv_dm.mem).
+      name: chip_sw_eg2_rand_regs_slice2
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1694564416", "+eg2_param_windows_hi=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 3 of 8 (uart2, sram_ctrl_ret.regs, rv_plic, aes, kmac, csrng, rom_ctrl.regs).
+      name: chip_sw_eg2_rand_regs_slice3
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=134217732", "+eg2_param_windows_hi=4171"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 4 of 8 (uart0, uart3, i2c1, i3c0, lc_ctrl.regs, rv_dm.regs, hmac, rv_core_ibex.cfg).
+      name: chip_sw_eg2_rand_regs_slice4
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=2147492489", "+eg2_param_windows_hi=8196"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 5 of 8 (i2c2, i3c1, otp_ctrl.core, spi_host0, usbdev, clkmgr, otbn, sram_ctrl_meta.regs).
+      name: chip_sw_eg2_rand_regs_slice5
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1217792", "+eg2_param_windows_hi=32784"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 6 of 8 (uart1, adc_ctrl, rram_ctrl.core, keymgr_dpe, entropy_src, edn1, cheriot_mem_sys.regs).
+      name: chip_sw_eg2_rand_regs_slice6
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=272629762", "+eg2_param_windows_hi=17056"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 7 of 8 (gpio, spi_device, rv_timer, pwrmgr, rstmgr, sysrst_ctrl, ast, edn0, sram_ctrl_sec.regs).
+      name: chip_sw_eg2_rand_regs_slice7
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=36440112", "+eg2_param_windows_hi=2304"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 0 of 8 (pinmux).
+      name: chip_sw_eg2_rand_regs_cheriot_slice0
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=8388608", "+eg2_param_windows_hi=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 1 of 8 (alert_handler, sram_ctrl_main.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice1
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=1024"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 2 of 8 (i2c0, spi_host1, aon_timer, sensor_ctrl, rram_macro.prim, rv_dm.mem).
+      name: chip_sw_eg2_rand_regs_cheriot_slice2
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1694564416", "+eg2_param_windows_hi=0"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 3 of 8 (uart2, sram_ctrl_ret.regs, rv_plic, aes, kmac, csrng, rom_ctrl.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice3
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=134217732", "+eg2_param_windows_hi=4171"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 4 of 8 (uart0, uart3, i2c1, i3c0, lc_ctrl.regs, rv_dm.regs, hmac, rv_core_ibex.cfg).
+      name: chip_sw_eg2_rand_regs_cheriot_slice4
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=2147492489", "+eg2_param_windows_hi=8196"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 5 of 8 (i2c2, i3c1, otp_ctrl.core, spi_host0, usbdev, clkmgr, otbn, sram_ctrl_meta.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice5
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1217792", "+eg2_param_windows_hi=32784"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 6 of 8 (uart1, adc_ctrl, rram_ctrl.core, keymgr_dpe, entropy_src, edn1, cheriot_mem_sys.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice6
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=272629762", "+eg2_param_windows_hi=17056"]
+      run_timeout_mins: 240
+    }
+    {
+      // Slice 7 of 8 (gpio, spi_device, rv_timer, pwrmgr, rstmgr, sysrst_ctrl, ast, edn0, sram_ctrl_sec.regs).
+      name: chip_sw_eg2_rand_regs_cheriot_slice7
+      uvm_test_seq: chip_sw_eg2_rand_regs_vseq
+      sw_images: ["//sw/device/tests/eg2_regmem:eg2_rand_regs_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=36440112", "+eg2_param_windows_hi=2304"]
+      run_timeout_mins: 240
+    }
   ]
   regressions: [
     {
@@ -780,18 +1024,39 @@
       // The register, memory and connectivity tests (the `_inject_fail` builds are run on their
       // own). Each passes in eg2sim in both modes before it runs here (EG2 spec REQ_STE_11).
       name: eg2_regmem
-      tests: ["chip_sw_eg2_connectivity",
-              "chip_sw_eg2_connectivity_cheriot",
+      tests: ["chip_sw_eg2_connectivity_slice0",
+              "chip_sw_eg2_connectivity_slice1",
+              "chip_sw_eg2_connectivity_slice2",
+              "chip_sw_eg2_connectivity_slice3",
+              "chip_sw_eg2_connectivity_cheriot_slice0",
+              "chip_sw_eg2_connectivity_cheriot_slice1",
+              "chip_sw_eg2_connectivity_cheriot_slice2",
+              "chip_sw_eg2_connectivity_cheriot_slice3",
               "chip_sw_eg2_mem_test",
               "chip_sw_eg2_mem_test_cheriot",
             ]
     }
     {
-      // The register tests on their own: 4-12 windows per run, so several seeds
-      // (scripts/regr_xlm.sh stage regmem-regs, RESEED=6). 2026-10-26.
+      // The register tests on their own, in 8 fixed slices of windows per mode that together check
+      // every window (2026-11-03; before, 4-12 random windows per run and six seeds, which hit
+      // the run-time limit).
       name: eg2_regmem_regs
-      tests: ["chip_sw_eg2_rand_regs",
-              "chip_sw_eg2_rand_regs_cheriot",
+      tests: ["chip_sw_eg2_rand_regs_slice0",
+              "chip_sw_eg2_rand_regs_slice1",
+              "chip_sw_eg2_rand_regs_slice2",
+              "chip_sw_eg2_rand_regs_slice3",
+              "chip_sw_eg2_rand_regs_slice4",
+              "chip_sw_eg2_rand_regs_slice5",
+              "chip_sw_eg2_rand_regs_slice6",
+              "chip_sw_eg2_rand_regs_slice7",
+              "chip_sw_eg2_rand_regs_cheriot_slice0",
+              "chip_sw_eg2_rand_regs_cheriot_slice1",
+              "chip_sw_eg2_rand_regs_cheriot_slice2",
+              "chip_sw_eg2_rand_regs_cheriot_slice3",
+              "chip_sw_eg2_rand_regs_cheriot_slice4",
+              "chip_sw_eg2_rand_regs_cheriot_slice5",
+              "chip_sw_eg2_rand_regs_cheriot_slice6",
+              "chip_sw_eg2_rand_regs_cheriot_slice7",
             ]
     }
     {

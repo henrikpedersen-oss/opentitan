@@ -36,6 +36,8 @@ class chip_sw_eg2_connectivity_vseq extends chip_sw_eg2_base_vseq;
     set_param("blocks_hi", blocks[63:32]);
     set_param("order", order);
     set_param("alert_polls", alert_polls);
+    // The links between blocks run; a regression slice that leaves them to another pins 0.
+    set_param("links", 1);
     // model_gaps stays 0 on the chip: every check is made.
   endfunction
 

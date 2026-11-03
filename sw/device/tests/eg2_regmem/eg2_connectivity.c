@@ -55,6 +55,7 @@ EG2_TEST_CONFIG();
   X(blocks_hi, 0xffffffffu, 0, 0xffffffffu) \
   X(order, 0, 0, 2)                         \
   X(alert_polls, 10000, 100, 1000000)       \
+  X(links, 1, 0, 1)                         \
   X(model_gaps, 0, 0, 1)
 EG2_RM_PARAMS(CONNECTIVITY_PARAMS)
 
@@ -539,7 +540,10 @@ bool eg2_test_main(void) {
 #endif
   }
 #ifndef EG2_REGMEM_INJECT_FAIL
-  links(&c);
+  // `links` 0: a slice of the regression that leaves the links between blocks to another slice.
+  if (EG2_PARAM(links)) {
+    links(&c);
+  }
 #endif
   eg2_puts("CONN summary: ");
   eg2_putdec(nblocks);

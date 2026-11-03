@@ -91,6 +91,9 @@ class chip_sw_eg2_rand_regs_vseq extends chip_sw_eg2_base_vseq;
 
   virtual function void write_params();
     set_param("n_windows", n_windows);
+    // Every window by default; a regression slice pins its set (+eg2_param_windows_lo/hi).
+    set_param("windows_lo", 32'hffff_ffff);
+    set_param("windows_hi", 32'hffff_ffff);
     set_param("max_regs", max_regs);
     set_param("n_patterns", n_patterns);
     set_param("w_op_reset", w_op_reset);
