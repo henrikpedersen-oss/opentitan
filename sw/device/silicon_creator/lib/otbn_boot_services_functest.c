@@ -30,10 +30,6 @@ static dif_keymgr_dpe_t keymgr_dpe;
 // Pre-defined slot id for the attestation / sealing key chain
 enum {
   /**
-   * Keymgr DPE default slot for sealing context
-   */
-  kKeymgrDPESealSlot = 0,
-  /**
    * Keymgr DPE default slot for attestation context
    */
   kKeymgrDPEAttestSlot = 1,
@@ -123,7 +119,9 @@ rom_error_t attestation_keygen_test(void) {
   RETURN_IF_ERROR(otbn_boot_attestation_keygen(
       kNvmInfoFieldCdi1KeySeedIdx, diversification_modified, &pk_cdi1));
   ecdsa_p256_public_key_t pk_tpm_ek;
-  diversification_modified.sel_src_slot = kKeymgrDPESealSlot;
+  // Test-ROM setup derives only the attestation context in slot 1. Use that populated context for
+  // every seed-diversification comparison in this test.
+  diversification_modified.sel_src_slot = kKeymgrDPEAttestSlot;
   RETURN_IF_ERROR(otbn_boot_attestation_keygen(
       kNvmInfoFieldTpmEkKeySeedIdx, diversification_modified, &pk_tpm_ek));
   CHECK_ARRAYS_NE((unsigned char *)&pk_uds, (unsigned char *)&pk_cdi0,
