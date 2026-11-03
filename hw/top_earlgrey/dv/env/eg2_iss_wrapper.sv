@@ -1974,7 +1974,7 @@ class eg2_iss_wrapper extends uvm_component;
     end else begin
       model_error($sformatf({"EG2_ISS the chip executed the instruction at %08h (order %0d) from %s ",
                                   "while %s: execution there is documented as blocked"},
-                                 item.pc, item.order, region, why))
+                                 item.pc, item.order, region, why));
     end
   endfunction
 
@@ -2033,7 +2033,7 @@ class eg2_iss_wrapper extends uvm_component;
       model_error($sformatf({"EG2_ISS the chip entered CHERIoT mode at order %0d (pc %08h) ",
                                   "while the switch is %s (CHERIOT_ENA %0h): only a MuBi4True ",
                                   "CHERIOT_LOCK with CHERIOT_ENA MuBi4True enables it"},
-                                 item.order, item.pc, sw_model.name(), sw_ena))
+                                 item.order, item.pc, sw_model.name(), sw_ena));
       sw_reported = 1'b1;
     end else if (!item.cheriot && (sw_model == SwLockedEna || sw_model == SwError)) begin
       // Only items the chip runs in ePMP mode count (3 Nov: every item after the handover was
@@ -2042,12 +2042,12 @@ class eg2_iss_wrapper extends uvm_component;
       if (sw_model == SwLockedEna && sw_items_after > SwitchMaxItems) begin
         model_error($sformatf({"EG2_ISS the chip still runs in ePMP mode %0d instructions after ",
                                     "the lock that enabled CHERIoT mode (order %0d, pc %08h)"},
-                                   sw_items_after, item.order, item.pc))
+                                   sw_items_after, item.order, item.pc));
         sw_reported = 1'b1;
       end else if (sw_model == SwError && sw_items_after > ErrorMaxItems) begin
         model_error($sformatf({"EG2_ISS the chip retired %0d instructions after the mode switch's ",
                                     "error state, which halts instruction fetch (order %0d, pc %08h)"},
-                                   sw_items_after, item.order, item.pc))
+                                   sw_items_after, item.order, item.pc));
         sw_reported = 1'b1;
       end
     end
@@ -2104,7 +2104,7 @@ class eg2_iss_wrapper extends uvm_component;
     if (why == "") return 1'b1;
     if (tbre_bad_clears++ < 4) begin
       model_error($sformatf("EG2_ISS the revocation engine cleared the tag at %08h: %s", addr,
-                                 why))
+                                 why));
     end
     return 1'b0;
   endfunction
@@ -2123,7 +2123,7 @@ class eg2_iss_wrapper extends uvm_component;
         if (n++ < 4) begin
           model_error($sformatf({"EG2_ISS the revocation engine's sweep [%08h, %08h) ended (%s) ",
                                       "with the revoked capability at %08h still tagged"},
-                                     tbre_lo, tbre_hi, seen_by, a))
+                                     tbre_lo, tbre_hi, seen_by, a));
         end
       end
     end
