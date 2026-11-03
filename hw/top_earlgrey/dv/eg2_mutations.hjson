@@ -225,7 +225,10 @@
       interface: core_mem_sys
       mechanism: "cheriot_mem_sys.u_tlul_socket_m1.tl_d_o.a_source (behind meta_sram_tl_o) forced to the source of a pending meta SRAM request, for one new request"
       activation: "a meta SRAM request accepted on a source still pending"
-      tests: ["chip_sw_eg2_status_smoketest_cheriot", "chip_sw_eg2_dif_smoketest_cheriot"]
+      // Two meta SRAM requests must be outstanding at once: the revocation engine's bitmap reads
+      // while the core makes tagged accesses, or several bitmap reads in flight. The smoke tests
+      // never have that (2026-11-03: both ran with "active 0").
+      tests: ["chip_sw_cheriot_revocation_race", "chip_sw_cheriot_tbre_core_write_snoop"]
       // 2026-10-25: cheriot_mem_sys_bind is in the chip build and a sim_top (chip_sim.core,
       // chip_sim_cfg.hjson). The check is the host-side tlul_assert it puts on meta_sram_tl
       // (instance tlul_assert_host_meta_sram, EndpointType Host; u_tlul_socket_m1.tl_d_o is
