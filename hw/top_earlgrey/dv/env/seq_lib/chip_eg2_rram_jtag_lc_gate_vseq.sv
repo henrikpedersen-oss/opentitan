@@ -74,6 +74,12 @@ class chip_eg2_rram_jtag_lc_gate_vseq extends chip_stub_cpu_base_vseq;
     void'($value$plusargs("eg2_rram_jtag_expect_tap=%d", expect_tap));
     // No super.body(): chip_stub_cpu_base_vseq has none, so it would reach cip_base_vseq::body,
     // a fatal "Need to override this" (like chip_rv_dm_lc_disabled_vseq, which does not call it).
+    // The bench's weak pulls on every DIO (chip_if cfg_default_weak_pulls_on_dios) hold the analog
+    // pad at 0, so an undriven pad never read as high impedance (2026-11-03: "the RRAM analog pad
+    // is driven in LcStProd" with nothing driving it). No pull on that pad here, so the check sees
+    // only the chip.
+    cfg.chip_vif.dios_if.pins_pd[top_earlgrey_pkg::DioPadRramAnalog] = 1'b0;
+    cfg.chip_vif.dios_if.pins_pu[top_earlgrey_pkg::DioPadRramAnalog] = 1'b0;
     `DV_WAIT(cfg.chip_vif.lc_ready == 1'b1)
     enabled = lc_state inside {LcStTestUnlocked0, LcStTestUnlocked1, LcStTestUnlocked2,
                                LcStTestUnlocked3, LcStTestUnlocked4, LcStTestUnlocked5,
