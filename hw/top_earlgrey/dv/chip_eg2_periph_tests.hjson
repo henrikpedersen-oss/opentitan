@@ -18,7 +18,7 @@
       name: chip_sw_eg2_pbf_periph_sb
       uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
       sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
       run_timeout_mins: 480
@@ -27,7 +27,7 @@
       name: chip_sw_eg2_pbf_periph_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_periph_sb_vseq
       sw_images: ["//sw/device/tests/eg2_periph:eg2_pbf_periph_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=150_000_000", "+eg2_closes=chip_sw_eg2_pbf_periph_sb:REQ_PBF_13,REQ_PER_10,REQ_PER_11,REQ_PER_13,REQ_PER_15"]
       run_timeout_mins: 480

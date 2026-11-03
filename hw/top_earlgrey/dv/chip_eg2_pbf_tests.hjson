@@ -20,7 +20,7 @@
       name: chip_sw_eg2_pbf_sym_crypto_sb
       uvm_test_seq: chip_sw_eg2_pbf_sym_crypto_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_sym_crypto_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_sym_crypto_sb:REQ_PBF_10,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -47,7 +47,7 @@
       name: chip_sw_eg2_pbf_sym_crypto_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_sym_crypto_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_sym_crypto_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_sym_crypto_sb:REQ_PBF_10,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -110,7 +110,7 @@
       name: chip_sw_eg2_pbf_otbn_sb
       uvm_test_seq: chip_sw_eg2_pbf_otbn_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_otbn_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_otbn_sb:REQ_PBF_11,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -155,7 +155,7 @@
       name: chip_sw_eg2_pbf_entropy_sb
       uvm_test_seq: chip_sw_eg2_pbf_entropy_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_entropy_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_entropy_sb:REQ_PBF_12,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -182,7 +182,7 @@
       name: chip_sw_eg2_pbf_entropy_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_entropy_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_entropy_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_entropy_sb:REQ_PBF_12,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -245,7 +245,7 @@
       name: chip_sw_eg2_pbf_meta_zeroed_sb
       uvm_test_seq: chip_sw_eg2_pbf_meta_zeroed_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_meta_zeroed_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_meta_zeroed_sb:REQ_PBF_14,REQ_CMS_15,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -272,7 +272,7 @@
       name: chip_sw_eg2_pbf_meta_zeroed_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_meta_zeroed_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_meta_zeroed_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_meta_zeroed_sb:REQ_PBF_14,REQ_CMS_15,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -299,7 +299,7 @@
       name: chip_sw_eg2_pbf_rom_ext_fault
       uvm_test_seq: chip_sw_eg2_pbf_rom_ext_fault_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_rom_ext_fault:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_rom_ext_fault:REQ_PBF_14,REQ_PBF_07"]
       run_timeout_mins: 480
@@ -308,7 +308,7 @@
       name: chip_sw_eg2_pbf_rom_ext_fault_inject_fail
       uvm_test_seq: chip_sw_eg2_pbf_rom_ext_fault_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_rom_ext_fault_inject_fail:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_rom_ext_fault:REQ_PBF_14,REQ_PBF_07"]
       run_timeout_mins: 480
@@ -317,7 +317,7 @@
       name: chip_sw_eg2_pbf_rom_ext_fault_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_rom_ext_fault_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_rom_ext_fault_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_rom_ext_fault:REQ_PBF_14,REQ_PBF_07"]
       run_timeout_mins: 480
@@ -326,7 +326,7 @@
       name: chip_sw_eg2_pbf_rom_ext_fault_cheriot_inject_fail
       uvm_test_seq: chip_sw_eg2_pbf_rom_ext_fault_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_rom_ext_fault_cheriot_inject_fail:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_periph"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_rom_ext_fault:REQ_PBF_14,REQ_PBF_07"]
       run_timeout_mins: 480
@@ -335,7 +335,7 @@
       name: chip_sw_eg2_pbf_keymgr_sb
       uvm_test_seq: chip_sw_eg2_pbf_keymgr_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_keymgr_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_keymgr_sb:REQ_PBF_15,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -362,7 +362,7 @@
       name: chip_sw_eg2_pbf_keymgr_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_keymgr_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_keymgr_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_keymgr_sb:REQ_PBF_15,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -425,7 +425,7 @@
       name: chip_sw_eg2_pbf_lc_otp_sb
       uvm_test_seq: chip_sw_eg2_pbf_lc_otp_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_lc_otp_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_lc_otp_sb:REQ_PBF_16,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -452,7 +452,7 @@
       name: chip_sw_eg2_pbf_lc_otp_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_lc_otp_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_lc_otp_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_lc_otp_sb:REQ_PBF_16,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -515,7 +515,7 @@
       name: chip_sw_eg2_pbf_alert_sb
       uvm_test_seq: chip_sw_eg2_pbf_alert_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_alert_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_alert_sb:REQ_PBF_17,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -542,7 +542,7 @@
       name: chip_sw_eg2_pbf_alert_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_alert_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_alert_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_alert_sb:REQ_PBF_17,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -605,7 +605,7 @@
       name: chip_sw_eg2_pbf_power_sb
       uvm_test_seq: chip_sw_eg2_pbf_power_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_power_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_power_sb:REQ_PBF_18,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -632,7 +632,7 @@
       name: chip_sw_eg2_pbf_power_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_power_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_power_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_power_sb:REQ_PBF_18,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -695,7 +695,7 @@
       name: chip_sw_eg2_pbf_memory_sb
       uvm_test_seq: chip_sw_eg2_pbf_memory_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_memory_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_memory_sb:REQ_PBF_19,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -722,7 +722,7 @@
       name: chip_sw_eg2_pbf_memory_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_memory_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_memory_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_memory_sb:REQ_PBF_19,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -785,7 +785,7 @@
       name: chip_sw_eg2_pbf_sensor_sb
       uvm_test_seq: chip_sw_eg2_pbf_sensor_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_sensor_sb:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_sensor_sb:REQ_PBF_21,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -812,7 +812,7 @@
       name: chip_sw_eg2_pbf_sensor_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_sensor_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_sensor_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_sensor_sb:REQ_PBF_21,REQ_PBF_01"]
       run_timeout_mins: 480
@@ -875,7 +875,7 @@
       name: chip_sw_eg2_pbf_cheriot_sb_cheriot
       uvm_test_seq: chip_sw_eg2_pbf_cheriot_sb_vseq
       sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_cheriot_sb_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_cheriot_sb:REQ_PBF_22,REQ_PBF_01"]
       run_timeout_mins: 480

@@ -126,16 +126,22 @@
       name: chip_sw_eg2_status_smoketest_secure_boot
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
+      // The ROM alone needs 9 ms before ROM_EXT starts; 300 ms, as the boot tests.
+      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_timeout_mins: 480
     }
     {
       // The same, the owner image switching to CHERIoT mode after ROM_EXT.
       name: chip_sw_eg2_status_smoketest_cheriot_secure_boot
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest_cheriot:1:rom_ext"]
-      en_run_modes: ["sw_test_mode_mask_rom"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
+      // The ROM alone needs 9 ms before ROM_EXT starts; 300 ms, as the boot tests.
+      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      run_timeout_mins: 480
     }
     {
       // Must FAIL with `EG2_SB rvfi: RVFI is built but no instruction retired`: the scoreboard's

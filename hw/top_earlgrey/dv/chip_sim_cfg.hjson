@@ -604,6 +604,17 @@
       en_run_modes: ["sw_test_mode_common"]
     }
     {
+      // The ROM booting ROM_EXT and a signed owner image. The ROM uses its code-signing keys only
+      // if their OTP digest is right (sw/device/silicon_creator/rom/doc/root_keys.md) and the
+      // dvsim-generated OTP images carry no keys, so the run loads a Bazel OTP image with them
+      // (life-cycle state RMA, the bench default; a vseq may still write another state by
+      // backdoor). Without it the ROM stops with BFV:08535603 (bad auth partition).
+      name: sw_test_mode_rom_ext
+      sw_images: ["//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+      run_opts: ["+use_otp_image=OtpTypeCustom"]
+    }
+    {
       name: stub_cpu_mode
       // Note that the chip_base_vseq will preload a random ROM image with valid ECC and digest
       // so that the ROM check can succeed even if no ROM image is built and supplied via Bazel.
