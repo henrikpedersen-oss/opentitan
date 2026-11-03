@@ -176,6 +176,8 @@ class chip_env extends cip_base_env #(
     // this check and relies on the alert protocol assertions; apply the same policy to the passive
     // ROM controller scoreboard.
     m_rom_ctrl_env.scoreboard.check_alert_sig_int_err = 1'b0;
+    // The reference model's NVM words, for the chip scoreboard's capability stores to the NVM.
+    scoreboard.eg2_iss = m_eg2_iss;
     if (cfg.en_eg2_scb) begin
       m_eg2_scoreboard.rvfi_enabled = m_eg2_rvfi_agent.enabled();
       m_eg2_rvfi_agent.monitor.analysis_port.connect(m_eg2_scoreboard.rvfi_fifo.analysis_export);

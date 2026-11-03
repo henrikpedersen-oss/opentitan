@@ -137,9 +137,17 @@ class chip_sw_eg2_tl_intg_links_vseq extends chip_sw_eg2_chk_base_vseq;
     end
     `DV_CHECK_FATAL(hit, $sformatf("no transfer of the drawn kind on %s", net))
     v = rd(fpath);
-    announce("chip_sw_eg2_tl_intg_links_vseq", "alert_handler",
+    // chip_tl too: on the core's own link the chip scoreboard's monitor sees the request before
+    // the flip, so the device's error answer is this fault's.
+    announce("chip_sw_eg2_tl_intg_links_vseq", "alert_handler,chip_tl",
              $sformatf("%s bit %0d flipped (0x%0h -> 0x%0h)", fpath, bit_idx, v,
                        v ^ (1 << bit_idx)));
+    // A request fault whose receiver is main sram_ctrl (expected_alert): it escalates locally and
+    // blocks every later request until its reset (sram_ctrl interfaces.md "Global and Local
+    // Escalation"); the chip scoreboard predicts the core's later errors there.
+    if (!rsp && expected_alert() == TopEarlgreyAlertIdSramCtrlMainFatalError) begin
+      cfg.tl_fault_blocks_sram_main = 1'b1;
+    end
     `DV_CHECK_FATAL(uvm_hdl_force(fpath, v ^ (1 << bit_idx)), $sformatf("cannot force %s", fpath))
     cfg.chip_vif.cpu_clk_rst_if.wait_clks(1);
     #1ps;

@@ -80,11 +80,16 @@ class chip_sw_eg2_rram_crash_alert_vseq extends chip_sw_eg2_chk_base_vseq;
     begin
       uvm_hdl_data_t intg = rd({tl, ".a_user.cmd_intg"});
       intg[0] = ~intg[0];
-      announce("chip_sw_eg2_rram_crash_alert_vseq", "rram_ctrl",
+      // chip_tl too: the chip scoreboard's monitor sees the read before the flip, so the read's
+      // error ("Transmission Integrity Faults": an integrity error on core_tl) is this fault's.
+      announce("chip_sw_eg2_rram_crash_alert_vseq", "rram_ctrl,chip_tl",
                "core_tl command integrity bit 0 flipped on one SCRATCH read");
       if (!(uvm_hdl_force({tl, ".a_user.cmd_intg"}, intg))) `uvm_fatal(`gfn, $sformatf("Check failed (uvm_hdl_force({tl, \".a_user.cmd_intg\"}, intg)) %s", tl))
       @(posedge cfg.chip_vif.cpu_clk_rst_if.clk);
       if (!(uvm_hdl_release({tl, ".a_user.cmd_intg"}))) `uvm_fatal(`gfn, $sformatf("Check failed (uvm_hdl_release({tl, \".a_user.cmd_intg\"})) %s", tl))
+      // STD_FAULT_STATUS.reg_intg_err escalates locally: every later host read is refused until
+      // the reset ("RRAM Escalation & Disable"). The chip scoreboard predicts those errors.
+      cfg.tl_fault_blocks_rram = 1'b1;
     end
     cfg.chip_vif.cpu_clk_rst_if.wait_clks(100);
     sba_rd32(CoreBase + rram_ctrl_reg_pkg::RRAM_CTRL_STD_FAULT_STATUS_OFFSET, data, st);

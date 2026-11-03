@@ -101,6 +101,19 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   bit                      en_eg2_scb = 1'b1;
   bit [NUM_UARTS-1:0]      eg2_sb_uart_required;
 
+  // RRAM words (host-window byte offset of the 16-byte RRAM word) a sequence made uncorrectable by
+  // backdoor, until it repairs them. The chip scoreboard predicts the bus error of a host read of
+  // such a word (rram_ctrl programmers_guide.md "Error Encountered by Host Direct Read":
+  // "Uncorrectable ECC errors ... produce in-band TL-UL error responses"; the macro reports one
+  // ecc_err per 128-bit RRAM word, theory_of_operation.md "RRAM ECC Error Handling").
+  bit                      rram_uncorr_words[bit [31:0]];
+  // Set by a sequence whose bench fault makes the device escalate locally and block every later
+  // request until its reset (its documentation): rram_ctrl (theory_of_operation.md "RRAM Escalation
+  // & Disable") and main sram_ctrl (interfaces.md "Global and Local Escalation"). The chip
+  // scoreboard predicts the errors and clears the flag at the device's reset.
+  bit                      tl_fault_blocks_rram;
+  bit                      tl_fault_blocks_sram_main;
+
   // JTAG DMI register model
   rand jtag_dmi_reg_block jtag_dmi_ral;
   // A constant that can be referenced from anywhere.

@@ -74,11 +74,14 @@ class chip_sw_eg2_rram_uncorr_fetch_vseq extends chip_sw_eg2_chk_base_vseq;
     rram_ctrl_bkdr_util_pkg::rram_row_flip_bits(row_path(off), mask);
     if (flipped.exists(off)) flipped[off] ^= mask;
     else flipped[off] = mask;
+    // The chip scoreboard: a host read of this RRAM word is answered with a bus error.
+    cfg.rram_uncorr_words[{off[31:4], 4'h0}] = 1'b1;
   endfunction
 
   protected task second_boot();
     foreach (flipped[off]) begin
       if (flipped[off] != '0) rram_ctrl_bkdr_util_pkg::rram_row_flip_bits(row_path(off), flipped[off]);
+      cfg.rram_uncorr_words.delete({off[31:4], 4'h0});
     end
     flipped.delete();
     set_param("boot_phase", 1);

@@ -1734,6 +1734,21 @@ class eg2_iss_wrapper extends uvm_component;
 `endif
   endfunction
 
+  // The model's RRAM word at `addr` now (the images, and the words rram_ctrl programmed as the
+  // core's Write operations sent them), for the chip scoreboard's prediction of a capability store
+  // to the NVM (cheriot_mem_sys "Write-to-Read-and-Compare Filter": it succeeds only if the NVM
+  // already holds its data). 0 if the model has no value for it, or there is no co-simulation.
+  function bit nv_word_now(bit [31:0] addr, output bit [31:0] w);
+    w = '0;
+`ifdef EG2_COSIM
+    if (!enabled || cosim == null) return 1'b0;
+    resolve_rram_programmed($realtime);
+    return model_nv_word(addr, w);
+`else
+    return 1'b0;
+`endif
+  endfunction
+
   protected function void report_unarmed_iside(eg2_rvfi_item item);
     if (iside_unarmed_seen.exists(item.iside_err_addr)) return;
     iside_unarmed_seen[item.iside_err_addr] = 1'b1;

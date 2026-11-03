@@ -45,7 +45,11 @@ class chip_sw_eg2_rram_prim_tl_access_vseq extends chip_sw_eg2_chk_base_vseq;
     `DV_CHECK_LT_FATAL(t, 200_000, "no access reached rram_macro.prim")
     intg = rd({PrimTl, ".a_user.cmd_intg"});
     intg[0] = ~intg[0];
-    announce("chip_sw_eg2_rram_prim_tl_access_vseq", "rram_ctrl",
+    // chip_tl too: the chip scoreboard's monitor sees the read before the flip, so the read's
+    // error (the TL-UL bus integrity scheme: the device answers it with an error) is this fault's.
+    // rram_ctrl is not disabled by it: a macro fault raises fatal_macro_err only (interfaces.md),
+    // it is not a FAULT_STATUS bit.
+    announce("chip_sw_eg2_rram_prim_tl_access_vseq", "rram_ctrl,chip_tl",
              "rram_macro.prim command integrity bit 0 flipped on one access");
     if (!(uvm_hdl_force({PrimTl, ".a_user.cmd_intg"}, intg))) `uvm_fatal(`gfn, $sformatf("Check failed (uvm_hdl_force({PrimTl, \".a_user.cmd_intg\"}, intg)) %s", PrimTl))
     @(posedge cfg.chip_vif.cpu_clk_rst_if.clk);

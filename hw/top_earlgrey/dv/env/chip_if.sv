@@ -762,6 +762,37 @@ interface chip_if;
   wire        cms_tbre_clear_stale = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_stale_q;
 `endif
 
+  // For the chip scoreboard's TL-UL error prediction (chip_scoreboard.sv): the resets that clear
+  // rram_ctrl's memory-protection registers and main sram_ctrl's local escalation, and both
+  // controllers' global escalation inputs (rram_ctrl "RRAM Escalation & Disable", sram_ctrl "Global
+  // and Local Escalation": once escalated, every later request is blocked). Ports, not internals.
+`ifdef GATE_LEVEL
+  wire        rram_ctrl_rst_n     = 1'b1;
+  wire        rram_ctrl_escalated = 1'b0;
+  wire        sram_main_rst_n     = 1'b1;
+  wire        sram_main_escalated = 1'b0;
+`else
+  wire        rram_ctrl_rst_n     = `RRAM_CTRL_HIER.rst_ni;
+  wire        rram_ctrl_escalated = lc_ctrl_pkg::lc_tx_test_true_loose(
+                                        `RRAM_CTRL_HIER.lc_escalate_en_i);
+  wire        sram_main_rst_n     = `SRAM_CTRL_MAIN_HIER.rst_ni;
+  wire        sram_main_escalated = lc_ctrl_pkg::lc_tx_test_true_loose(
+                                        `SRAM_CTRL_MAIN_HIER.lc_escalate_en_i);
+`endif
+
+  // The capability tag sideband of each core data request, by source ID, for the chip scoreboard
+  // (a capability store to the NVM, cheriot_mem_sys theory_of_operation.md "Write-to-Read-and-
+  // Compare Filter"). The sideband "shares the handshakes" of the TL-UL request (cheriot_mem_sys
+  // README.md): taken when the request is. rv_core_ibex's ports.
+  bit cored_tag_by_source[bit [top_pkg::TL_AIW-1:0]];
+`ifndef GATE_LEVEL
+  always @(posedge cpu_clk) begin
+    if (`CPU_HIER.cored_tl_h_o.a_valid === 1'b1 && `CPU_HIER.cored_tl_h_i.a_ready === 1'b1) begin
+      cored_tag_by_source[`CPU_HIER.cored_tl_h_o.a_source] = `CPU_HIER.cored_tag_h2d_o === 1'b1;
+    end
+  end
+`endif
+
   task static force_adc_d_o(input bit [9:0] channel_val);
     force `PD_AON_HIER.u_ast_part_secondary.adc_o.data = channel_val;
   endtask
