@@ -43,20 +43,6 @@
       run_timeout_mins: 240
     }
     {
-      // The Verilator-only hang of eg2_handover_cheriot (regr-vlt 2026-10-25: nothing on the
-      // console after the test ROM's jump; the same image passes in eg2sim). The same image and
-      // sequence on Xcelium, bounded so that a hang ends in minutes: run it with WAVES=1, and the
-      // Ibex trace (trace_core_*.log) and the instruction check show where the core goes.
-      name: chip_sw_cheriot_handover_hang
-      uvm_test_seq: chip_sw_eg2_handover_vseq
-      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_handover_cheriot:1:new_rules"]
-      en_run_modes: ["sw_test_mode_test_rom"]
-      build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=10_000_000"]
-      reseed: 1
-      run_timeout_mins: 60
-    }
-    {
       name: chip_sw_cheriot_handover_inject_fail
       uvm_test_seq: chip_sw_eg2_handover_vseq
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_handover_cheriot_inject_fail:1:new_rules"]
