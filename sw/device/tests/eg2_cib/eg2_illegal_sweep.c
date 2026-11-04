@@ -72,11 +72,6 @@
  * |   findings (`EG2 ISA model-disagree`), not   |   Zcb, the A extension, CSRs Ibex lacks,     |
  * |   failures; a jump naming x16-x31 whose      |   c.mv HINTs trapped (model findings); the   |
  * |   target is unsafe is not run                |   bench's CHERIoT-Sail is the reference      |
- * | RISC-V mode: mtval of an illegal encoding    | Spike reads bits [4:0] = 11111 as a 48-bit   |
- * |   with bits [4:0] = 11111                    |   or longer instruction and reports mtval 0  |
- * |                                              |   (model finding: Ibex doc cs_registers.rst  |
- * |                                              |   "mtval holds the actual faulting           |
- * |                                              |   instruction", a 32-bit word in Ibex)       |
  * | RISC-V mode: cm.mvsa01 with r1s' = r2s' (8   | Spike executes them; Zcmp reserves them      |
  * |   encodings) not run                         |   (model finding)                            |
  *
@@ -488,13 +483,6 @@ static void run_one(sweep_t *s, uint32_t place, uint32_t first, uint32_t n, uint
     return;
   }
   uint32_t tval = kCheriot ? 0 : insn;
-  // eg2sim's Spike reads bits [4:0] = 11111 as the prefix of a 48-bit or longer instruction,
-  // fetches that many bytes and reports mtval 0; Ibex decodes a 32-bit word and, by
-  // cs_registers.rst, holds the faulting instruction in mtval (model finding).
-  bool long_prefix = !kCheriot && (insn & 0x1f) == 0x1f;
-  if (long_prefix && EG2_PARAM(model_gaps) != 0) {
-    tval = ctx_word(kCtxMtval);
-  }
   if (ctx_word(kCtxMtval) != tval) {
     report_split(s, idx, insn, &in, "mtval of an illegal-instruction trap");
     return;

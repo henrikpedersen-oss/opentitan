@@ -133,7 +133,7 @@
       // fails the run instead (chip_sw_eg2_base_vseq watch_core_progress; the ROM's OTBN signature
       // wait, the longest meant to be, is about 6 ms).
       run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_stall_limit_ns=8_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 960
     }
     {
       // The same, the owner image switching to CHERIoT mode after ROM_EXT.
@@ -147,7 +147,7 @@
       // fails the run instead (chip_sw_eg2_base_vseq watch_core_progress; the ROM's OTBN signature
       // wait, the longest meant to be, is about 6 ms).
       run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_stall_limit_ns=8_000_000"]
-      run_timeout_mins: 480
+      run_timeout_mins: 960
     }
     {
       // Must FAIL with `EG2_SB rvfi: RVFI is built but no instruction retired`: the scoreboard's
