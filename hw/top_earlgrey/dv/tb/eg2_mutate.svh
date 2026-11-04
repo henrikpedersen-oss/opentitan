@@ -36,6 +36,8 @@ bit          eg2_mut_pend [2**top_pkg::TL_AIW];
 bit          eg2_mut_capld_q [$];     // load_tag_set: capability-load flags of open core requests
 bit          eg2_mut_reg_armed;       // reg_tag_not_cleared_at_switch: the tag has been planted
 bit          eg2_mut_reg_written;     // ... and the register has been written since
+int unsigned eg2_mut_core_resets;     // sram_ret_rdata_flip_after_reset: the core's reset releases
+always @(posedge `CPU_CORE_HIER.rst_ni) eg2_mut_core_resets++;
 
 `define EG2_SWITCH    `CPU_HIER.u_cheriot_switch
 `define EG2_CORE      `CPU_HIER.u_core
@@ -189,6 +191,15 @@ initial begin : eg2_mutate
       // In CHERIoT mode a store that fails its capability check still goes out on the bus, in both
       // cores; the trap is still taken (ibex_load_store_unit.sv cpu_req_valid: the request is
       // normally suppressed by lsu_cheriot_err_i). dv_todo S6's red run.
+      // MCOUNTEREN_WRITABLE is ignored: mcounteren takes writes whatever the register says (both
+      // cores get the input from rv_core_ibex).
+      "mcounteren_lock_ignored":
+        force `CPU_HIER.mcounteren_writable_ibex = ibex_pkg::IbexMuBiOn;
+      // The internal NMI of a data response with bad integrity bits is never raised.
+      "core_intg_nmi_dropped": begin
+        force `EG2_CORE.u_ibex_core.id_stage_i.controller_i.irq_nm_int = 1'b0;
+        force `EG2_LS.u_shadow_core.id_stage_i.controller_i.irq_nm_int = 1'b0;
+      end
       "cheriot_faulting_store_issued": begin
         force `EG2_CORE.u_ibex_core.load_store_unit_i.cpu_req_valid =
             `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_req_i &
@@ -208,6 +219,10 @@ initial begin : eg2_mutate
       // The revocation bit is read one granule off.
       "revbm_index_off_by_one":
         force `EG2_TRVK.revbm_bit_select = `EG2_TRVK.revbm_bit_addr[4:0] + 5'd1;
+      // The range check is ignored: a capability based outside the revocable window reads the
+      // bitmap (at its wrapped bit address) and may be revoked.
+      "revbm_range_ignored":
+        force `EG2_TRVK.revbm_out_of_range = 1'b0;
       // One core data request with an undefined opcode. The fifo before the gate passes the
       // request through (FifoPass), so its input is the request as the core made it.
       "tl_cored_bad_opcode":
@@ -273,6 +288,11 @@ initial begin : eg2_mutate
       "sram_main_rdata_flip_riscv":
         force `EG2_SRAM_MAIN.sram_rdata = !(`EG2_CHERIOT_ON) ?
             eg2_mut_flip_word(`EG2_SRAM_MAIN.sram_rdata_scr) : `EG2_SRAM_MAIN.sram_rdata_scr;
+      // The retention SRAM's read data after the first chip reset (the core's second reset
+      // release): what software kept there over a sleep or reset reads back with bit 0 flipped.
+      "sram_ret_rdata_flip_after_reset":
+        force `EG2_SRAM_RET.sram_rdata = eg2_mut_core_resets >= 2 ?
+            eg2_mut_flip_word(`EG2_SRAM_RET.sram_rdata_scr) : `EG2_SRAM_RET.sram_rdata_scr;
       // A key renewal of the retention SRAM keeps the old key and nonce.
       "sram_ret_otp_key_not_taken": begin
         force `EG2_SRAM_RET.key_d = `EG2_SRAM_RET.key_q;
@@ -389,6 +409,10 @@ initial begin : eg2_mutate
       // Escalation phase 0 never reaches the core's NMI.
       "escalation_to_core_dropped":
         force `CPU_HIER.esc_irq_nm = 1'b0;
+      // Alert 0's class reads back as class A: the register read path only, the classifier keeps
+      // the class software wrote.
+      "alert_class_readback_zero":
+        force `EG2_AH.u_reg_wrap.u_reg.alert_class_shadowed_0_qs = 2'b00;
 
       ///////////////////////////////
       // End-to-end bus integrity
@@ -488,6 +512,14 @@ always @(posedge `CPU_HIER.clk_i or negedge `CPU_HIER.rst_ni) begin
       end
       "cheriot_fetch_word_flip":
         if (`EG2_CHERIOT_ON && `CPU_HIER.tl_i_fifo2ibex.d_valid) eg2_mut_active++;
+      "mcounteren_lock_ignored":
+        if (`EG2_CORE.u_ibex_core.cs_registers_i.mcounteren_we &&
+            `CPU_HIER.mcounteren_writable_mubi4 != prim_mubi_pkg::MuBi4True)
+          eg2_mut_active++;
+      "core_intg_nmi_dropped":
+        if (`EG2_CORE.u_ibex_core.load_store_unit_i.load_resp_intg_err_o ||
+            `EG2_CORE.u_ibex_core.load_store_unit_i.store_resp_intg_err_o)
+          eg2_mut_active++;
       "cheriot_faulting_store_issued":
         if (`EG2_CHERIOT_ON && `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_req_i &&
             `EG2_CORE.u_ibex_core.load_store_unit_i.lsu_we_i &&
@@ -562,6 +594,8 @@ always @(posedge `CPU_HIER.clk_i or negedge `CPU_HIER.rst_ni) begin
         if (`EG2_CHERIOT_ON && `EG2_SRAM_MAIN.sram_rvalid) eg2_mut_active++;
       "sram_main_rdata_flip_riscv":
         if (!(`EG2_CHERIOT_ON) && `EG2_SRAM_MAIN.sram_rvalid) eg2_mut_active++;
+      "sram_ret_rdata_flip_after_reset":
+        if (eg2_mut_core_resets >= 2 && `EG2_SRAM_RET.sram_rvalid) eg2_mut_active++;
       "meta_init_not_zeroing":
         if (`EG2_SRAM_META.init_req) eg2_mut_active++;
       "sram_main_exec_enable_ignored":

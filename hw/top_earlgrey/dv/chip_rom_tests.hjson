@@ -20,7 +20,7 @@
         "+sw_test_timeout_ns=40000000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_shutdown_exception_c
@@ -34,7 +34,7 @@
         "+sw_test_timeout_ns=40000000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_shutdown_output
@@ -49,7 +49,7 @@
         "+sw_test_timeout_ns=20000000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_boot_policy_valid_a_good_b_good_test_unlocked0
@@ -321,7 +321,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_bad_prod
@@ -337,7 +337,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_bad_prod_end
@@ -353,7 +353,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_bad_rma
@@ -369,7 +369,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_nothing_test_unlocked0
@@ -401,7 +401,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_nothing_prod
@@ -417,7 +417,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_nothing_prod_end
@@ -433,7 +433,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_bad_b_nothing_rma
@@ -449,7 +449,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_nothing_b_bad_test_unlocked0
@@ -481,7 +481,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_nothing_b_bad_prod
@@ -497,7 +497,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_nothing_b_bad_prod_end
@@ -513,7 +513,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_sigverify_always_a_nothing_b_bad_rma
@@ -529,7 +529,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_asm_init_test_unlocked0
@@ -613,7 +613,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_jtag_debug_dev
@@ -627,7 +627,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_jtag_debug_rma
@@ -641,7 +641,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_jtag_inject_test_unlocked0
@@ -657,7 +657,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_jtag_inject_dev
@@ -673,7 +673,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_jtag_inject_rma
@@ -689,7 +689,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_static_critical
@@ -703,7 +703,7 @@
         "+sw_test_timeout_ns=40000000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_keymgr_dpe_init_rom_ext_meas
@@ -717,7 +717,7 @@
         "+sw_test_timeout_ns=55_000_000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_keymgr_dpe_init_rom_ext_no_meas
@@ -731,7 +731,7 @@
         "+sw_test_timeout_ns=55_000_000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: rom_e2e_keymgr_dpe_init_rom_ext_invalid_meas
@@ -745,7 +745,7 @@
         "+sw_test_timeout_ns=55_000_000",
         "+use_otp_image=OtpTypeCustom",
       ]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
 
     // Life cycle transitions with production ROM.

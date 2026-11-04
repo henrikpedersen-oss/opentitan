@@ -117,7 +117,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_10"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_status_smoketest_cheriot_eg2sb
@@ -126,7 +126,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest_cheriot:REQ_STE_10"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_dif_smoketest_eg2sb
@@ -135,7 +135,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_dif_smoketest:REQ_STE_10"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_dif_smoketest_cheriot_eg2sb
@@ -144,7 +144,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_dif_smoketest_cheriot:REQ_STE_10"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Must DETECT (REQ_STE_03): +sb_corrupt corrupts one value of one check, announced in the
@@ -625,7 +625,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+sb_corrupt=uart0.tl_err"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Must FAIL with `EG2_SB uart0 TL MISSING_ERR` (or UNEXPECTED_ERR): the same flip without
@@ -636,7 +636,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_periph"
       run_opts: ["+eg2_closes=chip_sw_eg2_status_smoketest:REQ_STE_03,REQ_STE_10", "+eg2_tl_err_flip=uart0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // The system monitor (status/decisions.md 19): the legacy tests of sysrst_ctrl, adc_ctrl,

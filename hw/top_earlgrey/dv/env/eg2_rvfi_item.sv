@@ -14,6 +14,7 @@ typedef struct {
   bit [3:0]  be;
   bit [31:0] wdata;
   bit [31:0] rdata;
+  bit [6:0]  rintg;   // the response's integrity bits
   bit        err;
   bit        misaligned_first;
   bit        misaligned_second;
@@ -37,6 +38,8 @@ class eg2_rvfi_item extends uvm_sequence_item;
   bit [1:0]            mode;
   bit [31:0]           pc;
   bit [31:0]           pc_next;
+  // The rs1 value the instruction read (the mcounteren write check uses it for CSRRW/S/C).
+  bit [31:0]           rs1_rdata;
   bit [4:0]            rd_addr;
   bit [31:0]           rd_wdata;
   bit [EG2_CAP_W-1:0]  rd_wcap;
@@ -87,6 +90,8 @@ class eg2_rvfi_item extends uvm_sequence_item;
   // When the reset began (reset items): announcements made before it end at this reset (review
   // R12, 2026-10-25).
   realtime             reset_start;
+  // Reset items: the reset was a power-on reset (eg2_rvfi_if.por_seen).
+  bit                  por;
   // The instruction's fetch got an error response (the core's ID stage took it with a fetch error,
   // tied to this RVFI order as the Ibex UVM bench ties it), at word address iside_err_addr. Review
   // R11, 2026-10-25.

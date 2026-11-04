@@ -924,7 +924,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=0", "+eg2_closes=chip_sw_eg2_pbf_compartment_sym_crypto:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_otbn
@@ -933,7 +933,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=1", "+eg2_closes=chip_sw_eg2_pbf_compartment_otbn:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_entropy
@@ -942,7 +942,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=2", "+eg2_closes=chip_sw_eg2_pbf_compartment_entropy:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_periph
@@ -951,7 +951,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=3", "+eg2_closes=chip_sw_eg2_pbf_compartment_periph:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_boot_services
@@ -960,7 +960,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=4", "+eg2_closes=chip_sw_eg2_pbf_compartment_boot_services:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_keymgr
@@ -969,7 +969,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=5", "+eg2_closes=chip_sw_eg2_pbf_compartment_keymgr:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_lc_otp
@@ -978,7 +978,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=6", "+eg2_closes=chip_sw_eg2_pbf_compartment_lc_otp:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_alert
@@ -987,7 +987,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=7", "+eg2_closes=chip_sw_eg2_pbf_compartment_alert:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_power
@@ -996,7 +996,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=8", "+eg2_closes=chip_sw_eg2_pbf_compartment_power:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_memory
@@ -1005,7 +1005,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=9", "+eg2_closes=chip_sw_eg2_pbf_compartment_memory:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_sensor
@@ -1014,7 +1014,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=10", "+eg2_closes=chip_sw_eg2_pbf_compartment_sensor:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_cheriot
@@ -1023,7 +1023,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_param_area=11", "+eg2_closes=chip_sw_eg2_pbf_compartment_cheriot:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_pbf_compartment_inject_fail
@@ -1032,7 +1032,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000", "+eg2_closes=chip_sw_eg2_pbf_compartment:REQ_PBF_22"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
   ]
 

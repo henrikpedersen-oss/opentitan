@@ -64,6 +64,8 @@ class eg2_rvfi_monitor extends uvm_monitor;
         item.reset       = 1'b1;
         item.boot_addr   = vif.monitor_cb.boot_addr;
         item.reset_start = reset_t;
+        item.por         = vif.por_seen;
+        vif.por_seen     = 1'b0;
         analysis_port.write(item);
         in_reset      = 1'b0;
         // Responses still outstanding at the reset never come.
@@ -165,6 +167,7 @@ class eg2_rvfi_monitor extends uvm_monitor;
         eg2_dside_access_t a = dside_pending.pop_front();
         a.err    = vif.monitor_cb.dside_err;
         a.rdata  = vif.monitor_cb.dside_rdata;
+        a.rintg  = vif.monitor_cb.dside_rintg;
         a.t_resp = $realtime;  // R6, 2026-10-25
         dside_done.push_back(a);
       end
@@ -194,6 +197,7 @@ class eg2_rvfi_monitor extends uvm_monitor;
     item.mode           = vif.monitor_cb.mode;
     item.pc             = vif.monitor_cb.pc_rdata;
     item.pc_next        = vif.monitor_cb.pc_wdata;
+    item.rs1_rdata      = vif.monitor_cb.rs1_rdata;
     item.rd_addr        = vif.monitor_cb.rd_addr;
     item.rd_wdata       = vif.monitor_cb.rd_wdata;
     item.rd_wcap        = vif.monitor_cb.rd_wcap;

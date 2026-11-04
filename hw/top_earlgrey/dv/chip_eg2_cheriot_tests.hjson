@@ -22,7 +22,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tag_roundtrip_inject_fail
@@ -31,7 +31,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_handover
@@ -40,7 +40,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_handover_inject_fail
@@ -49,7 +49,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_revocation
@@ -58,7 +58,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_revocation_inject_fail
@@ -67,7 +67,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_sweep_irq
@@ -76,7 +76,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_sweep_irq_inject_fail
@@ -85,7 +85,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_nvm_cap_validate
@@ -94,7 +94,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_nvm_cap_validate_inject_fail
@@ -103,7 +103,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_sram_rekey_tag
@@ -112,7 +112,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_sram_rekey_tag_inject_fail
@@ -121,7 +121,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_rram_program_tag
@@ -130,7 +130,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_rram_program_tag_inject_fail
@@ -139,7 +139,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_cheriot_sba_tag_clear
@@ -148,7 +148,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_cheriot_sba_tag_clear_inject_fail
@@ -157,7 +157,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_unmapped
@@ -166,7 +166,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_unmapped_inject_fail
@@ -175,7 +175,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_unmapped_cheriot
@@ -184,7 +184,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_unmapped_cheriot_inject_fail
@@ -193,7 +193,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_mem_sys_e2e
@@ -202,7 +202,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_mem_sys_e2e_inject_fail
@@ -211,7 +211,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_mem_sys_e2e_cheriot
@@ -220,7 +220,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_mem_sys_e2e_cheriot_inject_fail
@@ -229,7 +229,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_periph_cap_random
@@ -238,7 +238,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_periph_cap_random_inject_fail
@@ -247,7 +247,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_lock_policy
@@ -256,7 +256,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_lock_policy_inject_fail
@@ -265,7 +265,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_periph_lock
@@ -274,7 +274,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_periph_lock_inject_fail
@@ -283,7 +283,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_addr_translation
@@ -292,7 +292,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_addr_translation_inject_fail
@@ -301,7 +301,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_rand_revocation
@@ -328,7 +328,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_intg_escalation_inject_fail
@@ -337,7 +337,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_revbm_intg
@@ -346,7 +346,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_revbm_intg_inject_fail
@@ -355,7 +355,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_bus_intg
@@ -364,7 +364,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_bus_intg_inject_fail
@@ -373,7 +373,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_cheriot_fi_meta
@@ -400,7 +400,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_reset_state_inject_fail
@@ -409,7 +409,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_init_after_reset
@@ -418,7 +418,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_meta_init_after_reset_inject_fail
@@ -427,7 +427,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_switch
@@ -436,7 +436,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_switch_inject_fail
@@ -445,7 +445,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_switch_err
@@ -454,7 +454,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_cheriot_switch_err_inject_fail
@@ -463,7 +463,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_epmp_handover
@@ -472,7 +472,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_epmp_handover_inject_fail
@@ -481,7 +481,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_ottf_smoke
@@ -490,7 +490,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_ottf_smoke_inject_fail
@@ -499,7 +499,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_eg2_rand_isa
@@ -562,7 +562,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rv_core_ibex_alerts_cheriot_inject_fail
@@ -571,7 +571,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     // The revocation corner cases (spec "Revocation", "Corner cases"; eg2_revoke.h,
     // chip_sw_eg2_cheriot_revocation_vseqs.sv).
@@ -636,7 +636,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_regs_inject_fail
@@ -645,7 +645,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_regs_cheriot
@@ -712,7 +712,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=verdict", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_tag_out
@@ -720,7 +720,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=tag_out", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_bit_select
@@ -728,7 +728,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=bit_select", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_req_required
@@ -736,7 +736,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=req_required", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_out_of_range
@@ -744,7 +744,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=out_of_range", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_sealing
@@ -752,7 +752,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=sealing", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_align
@@ -760,7 +760,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_trvk_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=align", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_trvk_fault_inject_fail
@@ -769,7 +769,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_trvk_fault_site=verdict", "+eg2_inject_fail=1",
                  "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     // The later revocation corner cases (chip_sw_eg2_revocation_corners_vseqs.sv).
     {
@@ -779,7 +779,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_revoke_store_clear_inject_fail
@@ -788,7 +788,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_revocation_race
@@ -816,7 +816,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_tbre_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_param_fault=1", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_fault_bm_err
@@ -824,7 +824,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_tbre_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_param_fault=2", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_fault_bm_intg
@@ -832,7 +832,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_tbre_fault_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+eg2_param_fault=3", "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_tbre_fault_inject_fail
@@ -840,7 +840,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_tbre_fault_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_cheriot_revocation_irq
@@ -960,13 +960,13 @@
       run_opts: ["+sw_test_timeout_ns=500_000_000"]
       run_timeout_mins: 480
     }
-    { name: "chip_sw_cheriot_revbm_errors_bus_err", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=1", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 240 }
-    { name: "chip_sw_cheriot_revbm_errors_intg", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=2", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 240 }
-    { name: "chip_sw_cheriot_revbm_errors_mem_err", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=3", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 240 }
+    { name: "chip_sw_cheriot_revbm_errors_bus_err", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=1", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 480 }
+    { name: "chip_sw_cheriot_revbm_errors_intg", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=2", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 480 }
+    { name: "chip_sw_cheriot_revbm_errors_mem_err", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=3", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 480 }
     { name: "chip_sw_cheriot_revbm_errors_reset_por", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=4", "+eg2_param_reset_kind=1", "+use_jtag_dmi=1", "+sw_test_timeout_ns=300_000_000"], run_timeout_mins: 300 }
     { name: "chip_sw_cheriot_revbm_errors_reset_ndm", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=4", "+eg2_param_reset_kind=2", "+use_jtag_dmi=1", "+sw_test_timeout_ns=300_000_000"], run_timeout_mins: 300 }
     { name: "chip_sw_cheriot_revbm_errors_reset_wdog", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=4", "+eg2_param_reset_kind=3", "+use_jtag_dmi=1", "+sw_test_timeout_ns=300_000_000"], run_timeout_mins: 300 }
-    { name: "chip_sw_cheriot_revbm_errors_inject_fail", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot_inject_fail:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=1", "+eg2_inject_fail=1", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 240 }
+    { name: "chip_sw_cheriot_revbm_errors_inject_fail", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot_inject_fail:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=1", "+eg2_inject_fail=1", "+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000"], run_timeout_mins: 480 }
     { name: "chip_sw_cheriot_revbm_errors_reset_inject_fail", uvm_test_seq: "chip_sw_eg2_revbm_errors_vseq", sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revbm_errors_cheriot_inject_fail:1:new_rules"], en_run_modes: ["sw_test_mode_test_rom"], run_opts: ["+eg2_param_error=4", "+eg2_param_reset_kind=3", "+use_jtag_dmi=1", "+sw_test_timeout_ns=300_000_000"], run_timeout_mins: 300 }
   ]
   regressions: [

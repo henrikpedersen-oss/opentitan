@@ -172,6 +172,30 @@
       caught_by: ["cheriot-sail model's memory holds insn"]
     }
     {
+      name: mcounteren_lock_ignored
+      requirements: ["REQ_PBF_19"]
+      kind: rtl
+      interface: mode_switch
+      mechanism: "rv_core_ibex's mcounteren_writable input to the cores forced on: mcounteren takes software's writes whatever MCOUNTEREN_WRITABLE says"
+      activation: "software writes mcounteren while MCOUNTEREN_WRITABLE is not MuBi4True"
+      tests: ["chip_sw_rv_core_ibex_mcounteren_writable_cheriot"]
+      // dv_todo S11: mcounteren decided by the model from the CSR writes and MCOUNTEREN_WRITABLE;
+      // before 3 Nov the chip's value was pushed into Spike.
+      caught_by: ["EG2_ISS mcounteren: the chip has"]
+    }
+    {
+      name: core_intg_nmi_dropped
+      requirements: ["REQ_CMS_18"]
+      kind: rtl
+      interface: bus_integrity
+      mechanism: "the cores' internal NMI for a data response with bad integrity bits (ibex_controller irq_nm_int) forced 0 in both cores; the bus alert still fires"
+      activation: "a data response with bad integrity bits reaches the core"
+      tests: ["chip_sw_rram_host_intg", "chip_sw_rram_host_intg_cheriot", "chip_sw_cheriot_bus_intg"]
+      // dv_todo S11: the internal NMI decided by the model from the response's integrity bits;
+      // before 3 Nov Spike took the chip's NMI as given.
+      caught_by: ["took no internal NMI within"]
+    }
+    {
       name: cheriot_faulting_store_issued
       requirements: ["REQ_CIB_06", "REQ_STE_18"]
       kind: rtl
@@ -204,6 +228,17 @@
       tests: ["chip_sw_cheriot_revocation"]
       targets: ["insn"]
       caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: revbm_range_ignored
+      requirements: ["REQ_CMS_11"]
+      kind: rtl
+      interface: core_mem_sys
+      mechanism: "the TRVK's revbm_out_of_range forced 0: a capability based outside the revocable window reads the bitmap at its wrapped bit address and is revoked when that bit is set"
+      activation: "a CLC of a tagged capability based outside the window while the bit of its alias is set"
+      tests: ["chip_sw_cheriot_revocation_bounds"]
+      targets: ["insn"]
+      caught_by: ["MISMATCH (tag, bit set|bitmap reads) #", "EG2_SB insn (EXPECTED )?mismatch"]
     }
     {
       name: tl_cored_bad_opcode
@@ -342,6 +377,18 @@
       // Integer loads are events to the model; a capability load is checked against
       // CHERIoT-Sail's own memory.
       targets: ["insn"]
+      caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
+    }
+    {
+      name: sram_ret_rdata_flip_after_reset
+      requirements: ["REQ_SRAM_02"]
+      kind: rtl
+      interface: sram
+      mechanism: "sram_ctrl_ret.sram_rdata has bit 0 flipped and its integrity re-encoded to match, from the first chip reset on (the core's second reset release)"
+      activation: "a retention SRAM read returns data after a chip reset"
+      tests: ["chip_sw_sleep_sram_ret_contents_no_scramble_cheriot", "chip_sw_sleep_sram_ret_contents_scramble_cheriot"]
+      // dv_todo S11: before 3 Nov the model forgot the retention SRAM at every chip reset and took
+      // the first read after it from the chip, so contents lost over a sleep passed in the model.
       caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
     }
     {
@@ -649,6 +696,18 @@
       tests: ["chip_sw_alert_handler_escalation", "chip_sw_alert_handler_escalation_cheriot"]
       caught_by: []
       test_checks: ["CHECK-fail"]
+    }
+    {
+      name: alert_class_readback_zero
+      requirements: ["REQ_PER_01"]
+      kind: rtl
+      interface: alerts
+      mechanism: "the alert handler's register read of ALERT_CLASS_SHADOWED_0 (u_reg.alert_class_shadowed_0_qs) forced 0: the class eg2_status_init wrote (class D) reads back as class A"
+      activation: "a read of ALERT_CLASS_SHADOWED_0"
+      // Slice 1b holds alert_handler registers 91-181, ALERT_CLASS_SHADOWED_0 among them; its reset
+      // check compares the value eg2_status_init wrote (eg2_regmem_tables.h, BOOT_VALUE).
+      tests: ["chip_sw_eg2_rand_regs_slice1b", "chip_sw_eg2_rand_regs_cheriot_slice1b"]
+      caught_by: ["REG FAIL alert_handler"]
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////

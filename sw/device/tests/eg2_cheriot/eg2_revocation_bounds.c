@@ -27,7 +27,9 @@
  * Check, the expression (eg2_revoke.h) for each load's tag; the verdict at each edge as REQ_CMS_05's
  * mapping gives (bit b of word w covers 0x1000_0000 + (w * 32 + b) * 8); the zero-length capability
  * not revoked by its neighbour's bits. The bench counts each case's requests: two data requests per
- * CLC to the slot, and bitmap reads of the word the case marked: one per CLC of a tagged, non-sealing
+ * CLC to the slot, and bitmap reads of the word the case marked that follow a request to the slot
+ * (count_revbm_after: a word covers 256 bytes, and the code around the stub loads capabilities based
+ * in the image's globals, in the window's first word): one per CLC of a tagged, non-sealing
  * capability based in the window, none for an untagged one or one based outside (REQ: "a bitmap
  * read only for tagged capabilities based in the revocable range"; for a sealing capability in the
  * window none or one is accepted, the spec does not say). The trapping CLCs make no data request and
@@ -180,6 +182,9 @@ bool eg2_test_main(void) {
   bench = !gaps;
   eg2_cp_save_sealing_root();
   eg2_ms_revbm_clear();
+  // Only the lookups of the slot's CLCs: an edge or outside case marks the bitmap word of the
+  // image's globals, whose capabilities the code around the stub loads too.
+  (void)eg2_ms_bench("count_revbm_after", 1, 0, bench);
   eg2_probe_begin();
 
   // The window's edges.

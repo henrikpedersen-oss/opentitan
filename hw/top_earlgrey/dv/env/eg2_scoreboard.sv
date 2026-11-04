@@ -17,7 +17,8 @@
 //   +eg2_sb_log=0                 no per-item logs (counts only)
 //   +sb_corrupt=<check>.<field>   checker fault injection (REQ_STE_03): rvfi.count, uart<N>.count
 //                                 (the count is zeroed before it is checked); insn.rd (one register
-//                                 result corrupted before Spike checks it). The run must fail.
+//                                 result corrupted before Spike checks it); insn.mcause (the chip's mcause of one
+//                                 trap handler, before Spike's trap-cause check). The run must fail.
 
 class eg2_scoreboard extends uvm_scoreboard;
   `uvm_component_utils(eg2_scoreboard)
@@ -88,7 +89,7 @@ class eg2_scoreboard extends uvm_scoreboard;
 `endif
         !(sb_corrupt inside {"rvfi.count", "uart0.count", "uart1.count",
                                                   "uart2.count", "uart3.count", "insn.rd",
-                                                  "insn.cheriot_rd"})) begin
+                                                  "insn.cheriot_rd", "insn.mcause"})) begin
       `uvm_fatal(`gfn, $sformatf("+sb_corrupt=%s: no such check.field", sb_corrupt))
     end
   endfunction

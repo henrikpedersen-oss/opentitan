@@ -21,6 +21,12 @@
 //                           registry.
 //   count_revbm <lo> <hi>   The bitmap reads counted from now on: those of the bitmap words that
 //                           cover the heap granules [lo, hi) (default: all).
+//   count_revbm_after <on> 0
+//                           With on, a bitmap read counts only when the core's last data request
+//                           before it was to count_begin's [lo, hi): the lookup of that load's
+//                           capability, not of the code around it. A bitmap word covers 256
+//                           bytes, so without it a test marking the word of its own globals also
+//                           counts the loads of the harness's capabilities based there.
 //   count_begin <lo> <hi>   Starts counting A-channel handshakes: requests to [lo, hi) on the
 //   count_end 0 0           core's data port (rv_core_ibex to cheriot_mem_sys) and on
 //                           cheriot_mem_sys's port to the crossbar, and the core's bitmap reads
@@ -66,7 +72,7 @@ class chip_sw_eg2_revocation_bench_vseq extends chip_sw_eg2_cheriot_vseq;
   protected int unsigned held_cycles[3], holds[3];
   protected int unsigned cnt_core, cnt_xbar, cnt_revbm;
   protected bit [31:0] cnt_lo, cnt_hi, watch_lo, watch_hi;
-  protected bit        revbm_filter;
+  protected bit        revbm_filter, revbm_after, last_core_in;
   protected bit [31:0] revbm_wlo, revbm_whi;
   protected int unsigned watch_in, watch_out, snoop_hits, sba_reads;
 
@@ -137,12 +143,16 @@ class chip_sw_eg2_revocation_bench_vseq extends chip_sw_eg2_cheriot_vseq;
         revbm_whi = (((b - 1) - HeapBase) >> 8) & 'h3ff;
         revbm_filter = 1;
       end
+      "count_revbm_after": begin
+        revbm_after = a != 0;
+      end
       "count_begin": begin
         cnt_lo = a;
         cnt_hi = b;
         cnt_core = 0;
         cnt_xbar = 0;
         cnt_revbm = 0;
+        last_core_in = 0;
         count_on = 1;
         fork count_loop(); join_none
       end
@@ -227,12 +237,17 @@ class chip_sw_eg2_revocation_bench_vseq extends chip_sw_eg2_cheriot_vseq;
     bit write;
     while (count_on) begin
       cycle();
-      if (a_fire(CoreData, addr, write) && addr >= cnt_lo && addr < cnt_hi) cnt_core++;
+      if (a_fire(CoreData, addr, write)) begin
+        last_core_in = addr >= cnt_lo && addr < cnt_hi;
+        if (last_core_in) cnt_core++;
+      end
       if (a_fire(XbarData, addr, write) && addr >= cnt_lo && addr < cnt_hi) cnt_xbar++;
       // The bitmap port's address: the word's byte offset in the 3 KiB bitmap (the meta SRAM and
-      // the bitmap base are 4 KiB aligned).
+      // the bitmap base are 4 KiB aligned). With count_revbm_after, only a read whose last core
+      // data request was to [cnt_lo, cnt_hi): the lookup of that load's capability.
       if (a_fire(CoreRevbm, addr, write) &&
-          (!revbm_filter || ((addr & 'hfff) >> 2) inside {[revbm_wlo:revbm_whi]})) begin
+          (!revbm_filter || ((addr & 'hfff) >> 2) inside {[revbm_wlo:revbm_whi]}) &&
+          (!revbm_after || last_core_in)) begin
         cnt_revbm++;
       end
     end

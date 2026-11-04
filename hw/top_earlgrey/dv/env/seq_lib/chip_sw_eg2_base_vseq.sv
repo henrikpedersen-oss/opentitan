@@ -101,6 +101,9 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
   // logged by the software status interface ("SW test transitioned to ...").
   protected task log_boot_profile();
     fork
+      watch_core_progress();
+    join_none
+    fork
       begin
         wait (cfg.chip_vif.lc_ready);
         `uvm_info("EG2_BOOT", "life cycle ready (OTP and LC initialised)", UVM_LOW)
@@ -120,6 +123,69 @@ class chip_sw_eg2_base_vseq extends chip_sw_base_vseq;
         `uvm_info("EG2_BOOT", "CPU out of reset", UVM_LOW)
       end
     join
+  endtask
+
+  // A run that makes no progress must fail with a reason, not spin until the wall-clock limit kills
+  // it with no verdict (chip_sw_eg2_status_smoketest[_cheriot]_secure_boot, 2026-11-04: 6.5 and 7 h,
+  // 17 and 20 ms simulated, the core polling one register in a loop of a few instructions, while
+  // the software timeout, 300 ms, was out of reach).
+  // +eg2_stall_limit_ns=<n> (0, the default, is off): the core's PC (ID stage, sampled every
+  // 10 us while the CPU is out of reset) staying inside one 256-byte window for n ns is an error
+  // that names the window, so the loop can be looked up in the image's .dis. The window restarts
+  // whenever the PC leaves it and at every CPU reset. While it is on, a progress line
+  // (`EG2_PROGRESS`: simulated time, PC, how long the PC has been in its window) is printed every
+  // +eg2_progress_ns (default 1 ms), so a slow run and a stuck run are told apart in run.log.
+  // n must exceed the longest wait the software is meant to make in one place (the ROM's OTBN
+  // signature check: about 6 ms).
+  protected task watch_core_progress();
+    localparam string PcPath =
+        "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.u_core.u_ibex_core.pc_id";
+    localparam int unsigned Window = 256;
+    longint unsigned limit_ns, progress_ns = 1_000_000;
+    bit [31:0] pc, lo, hi, new_lo, new_hi;
+    realtime   since, last_progress;
+    bit        in_window;
+    string     vals[$];
+    // The last +eg2_stall_limit_ns wins, so a run's RUN_OPTS overrides the dvsim entry's value.
+    if (uvm_cmdline_processor::get_inst().get_arg_values("+eg2_stall_limit_ns=", vals) == 0) return;
+    limit_ns = vals[$].atoi();
+    if (limit_ns == 0) return;
+    void'($value$plusargs("eg2_progress_ns=%d", progress_ns));
+    `uvm_info("EG2_PROGRESS", $sformatf("stall check on: the PC may stay in one %0d-byte window for %0d ns",
+                                        Window, limit_ns), UVM_LOW)
+    last_progress = $realtime;
+    forever begin
+      #10us;
+      if (cfg.chip_vif.cpu_rst_n !== 1'b1) begin
+        in_window = 1'b0;
+        continue;
+      end
+      if (!uvm_hdl_read(PcPath, pc)) `uvm_fatal("EG2_PROGRESS", {"cannot read ", PcPath})
+      new_lo = (in_window && lo < pc) ? lo : pc;
+      new_hi = (in_window && hi > pc) ? hi : pc;
+      if (!in_window || new_hi - new_lo >= Window) begin
+        in_window = 1'b1;
+        lo = pc;
+        hi = pc;
+        since = $realtime;
+      end else begin
+        lo = new_lo;
+        hi = new_hi;
+      end
+      if ($realtime - last_progress >= progress_ns * 1ns) begin
+        last_progress = $realtime;
+        `uvm_info("EG2_PROGRESS", $sformatf("pc %08h, in the window %08h-%08h for %0.0f us", pc, lo,
+                                            hi, ($realtime - since) / 1us), UVM_LOW)
+      end
+      if ($realtime - since >= limit_ns * 1ns) begin
+        `uvm_error("EG2_PROGRESS", $sformatf({"EG2 stall: the core ran only between pc %08h and ",
+                                              "%08h for %0.0f us (+eg2_stall_limit_ns=%0d): a loop ",
+                                              "that does not end (look the PCs up in the image's ",
+                                              ".dis)"}, lo, hi, ($realtime - since) / 1us, limit_ns))
+        override_test_status_and_finish(.passed(1'b0));
+        return;
+      end
+    end
   endtask
 
   // The instruction cache at boot, drawn from the run's seed so regressions run each test with the

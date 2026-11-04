@@ -129,7 +129,10 @@
       en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       // The ROM alone needs 9 ms before ROM_EXT starts; 300 ms, as the boot tests.
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      // The wall clock ends such a run long before 300 ms: the core staying in one loop for 8 ms
+      // fails the run instead (chip_sw_eg2_base_vseq watch_core_progress; the ROM's OTBN signature
+      // wait, the longest meant to be, is about 6 ms).
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_stall_limit_ns=8_000_000"]
       run_timeout_mins: 480
     }
     {
@@ -140,7 +143,10 @@
       en_run_modes: ["sw_test_mode_rom_ext"]
       build_mode: "en_eg2_cosim"
       // The ROM alone needs 9 ms before ROM_EXT starts; 300 ms, as the boot tests.
-      run_opts: ["+sw_test_timeout_ns=300_000_000"]
+      // The wall clock ends such a run long before 300 ms: the core staying in one loop for 8 ms
+      // fails the run instead (chip_sw_eg2_base_vseq watch_core_progress; the ROM's OTBN signature
+      // wait, the longest meant to be, is about 6 ms).
+      run_opts: ["+sw_test_timeout_ns=300_000_000", "+eg2_stall_limit_ns=8_000_000"]
       run_timeout_mins: 480
     }
     {
@@ -767,7 +773,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107888664", "+eg2_param_blocks_hi=1038", "+eg2_param_links=1"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 1 of 4 (uart0, uart2, lc_ctrl.regs, alert_handler, usbdev, clkmgr, rram_macro.prim, otbn, csrng, edn1, sram_ctrl_sec.regs, cheriot_mem_sys.regs).
@@ -777,7 +783,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=538075141", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 2 of 4 (spi_device, i2c0, i2c2, i3c1, pwrmgr, sysrst_ctrl, pinmux, aon_timer, rv_dm.regs, entropy_src, edn0, rom_ctrl.regs).
@@ -787,7 +793,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2175010144", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 3 of 4 (uart1, i2c1, otp_ctrl.core, spi_host0, adc_ctrl, sensor_ctrl, sram_ctrl_ret.regs, rram_ctrl.core, rv_plic, keymgr_dpe, rv_core_ibex.cfg, sram_ctrl_meta.regs).
@@ -797,7 +803,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=473993346", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 0: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -809,7 +815,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=592408", "+eg2_param_blocks_hi=0", "+eg2_param_links=1"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 0: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -821,7 +827,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1107296256", "+eg2_param_blocks_hi=1038", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 1: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -833,7 +839,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=1204229", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 1: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -845,7 +851,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=536870912", "+eg2_param_blocks_hi=19024", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 2: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -857,7 +863,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2360672", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 2: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -869,7 +875,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=2172649472", "+eg2_param_blocks_hi=4480", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 3: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -881,7 +887,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=71340162", "+eg2_param_blocks_hi=0", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Half of CHERIoT slice 3: CHERIoT-mode runs take about twice the wall time of plain ones
@@ -893,7 +899,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_blocks_lo=402653184", "+eg2_param_blocks_hi=40993", "+eg2_param_links=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 0 of 8 (pinmux).
@@ -903,7 +909,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=8388608", "+eg2_param_windows_hi=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -915,7 +921,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -927,7 +933,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=1"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -939,7 +945,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=2"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -951,7 +957,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=3"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 1e of 8 (sram_ctrl_main.regs).
@@ -961,7 +967,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=0", "+eg2_param_windows_hi=1024"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 2 of 8 (i2c0, spi_host1, aon_timer, sensor_ctrl, rram_macro.prim, rv_dm.mem).
@@ -971,7 +977,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1694564416", "+eg2_param_windows_hi=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 3 of 8 (uart2, sram_ctrl_ret.regs, rv_plic, aes, kmac, csrng, rom_ctrl.regs).
@@ -981,7 +987,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=134217732", "+eg2_param_windows_hi=4171"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 4 of 8 (uart0, uart3, i2c1, i3c0, lc_ctrl.regs, rv_dm.regs, hmac, rv_core_ibex.cfg).
@@ -991,7 +997,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=2147492489", "+eg2_param_windows_hi=8196"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 5 of 8 (i2c2, i3c1, otp_ctrl.core, spi_host0, usbdev, clkmgr, otbn, sram_ctrl_meta.regs).
@@ -1001,7 +1007,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1217792", "+eg2_param_windows_hi=32784"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 6 of 8 (uart1, adc_ctrl, rram_ctrl.core, keymgr_dpe, entropy_src, edn1, cheriot_mem_sys.regs).
@@ -1011,7 +1017,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=272629762", "+eg2_param_windows_hi=17056"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 7 of 8 (gpio, spi_device, rv_timer, pwrmgr, rstmgr, sysrst_ctrl, ast, edn0, sram_ctrl_sec.regs).
@@ -1021,7 +1027,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=36440112", "+eg2_param_windows_hi=2304"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 0 of 8 (pinmux).
@@ -1031,7 +1037,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=8388608", "+eg2_param_windows_hi=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -1043,7 +1049,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -1055,7 +1061,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=1"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -1067,7 +1073,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=2"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // alert_handler (362 registers) alone outran the 240-minute limit (3 Nov: killed after
@@ -1079,7 +1085,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=16384", "+eg2_param_windows_hi=0", "+eg2_param_reg_parts=4", "+eg2_param_reg_part=3"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 1e of 8 (sram_ctrl_main.regs).
@@ -1089,7 +1095,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=0", "+eg2_param_windows_hi=1024"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 2 of 8 (i2c0, spi_host1, aon_timer, sensor_ctrl, rram_macro.prim, rv_dm.mem).
@@ -1099,7 +1105,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1694564416", "+eg2_param_windows_hi=0"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 3 of 8 (uart2, sram_ctrl_ret.regs, rv_plic, aes, kmac, csrng, rom_ctrl.regs).
@@ -1109,7 +1115,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=134217732", "+eg2_param_windows_hi=4171"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 4 of 8 (uart0, uart3, i2c1, i3c0, lc_ctrl.regs, rv_dm.regs, hmac, rv_core_ibex.cfg).
@@ -1119,7 +1125,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=2147492489", "+eg2_param_windows_hi=8196"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 5 of 8 (i2c2, i3c1, otp_ctrl.core, spi_host0, usbdev, clkmgr, otbn, sram_ctrl_meta.regs).
@@ -1129,7 +1135,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=1217792", "+eg2_param_windows_hi=32784"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 6 of 8 (uart1, adc_ctrl, rram_ctrl.core, keymgr_dpe, entropy_src, edn1, cheriot_mem_sys.regs).
@@ -1139,7 +1145,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=272629762", "+eg2_param_windows_hi=17056"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       // Slice 7 of 8 (gpio, spi_device, rv_timer, pwrmgr, rstmgr, sysrst_ctrl, ast, edn0, sram_ctrl_sec.regs).
@@ -1149,7 +1155,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_param_n_windows=48", "+eg2_param_windows_lo=36440112", "+eg2_param_windows_hi=2304"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
   ]
   regressions: [

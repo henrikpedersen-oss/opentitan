@@ -581,6 +581,9 @@ module tb;
   assign u_eg2_rvfi_if.dside_rvalid = `CPU_CORE_HIER.u_ibex_core.data_rvalid_i;
   assign u_eg2_rvfi_if.dside_err    = `CPU_CORE_HIER.u_ibex_core.data_err_i;
   assign u_eg2_rvfi_if.dside_rdata  = `CPU_CORE_HIER.u_ibex_core.data_rdata_i[31:0];
+  assign u_eg2_rvfi_if.dside_rintg  = `CPU_CORE_HIER.u_ibex_core.data_rdata_i[38:32];
+  assign u_eg2_rvfi_if.por_pin_n    = dut.chip_if.dios[top_earlgrey_pkg::DioPadPorN];
+  assign u_eg2_rvfi_if.por_aon_n    = dut.chip_if.aon_rst_n;
   // The ID stage, to tie a fetch error to the instruction that takes it, with the Ibex UVM bench's
   // probes (core_ibex_tb_top.sv instr_monitor_if, dut_if.wb_exception). Review R11, 2026-10-25.
   assign u_eg2_rvfi_if.id_done            = `CPU_CORE_HIER.u_ibex_core.rvfi_id_done;

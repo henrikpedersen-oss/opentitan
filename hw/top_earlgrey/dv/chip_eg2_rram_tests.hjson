@@ -15,7 +15,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_exec_inject_fail
@@ -24,7 +24,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_exec_cheriot
@@ -33,7 +33,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_exec_cheriot_inject_fail
@@ -42,7 +42,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_exec_en
@@ -87,7 +87,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_wr_reject_inject_fail
@@ -96,7 +96,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_wr_reject_cheriot
@@ -105,7 +105,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_host_wr_reject_cheriot_inject_fail
@@ -114,7 +114,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_fetch_during_write
@@ -159,7 +159,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_write_then_fetch_inject_fail
@@ -168,7 +168,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_write_then_fetch_cheriot
@@ -177,7 +177,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_write_then_fetch_cheriot_inject_fail
@@ -186,7 +186,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_fetch_perf
@@ -411,7 +411,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_mem_protection_inject_fail
@@ -420,7 +420,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_mem_protection_cheriot
@@ -429,7 +429,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_mem_protection_cheriot_inject_fail
@@ -438,7 +438,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_otp_isolation
@@ -663,7 +663,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_inject_fail
@@ -672,7 +672,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_cheriot
@@ -681,7 +681,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_cheriot_inject_fail
@@ -690,7 +690,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=50_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_otp
@@ -699,7 +699,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_otp_inject_fail
@@ -708,7 +708,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_otp_cheriot
@@ -717,7 +717,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_idle_low_power_otp_cheriot_inject_fail
@@ -726,7 +726,7 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
       run_opts: ["+sw_test_timeout_ns=100_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_rram_ctrl_clock_freqs

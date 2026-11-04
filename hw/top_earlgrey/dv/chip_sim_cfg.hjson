@@ -202,8 +202,9 @@
   // from here, test.py; without this dvsim kills it after 60 minutes). With the EG2 bench
   // (ISS co-simulation, scoreboards) and coverage on, the chip simulates at about 1.7 us per
   // second on a loaded nyx: boot alone is ~3 ms, so a short test such as
-  // chip_sw_eg2_status_smoketest (~7 ms) needs ~70 minutes. Tests with their own value keep it.
-  run_timeout_mins: 240
+  // chip_sw_eg2_status_smoketest (~7 ms) needs ~70 minutes. 8 hours, because 4 hours killed
+  // the long tests before their verdict. Tests with their own value keep it.
+  run_timeout_mins: 480
 
   // exports: [
   //   Uncomment if using manufacturer tests / test hooks that live somewhere
@@ -609,10 +610,16 @@
       // dvsim-generated OTP images carry no keys, so the run loads a Bazel OTP image with them
       // (life-cycle state RMA, the bench default; a vseq may still write another state by
       // backdoor). Without it the ROM stops with BFV:08535603 (bad auth partition).
+      // ROM_EXT brings the entropy complex up in FIPS mode and waits in one loop for EDN0's
+      // instantiate (sw/device/lib/crypto/drivers/entropy.c, edn_configure), which needs fresh
+      // entropy from entropy_src. The AST model's default noise rate (one 4-bit sample every 32-128
+      // AST clocks, ast/rtl/rng.sv) made that one wait take more than 3 ms of simulated time (over an
+      // hour of wall clock; 2026-11-04 the smoketests below were killed there after 7 h). As
+      // OpenTitan's entropy tests do (chip_sw_edn_auto_mode), the rate is raised, still random.
       name: sw_test_mode_rom_ext
       sw_images: ["//sw/device/tests/eg2_boot:otp_img_eg2_boot_rma:4"]
       en_run_modes: ["sw_test_mode_mask_rom"]
-      run_opts: ["+use_otp_image=OtpTypeCustom"]
+      run_opts: ["+use_otp_image=OtpTypeCustom", "+rng_srate_value_min=5", "+rng_srate_value_max=10"]
     }
     {
       name: stub_cpu_mode
@@ -1058,7 +1065,7 @@
         "+use_otp_image=OtpTypeCustom",
       ]
       reseed: 1
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_otp_ctrl_descrambling
@@ -1131,7 +1138,7 @@
       run_opts: ["+use_otp_image=OtpTypeLcStRaw", "+dest_dec_state=DecLcStDev",
                  // The test takes long time because it will transit to RMA state
                  "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_lc_walkthrough_prod
@@ -1141,7 +1148,7 @@
       run_opts: ["+use_otp_image=OtpTypeLcStRaw", "+dest_dec_state=DecLcStProd",
                  // The test takes long time because it will transit to RMA state
                  "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_lc_walkthrough_prodend
@@ -1183,7 +1190,7 @@
       run_opts: ["+use_otp_image=OtpTypeLcStRaw", "+dest_dec_state=DecLcStRma",
                  // The test takes long time because it will transit to RMA state
                  "+sw_test_timeout_ns=200_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_lc_walkthrough_testunlocks
@@ -1526,7 +1533,7 @@
       // This test takes long due to the compile time configured reverse timeout. See test plan for
       // more details.
       run_opts: ["+en_scb=0", "+sw_test_timeout_ns=300_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
      {
       name: chip_sw_alert_handler_lpg_sleep_mode_alerts
@@ -1537,7 +1544,7 @@
                  "+sw_test_timeout_ns=3000_000_000",
                  "+bypass_alert_ready_to_end_check=1",
                  "+avoid_inject_fatal_error_for_ips=sram_ctrl_main,rram_ctrl,lc_ctrl*state_regs,otp_ctrl*u_otp_ctrl_dai,rv_core_ibex*sw_fatal_err"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
       reseed: 90
     }
     {
@@ -1546,7 +1553,7 @@
       sw_images: ["//sw/device/tests:alert_handler_lpg_sleep_mode_pings_test:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+en_scb=0", "+sw_test_timeout_ns=3000_000_000", "+bypass_alert_ready_to_end_check=1"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_alert_handler_lpg_clkoff
@@ -1554,7 +1561,7 @@
       sw_images: ["//sw/device/tests:alert_handler_lpg_clkoff_test:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+en_scb=0", "+sw_test_timeout_ns=3000_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_alert_handler_lpg_reset_toggle
@@ -1562,7 +1569,7 @@
       sw_images: ["//sw/device/tests:alert_handler_lpg_reset_toggle_test:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+en_scb=0", "+sw_test_timeout_ns=3000_000_000"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
     }
     {
       name: chip_sw_alert_handler_entropy
@@ -1638,7 +1645,7 @@
       en_run_modes: ["sw_test_mode_test_rom", "fast_sim"]
       run_opts: ["+sw_test_timeout_ns=140_000_000", "+rng_srate_value_min=15",
                  "+rng_srate_value_max=20"]
-      run_timeout_mins: 240
+      run_timeout_mins: 480
       reseed: 10
     }
     {

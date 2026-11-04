@@ -494,7 +494,7 @@ class eg2_periph_env extends uvm_env;
     if ($value$plusargs("eg2_tl_err_flip=%s", flip) && !(flip inside {names})) begin
       `uvm_fatal(`gfn, $sformatf("+eg2_tl_err_flip=%s: no such port", flip))
     end
-    ok = '{"rvfi.count", "insn.rd", "insn.cheriot_rd", "path.data"};
+    ok = '{"rvfi.count", "insn.rd", "insn.cheriot_rd", "insn.mcause", "path.data"};
     foreach (taps[i]) begin
       ok.push_back({taps[i].name, ".tl_err"});
       // Ports without a scoreboard of their own items.

@@ -84,6 +84,8 @@ interface eg2_rvfi_if #(
   logic            dside_rvalid;       // a response (in request order)
   logic            dside_err;
   logic [31:0]     dside_rdata;
+  // The response's integrity bits (MemECC: data_rdata_i[38:32]), for the internal-NMI rule.
+  logic [6:0]      dside_rintg;
   // The core's ID stage, to tie a fetch error to the instruction that takes it (the Ibex UVM bench's
   // core_ibex_instr_monitor_if and run_cosim_imem_errors): an instruction leaving ID (rvfi_id_done)
   // with its RVFI order, PC and fetch-error flags; a writeback exception flushes it. Review R11,
@@ -100,6 +102,15 @@ interface eg2_rvfi_if #(
   logic [31:0]     csr_mcause;
   logic [31:0]     csr_mtval;
 
+  // Power-on resets, which the retention SRAM does not survive (the retention SRAM driver header
+  // retention_sram.h, "retain information ... across a device reset"; the ROM initialises it after
+  // a POR): the bench's POR pin and the always-on POR reset. Edge-detected without a clock (the
+  // core clock is off in deep sleep); the agent reads and clears por_seen at each reset release.
+  logic            por_pin_n;
+  logic            por_aon_n;
+  bit              por_seen = 1'b1;  // the run begins with a power-on
+  always @(negedge por_pin_n or negedge por_aon_n) por_seen = 1'b1;
+
   clocking monitor_cb @(posedge clk);
     input rst_n, valid, order, insn, trap, halt, intr, mode, rs1_addr, rs2_addr, rs1_rdata,
           rs2_rdata, rd_addr, rd_wdata, pc_rdata, pc_wdata, mem_addr, mem_rmask, mem_wmask,
@@ -110,7 +121,7 @@ interface eg2_rvfi_if #(
           data_err, cheriot_ena, boot_addr,
           dside_req, dside_we, dside_be, dside_addr, dside_wdata, dside_misaligned_first,
           dside_misaligned_second, dside_misaligned_first_saw_error, dside_m_mode, dside_rvalid,
-          dside_err, dside_rdata,
+          dside_err, dside_rdata, dside_rintg,
           id_done, id_order, id_pc, id_fetch_err, id_fetch_err_plus2, wb_exception,
           csr_mcounteren, csr_mcause, csr_mtval;
   endclocking

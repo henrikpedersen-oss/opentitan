@@ -29,8 +29,12 @@
 //       every tracked write; in an SRAM, a byte neither written by the core nor read since the
 //       chip reset or since the core last renewed that SRAM's key or started its INIT (sram_ctrl
 //       CTRL), after which the chip's contents are undefined. The first read takes the chip's
-//       value (counted, reported at the end); every later one is compared. The retention SRAM is
-//       treated so too: its contents over a reset are not modelled.
+//       value (counted, reported at the end); every later one is compared. The retention SRAM
+//       keeps what the model knew of it over a chip reset unless the reset was a power-on reset or
+//       a global escalation came before it (dv_todo S11, 3 Nov; retention_sram.h "retain
+//       information ... across a device reset", EG2 REQ_SRAM_02, sram_ctrl interfaces.md "Global
+//       and Local Escalation": the keys are discarded). Before, it was forgotten at every reset,
+//       so a chip that lost its contents passed. sram_ctrl_ret's local escalation is not modelled.
 //   A backdoor write reaches Spike for the loads whose responses came after it (eg2_dside_access_t
 //   t_resp), not earlier ones in flight.
 // - A data access the chip made that no retired instruction takes up is an error (R9): Spike's
@@ -76,7 +80,9 @@
 //
 // Plusargs: +sb_corrupt=insn.rd (corrupts one register result before it is checked, from the 100th
 // instruction), +sb_corrupt=insn.cheriot_rd (the same from the 100th CHERIoT-mode instruction, so
-// CHERIoT-Sail's check is the one shown to fail); the run must fail. +eg2_iss_ignore_debug_session=1
+// CHERIoT-Sail's check is the one shown to fail), +sb_corrupt=insn.mcause (the chip's mcause of the
+// first trap handler from the 100th instruction on, plain mode, so Spike's trap-cause check is the
+// one shown to fail); the run must fail. +eg2_iss_ignore_debug_session=1
 // (the sequences' debug sessions are not taken: a debug test must fail at its first debug-mode
 // entry). +eg2_spike_log=1 (Spike's commit log, spike.model.log).
 
@@ -161,6 +167,31 @@ class eg2_iss_wrapper extends uvm_component;
   protected bit          sail_prev_skip;
   protected bit [31:0]   boot_addr_q;
   protected bit          corrupt_rd;
+  protected bit          corrupt_mcause;
+  // Spike's trap-cause check (dv_todo S12): the previous Spike step was a synchronous trap, and
+  // whether it came with an NMI or debug request (no counterpart in the check).
+  protected bit          spike_prev_trap;
+  // The internal-NMI rule (dv_todo S11, Ibex load_store_unit.rst "Bus Integrity Checking",
+  // exception_interrupts.rst "Internal Interrupts"): the words whose data response had bad
+  // integrity bits and whose NMI the chip has not taken yet, the instructions retired since the
+  // first of them, whether the previous item carried the chip's NMI (one NMI shows on more than one
+  // item), and whether an NMI handler runs (no other NMI until its mret).
+  protected bit [31:0]   intg_words[$];
+  protected int unsigned intg_wait;
+  protected bit          intg_prev_nmi;
+  protected bit          intg_nmi_active;
+  // mcounteren as the model knows it (dv_todo S11, 3 Nov): Ibex cs_registers.rst "Machine
+  // Counter-Enable Register" (reset 0; CY, IR and the HPM bits up to MHPMCounterNum + 2 writable,
+  // TM 0; writes only while mcounteren_writable_i is on) and rv_core_ibex MCOUNTEREN_WRITABLE
+  // (MuBi4, reset True; locked by MCOUNTEREN_WRITABLE_REGWEN, rw0c) from the core's stores.
+  // Before, the chip's value was pushed into Spike, so a chip that ignored a write, or took one
+  // while locked, passed.
+  protected bit [31:0]   mcen_model;
+  protected bit [31:0]   mcen_seen;  // the value the current instruction sees (before its write)
+  protected bit [3:0]    mcen_writable;
+  protected bit          mcen_regwen;
+  protected bit          mcen_reported;
+  protected bit          spike_prev_skip;
   protected bit          corrupt_cheriot_rd;
   protected int unsigned sail_steps;
   protected int unsigned stepped;
@@ -206,6 +237,12 @@ class eg2_iss_wrapper extends uvm_component;
   protected bit [7:0]    nv_mem[bit [31:0]];
   // The SRAM bytes the model has a value for since the last reset or invalidation, per word. R6.
   protected bit [3:0]    vol_known[bit [31:0]];
+  // The retention SRAM's bytes the model knows (from the core's stores, first reads and the bench's
+  // backdoor writes), given to the new Spike after a reset that keeps them.
+  protected bit [7:0]    ret_mem[bit [31:0]];
+  protected bit          ret_escalated;
+  localparam bit [31:0]  RetBase = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_RET_RAM_BASE_ADDR;
+  localparam bit [31:0]  RetSize = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_RET_RAM_SIZE_BYTES;
   // Writes behind the core's back not yet given to the model: each reaches it before the first
   // instruction whose data came after it. R6.
   // Since 2026-10-26 also what else happens to memory behind the core's back, in the same time
@@ -418,6 +455,7 @@ class eg2_iss_wrapper extends uvm_component;
     exp_port  = new("exp_port", this);
     void'($value$plusargs("sb_corrupt=%s", sb_corrupt));
     corrupt_rd         = sb_corrupt == "insn.rd";
+    corrupt_mcause     = sb_corrupt == "insn.mcause";
     corrupt_cheriot_rd = sb_corrupt == "insn.cheriot_rd";
     foreach (cfg_names[i]) begin
       int unsigned v;
@@ -471,6 +509,12 @@ class eg2_iss_wrapper extends uvm_component;
     fork
       watch_rram_writes();
       watch_tbre_clears();  // R18, 2026-10-26
+      // The global escalation reaches every sram_ctrl (lc_escalate_en): the retention SRAM's keys
+      // are discarded, whether or not the core retires another instruction before the reset.
+      forever begin
+        @(posedge cfg.chip_vif.sram_main_escalated);
+        ret_escalated = 1'b1;
+      end
     join_none
     forever begin
       rvfi_fifo.get(item);
@@ -482,6 +526,7 @@ class eg2_iss_wrapper extends uvm_component;
   protected function void handle(eg2_rvfi_item item);
     eg2_rvfi_exp_item exp;
     bit [31:0] rd_wdata;
+    string     trap_err;
 
     if (item.reset) begin
       // Announced faults end at a chip reset (review R12, 2026-10-25), in every build (bench faults,
@@ -499,6 +544,15 @@ class eg2_iss_wrapper extends uvm_component;
       end
       report_left("the chip reset");
       rram_exec   = '0;
+      // The retention SRAM's contents are gone after a power-on reset or a global escalation.
+      if (item.por || ret_escalated || cfg.chip_vif.sram_main_escalated) begin
+        if (ret_mem.size() != 0) begin
+          `uvm_info(`gfn, $sformatf("EG2_ISS retention SRAM: %0d bytes forgotten (%s)", ret_mem.size(),
+                                    item.por ? "power-on reset" : "global escalation"), UVM_LOW)
+        end
+        ret_mem.delete();
+      end
+      ret_escalated = 1'b0;
       fetch_rules_reset();
       sail_active = 1'b0;
       restart(item.boot_addr);
@@ -531,6 +585,8 @@ class eg2_iss_wrapper extends uvm_component;
     // since R19 (sram_ctrl_store, 2026-10-26).
     track_stores(item);
     apply_pending_writes(item);
+    nmi_int_rule(item);
+    if (!item.irq_only) mcen_step(item);
     if (tbre_end_pending) tbre_check_complete("software read an even TBRE_EPOCH");
     // The store to CHERIOT_LOCK that switches the mode retires after its write has changed
     // cheriot_ena, so its item already reads CHERIoT; it executed in RISC-V mode and is Spike's.
@@ -551,6 +607,8 @@ class eg2_iss_wrapper extends uvm_component;
     notify_dside(item);
 
     if (item.irq_only) begin
+      // The next handler is the interrupt's, not the previous trap's: no trap-cause check there.
+      spike_prev_trap = 1'b0;
       // Only an interrupt notification: no instruction retired. As the core bench
       // (ibex_cosim_scoreboard.sv): the internal NMI's mtval, and set_irq_taken, since the RVFI
       // notification now comes when the core commits to the interrupt (R3, the vendored
@@ -573,10 +631,9 @@ class eg2_iss_wrapper extends uvm_component;
       riscv_cosim_set_csr(cosim, int'(ibex_pkg::CSR_MHPMCOUNTER3) + i, item.mhpmcounters[i]);
       riscv_cosim_set_csr(cosim, int'(ibex_pkg::CSR_MHPMCOUNTER3H) + i, item.mhpmcountersh[i]);
     end
-    // Before the step, as the Ibex UVM bench pushes it (ibex_cosim_scoreboard.sv): Spike checks
-    // mcounteren when it executes a U-mode counter read. A WARL input Spike cannot be relied on to
-    // reproduce, pushed, not compared (the core's formal proof compares it). R13, 2026-10-25.
-    riscv_cosim_set_csr(cosim, int'(ibex_pkg::CSR_MCOUNTEREN), item.mcounteren);
+    // Before the step: Spike checks mcounteren when it executes a U-mode counter read. The model's
+    // own value (mcen_step, dv_todo S11, 3 Nov), no longer the chip's; the chip's is compared there.
+    riscv_cosim_set_csr(cosim, int'(ibex_pkg::CSR_MCOUNTEREN), mcen_seen);
     riscv_cosim_set_ic_scr_key_valid(cosim, item.ic_scr_key_valid);
     // A fetch error the chip took on this instruction at a word the bench armed: Spike's fetch there
     // fails in this step (R11, 2026-10-25).
@@ -595,6 +652,29 @@ class eg2_iss_wrapper extends uvm_component;
                                   item.iside_err_addr, item.order, item.pc), UVM_LOW)
       end else begin
         report_unarmed_iside(item);
+      end
+    end
+
+    // After a synchronous trap, on the handler's first instruction (Spike not stepped yet): the
+    // chip's mcause and mtval against Spike's. Spike's check_sync_trap compares only the PC and that
+    // nothing was written (dv_todo S12, 3 Nov): a chip trapping for the wrong cause, or with the
+    // wrong mtval, passed unless the handler read them. As CHERIoT-Sail's check (R13); not after an
+    // NMI or debug entry, which have no counterpart here.
+    trap_err = "";
+    if (spike_prev_trap && !spike_prev_skip && item.intr && !item.nmi && !item.nmi_int &&
+        !item.debug_req) begin
+      bit [31:0] m = eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MCAUSE));
+      bit [31:0] t = eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MTVAL));
+      bit [31:0] chip_m = item.csr_mcause;
+      if (corrupt_mcause && stepped >= 100) begin
+        chip_m         = chip_m ^ 32'h1;
+        corrupt_mcause = 1'b0;
+        `uvm_info(`gfn, $sformatf("+sb_corrupt=insn.mcause: mcause of order %0d corrupted",
+                                  item.order), UVM_LOW)
+      end
+      if (chip_m != m || item.csr_mtval != t) begin
+        trap_err = $sformatf("trap cause: chip mcause %08h mtval %08h, Spike mcause %08h mtval %08h; ",
+                             chip_m, item.csr_mtval, m, t);
       end
     end
 
@@ -628,7 +708,13 @@ class eg2_iss_wrapper extends uvm_component;
       end
       riscv_cosim_clear_errors(cosim);
     end
+    if (trap_err != "") begin
+      exp.match  = 1'b0;
+      exp.errors = {exp.errors, trap_err};
+    end
     if (!item.more_ops) begin
+      spike_prev_trap = item.trap;
+      spike_prev_skip = item.nmi || item.nmi_int || item.debug_req;
       spike_steps++;
       check_spike_left(exp);
     end
@@ -689,6 +775,15 @@ class eg2_iss_wrapper extends uvm_component;
     // read OP_STATUS.done, else the reset may have cut the operation (reported). R15, 2026-10-26.
     rram_close_op("the chip reset", 1'b0);
     vol_known.delete();
+    // The retention SRAM's bytes that survive this reset (decided in handle()).
+    foreach (ret_mem[a]) begin
+      riscv_cosim_write_mem_byte(cosim, a, ret_mem[a]);
+      mark_known(a, 4'b0001 << a[1:0]);
+    end
+    if (ret_mem.size() != 0) begin
+      `uvm_info(`gfn, $sformatf("EG2_ISS retention SRAM: %0d bytes kept over the chip reset",
+                                ret_mem.size()), UVM_LOW)
+    end
     pending_wr.delete();
     spike_q.delete();
     sail_q.delete();
@@ -749,7 +844,7 @@ class eg2_iss_wrapper extends uvm_component;
       // whole item first, so a store before it in the same item stayed defined).
       if (!a.store && !a.err) feed_load(a.addr, a.be, a.rdata);
       if (a.store && !a.err) sram_ctrl_store(a);
-      if (a.store && !a.err) store_defines(a.addr, a.be);
+      if (a.store && !a.err) store_defines(a.addr, a.be, a.wdata);
       riscv_cosim_notify_dside_access(cosim, a.store, a.addr, a.store ? a.wdata : a.rdata, a.be,
                                       a.err, a.misaligned_first, a.misaligned_second,
                                       a.misaligned_first_saw_error, a.m_mode);
@@ -804,15 +899,23 @@ class eg2_iss_wrapper extends uvm_component;
       unknown_reads++;
       fed_mem = 1'b1;
       if (k == MemNv) nv_mem[addr] = rdata[8 * b +: 8];
-      else mark_known(addr, 4'b0001 << addr[1:0]);
+      else begin
+        mark_known(addr, 4'b0001 << addr[1:0]);
+        ret_record(addr, rdata[8 * b +: 8]);
+      end
     end
     if (fed_mem && !sail_active) eg2_cosim_flush_icache(cosim);
   endfunction
 
   // A store of the core (the model executes it) gives the model the SRAM bytes it writes. R6.
-  protected function void store_defines(bit [31:0] waddr, bit [3:0] be);
+  protected function void store_defines(bit [31:0] waddr, bit [3:0] be, bit [31:0] wdata);
     int unsigned r;
     if (mem_kind(waddr, r) == MemVol) mark_known(waddr, be);
+    for (int b = 0; b < 4; b++) if (be[b]) ret_record(waddr + b, wdata[8 * b +: 8]);
+  endfunction
+
+  protected function void ret_record(bit [31:0] addr, bit [7:0] data);
+    if (addr >= RetBase && addr - RetBase < RetSize) ret_mem[addr] = data;
   endfunction
 
   protected function void mark_known(bit [31:0] addr, bit [3:0] be);
@@ -838,6 +941,7 @@ class eg2_iss_wrapper extends uvm_component;
         rram_reg_store(a.addr, a.wdata, a.t_resp, "the core");
         sram_reg_store(a.addr, a.wdata);
         switch_reg_store(a.addr, a.wdata);
+        mcen_reg_store(a.addr, a.wdata);
         tbre_reg_store(a.addr, a.wdata);
         if (tbre_active && a.addr >= tbre_lo && a.addr < tbre_hi) begin
           tbre_written[{a.addr[31:3], 3'b000}] = 1'b1;
@@ -978,6 +1082,7 @@ class eg2_iss_wrapper extends uvm_component;
         n++;
       end
     end
+    foreach (ret_mem[a]) if (a >= base && a - base < size) ret_mem.delete(a);
     return n;
   endfunction
 
@@ -1038,6 +1143,7 @@ class eg2_iss_wrapper extends uvm_component;
         WrByte: begin
           model_write_byte(w.addr, w.data);
           if (mem_kind(w.addr, r) == MemVol) mark_known(w.addr, 4'b0001 << w.addr[1:0]);
+          ret_record(w.addr, w.data);
           // rram_ctrl's program leaves the capability's tag 0 (REQ_CMS_16). R18, 2026-10-26.
           if (w.untag && sail_active && w.addr[1:0] == 2'b00) begin
             cheriot_sail_cosim_clear_tag({w.addr[31:3], 3'b000});
@@ -1283,7 +1389,7 @@ class eg2_iss_wrapper extends uvm_component;
     cheriot_sail_cosim_set_ic_scr_key_valid(item.ic_scr_key_valid);
     // rv_core_ibex's MCOUNTEREN_WRITABLE, which software may clear: the model's default (writable)
     // holds only until then. As the core bench (2026-10-27, from the mip review).
-    cheriot_sail_cosim_set_mcounteren_writable(item.mcounteren_writable);
+    cheriot_sail_cosim_set_mcounteren_writable(mcen_writable == prim_mubi_pkg::MuBi4True);
     // The chip's pending interrupts, an input like the counters: a csrr mip in the model reads
     // them (2026-10-27: chip_sw_eg2_connectivity_cheriot read mip 0x880 on the chip and 0 in the
     // model, which saw pending bits only when the chip took an interrupt).
@@ -1339,7 +1445,7 @@ class eg2_iss_wrapper extends uvm_component;
         feed_load(claimed[i].addr, claimed[i].be, claimed[i].rdata);
       end
       if (claimed[i].store && !claimed[i].err) sram_ctrl_store(claimed[i]);
-      if (claimed[i].store && !claimed[i].err) store_defines(claimed[i].addr, claimed[i].be);
+      if (claimed[i].store && !claimed[i].err) store_defines(claimed[i].addr, claimed[i].be, claimed[i].wdata);
       // A trapping misaligned store wrote the half that got no error (the other half's bus error or
       // PMP stopped it), which CHERIoT-Sail's access fault does not: those bytes go into the model
       // as an event, as Spike's misaligned_store_second_half / misaligned_pmp_fixup apply them.
@@ -1980,8 +2086,70 @@ class eg2_iss_wrapper extends uvm_component;
 
   // The fetch rules' state after a chip reset: rram_ctrl's and main sram_ctrl's registers at their
   // reset values, the escalations ended, and the two OTP values main SRAM's rule reads at boot.
+  // The internal NMI, decided by the model (dv_todo S11, 3 Nov). Before, Spike was given the chip's
+  // internal NMI and its mtval, so a chip that raised one without cause, at the wrong address, or
+  // never, passed. Ibex documents: integrity bits are checked on every data response (loads and
+  // stores, the inverted 39/32 Hsiao code of prim_secded_inv_39_32_enc); a mismatch raises an
+  // internal NMI, mcause 0xFFFFFFE0, mtval "the faulting address", taken at most one instruction
+  // after the faulting load; a load with bad check bits does not write its destination register.
+  // The model checks the response itself and expects the NMI only then; mtval at word granularity
+  // (for a split access the documents do not say which word's address; the chip's exact value is
+  // passed to Spike). The instruction that takes it is the chip's, within IntgMaxItems.
+  localparam int unsigned IntgMaxItems = 2;
+  protected function void nmi_int_rule(eg2_rvfi_item item);
+    bit found;
+    foreach (item.dside[i]) begin
+      bit [38:0] enc = prim_secded_pkg::prim_secded_inv_39_32_enc(item.dside[i].rdata);
+      if (enc[38:32] != item.dside[i].rintg) begin
+        if (intg_words.size() == 0) intg_wait = 0;
+        intg_words.push_back(item.dside[i].addr);
+        `uvm_info(`gfn, $sformatf("EG2_ISS data response at %08h with bad integrity bits (%02h, expected %02h): internal NMI expected",
+                                  item.dside[i].addr, item.dside[i].rintg, enc[38:32]), UVM_LOW)
+      end
+    end
+    if (item.nmi_int && !intg_prev_nmi) begin
+      foreach (intg_words[i]) if (intg_words[i][31:2] == item.nmi_int_mtval[31:2]) found = 1'b1;
+      if (intg_words.size() == 0) begin
+        model_error($sformatf({"EG2_ISS the chip took an internal NMI (mtval %08h, order %0d) with no ",
+                               "data response of bad integrity before it"}, item.nmi_int_mtval, item.order));
+      end else if (!found) begin
+        model_error($sformatf({"EG2_ISS the chip's internal NMI has mtval %08h (order %0d); the ",
+                               "responses of bad integrity were at %p"}, item.nmi_int_mtval, item.order,
+                              intg_words));
+      end
+      intg_words.delete();
+      intg_nmi_active = 1'b1;
+    end
+    intg_prev_nmi = item.nmi_int;
+    if (item.nmi) intg_nmi_active = 1'b1;
+    if (item.irq_only) return;
+    if (item.rf_wr_suppress && intg_words.size() == 0 && !item.nmi_int) begin
+      model_error($sformatf({"EG2_ISS the chip suppressed the register write of order %0d (pc %08h) ",
+                             "with no data response of bad integrity"}, item.order, item.pc));
+    end
+    if (item.insn == 32'h30200073) intg_nmi_active = 1'b0;  // mret ends the NMI handler
+    if (intg_words.size() != 0 && !intg_nmi_active && !item.debug_mode) begin
+      if (++intg_wait > IntgMaxItems) begin
+        model_error($sformatf({"EG2_ISS data response of bad integrity at %08h, but the chip took no ",
+                               "internal NMI within %0d instructions (order %0d)"}, intg_words[0],
+                              IntgMaxItems, item.order));
+        intg_words.delete();
+      end
+    end
+  endfunction
+
   protected function void fetch_rules_reset();
     lc_ctrl_state_pkg::lc_state_e lc;
+    spike_prev_trap  = 1'b0;
+    intg_words.delete();
+    intg_wait        = 0;
+    intg_prev_nmi    = 1'b0;
+    intg_nmi_active  = 1'b0;
+    mcen_model       = '0;
+    mcen_seen        = '0;
+    mcen_writable    = prim_mubi_pkg::MuBi4True;
+    mcen_regwen      = 1'b1;
+    mcen_reported    = 1'b0;
     rram_sw_dis      = prim_mubi_pkg::MuBi4False;
     rram_escalated   = 1'b0;
     sw_model         = SwUnlocked;
@@ -2009,6 +2177,43 @@ class eg2_iss_wrapper extends uvm_component;
   endfunction
 
   // A store to rv_core_ibex's CHERIOT_ENA or CHERIOT_LOCK, by the core or the bench (sw_model).
+  protected function void mcen_reg_store(bit [31:0] addr, bit [31:0] wdata);
+    if (addr == SwCfg + 32'(rv_core_ibex_reg_pkg::RV_CORE_IBEX_MCOUNTEREN_WRITABLE_REGWEN_OFFSET)) begin
+      if (!wdata[0]) mcen_regwen = 1'b0;
+    end else if (addr == SwCfg + 32'(rv_core_ibex_reg_pkg::RV_CORE_IBEX_MCOUNTEREN_WRITABLE_OFFSET) &&
+                 mcen_regwen) begin
+      mcen_writable = wdata[3:0];
+    end
+  endfunction
+
+  // The chip's mcounteren as this instruction sees it against the model's, then the instruction's
+  // own write (CSRRW/S/C[I] to 0x306 that did not trap), as Ibex accepts it.
+  protected function void mcen_step(eg2_rvfi_item item);
+    bit [31:0] mask = 32'h5 | (((32'h1 << mhpm_counter_num) - 1) << 3);
+    bit [31:0] src;
+    bit [2:0]  f3 = item.insn[14:12];
+    mcen_seen = mcen_model;
+    if (item.mcounteren != mcen_model && !mcen_reported) begin
+      model_error($sformatf({"EG2_ISS mcounteren: the chip has %08h at order %0d (pc %08h), the model ",
+                             "%08h (MCOUNTEREN_WRITABLE %0h)"}, item.mcounteren, item.order, item.pc,
+                            mcen_model, mcen_writable));
+      mcen_reported = 1'b1;
+    end
+    if (item.trap || item.insn[6:0] != 7'h73 || f3 == 3'b000 || f3 == 3'b100 ||
+        item.insn[31:20] != 12'h306) begin
+      return;
+    end
+    src = f3[2] ? 32'(item.insn[19:15]) : item.rs1_rdata;
+    // CSRRS/CSRRC with x0 or a zero immediate do not write (the privileged ISA).
+    if (f3[1] && item.insn[19:15] == 5'd0) return;
+    if (mcen_writable != prim_mubi_pkg::MuBi4True) return;
+    case (f3[1:0])
+      2'b01:   mcen_model = src & mask;
+      2'b10:   mcen_model = (mcen_model | src) & mask;
+      default: mcen_model = mcen_model & ~src & mask;
+    endcase
+  endfunction
+
   protected function void switch_reg_store(bit [31:0] addr, bit [31:0] wdata);
     if (sw_model != SwUnlocked) return;  // "Further writes to either register have no effect"
     if (addr == SwCfg + 32'(rv_core_ibex_reg_pkg::RV_CORE_IBEX_CHERIOT_ENA_OFFSET)) begin
