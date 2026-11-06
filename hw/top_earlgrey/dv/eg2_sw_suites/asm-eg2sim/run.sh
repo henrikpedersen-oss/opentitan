@@ -43,9 +43,9 @@ mkdir -p "${OUT}/tests"
 
 # Keep the inventory identical to the Simple System runner. Directed tests remain listed while
 # their UVM stimulus and, for CHERIoT tests, mode-specific start-up are not available here.
-RVT="${IBEX}/vendor/riscv-tests/isa"
-ARCH="${IBEX}/vendor/riscv-arch-tests/riscv-test-suite"
-DIRECTED="${IBEX}/dv/uvm/core_ibex/directed_tests"
+RVT="${IBEX_TESTS}/vendor/riscv-tests/isa"
+ARCH="${IBEX_TESTS}/vendor/riscv-arch-tests/riscv-test-suite"
+DIRECTED="${IBEX_TESTS}/dv/uvm/core_ibex/directed_tests"
 # The upstream physical environment writes its raw test number to tohost after an unexpected trap.
 # On a host simulator that raw value stops the run; the chip's DV status word recognises only its
 # documented terminal values. Make that one path report kTestStatusFailed, while env/riscv_test.h
@@ -57,7 +57,7 @@ awk '{
         "li t5, 0xbaad; li t6, 0x411f0080; sw t5, 0(t6);")
   }
   print
-}' "${IBEX}/vendor/riscv-test-env/p/riscv_test.h" > "${OUT}/env/riscv_test.h"
+}' "${IBEX_TESTS}/vendor/riscv-test-env/p/riscv_test.h" > "${OUT}/env/riscv_test.h"
 {
   for d in rv32ui rv32um rv32uc rv32mi; do
     for f in "${RVT}/${d}"/*.S; do echo "rvt.${d}.$(basename "${f}" .S) rvt ${f}"; done
@@ -82,7 +82,7 @@ run_one() {
   flags=(-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
          -T "${HERE}/env/link.ld" -I "${HERE}/env" -I "${OUT}/env")
   case "${kind}" in
-    rvt)  flags+=(-I "${IBEX}/vendor/riscv-test-env/p" -I "${IBEX}/vendor/riscv-test-env"
+    rvt)  flags+=(-I "${IBEX_TESTS}/vendor/riscv-test-env/p" -I "${IBEX_TESTS}/vendor/riscv-test-env"
                   -I "${RVT}/macros/scalar" -I "${DIRECTED}") ;;
     # b: the toolchain (GCC 10.2, binutils 2.35) knows rol/ror only under the draft B name, not
     # under zbb (arch.B.rol-01 did not build).

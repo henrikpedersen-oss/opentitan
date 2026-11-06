@@ -26,7 +26,7 @@
 #
 #   run.sh [--update] [--rebuild] [-j JOBS] [-c CONFIG] [PATTERN]
 #     --rebuild  rebuild the simulator (it is otherwise built once and kept)
-#     CONFIG     an Ibex configuration ($IBEX/ibex_configs.yaml), default maxperf-pmp-bmfull
+#     CONFIG     an Ibex configuration (${IBEX_TESTS}/ibex_configs.yaml), default maxperf-pmp-bmfull
 #                (RV32IMCB with Zbkb/Zbkx, PMP: what the tests need)
 #     PATTERN    run only the tests whose name contains it
 #
@@ -80,9 +80,9 @@ fi
 
 # The tests: "<name> <kind> <source>"; kind rvt (riscv-tests), arch (architecture tests), or
 # "not-run <reason>" for the tests this runner does not run.
-RVT="${IBEX}/vendor/riscv-tests/isa"
-ARCH="${IBEX}/vendor/riscv-arch-tests/riscv-test-suite"
-DIRECTED="${IBEX}/dv/uvm/core_ibex/directed_tests"
+RVT="${IBEX_TESTS}/vendor/riscv-tests/isa"
+ARCH="${IBEX_TESTS}/vendor/riscv-arch-tests/riscv-test-suite"
+DIRECTED="${IBEX_TESTS}/dv/uvm/core_ibex/directed_tests"
 {
   for d in rv32ui rv32um rv32uc rv32mi; do
     for f in "${RVT}/${d}"/*.S; do
@@ -116,7 +116,7 @@ run_one() {
   flags=(-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -T "${HERE}/env/link.ld"
          -I "${HERE}/env")
   case "${kind}" in
-    rvt)  flags+=(-I "${IBEX}/vendor/riscv-test-env/p" -I "${IBEX}/vendor/riscv-test-env"
+    rvt)  flags+=(-I "${IBEX_TESTS}/vendor/riscv-test-env/p" -I "${IBEX_TESTS}/vendor/riscv-test-env"
                   -I "${RVT}/macros/scalar" -I "${DIRECTED}") ;;
     # b: the toolchain (GCC 10.2, binutils 2.35) knows rol/ror only under the draft B name, not
     # under zbb (arch.B.rol-01 did not build).
