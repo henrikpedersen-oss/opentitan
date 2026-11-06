@@ -19,5 +19,5 @@ SW_SUITES_OUT="${SW_SUITES_OUT:-${EG2_SCRATCH}/sw-suites}"
 #                   (riscv-tests, the architecture tests, the RTOS firmware sources) and its builds
 IBEX_CV="${IBEX_CV:-$(cd "${EG2_ROOT}/../.." && pwd)/ibex_cheriot_verification}"
 # The Ibex test sources the assembler suites build (riscv-tests, the architecture tests, the Ibex
-# directed tests): eg2_top_verification's plain copies (third_party/ibex_tests/README.md).
-IBEX_TESTS="${IBEX_TESTS:-$(cd "${EG2_ROOT}/.." && pwd)/third_party/ibex_tests}"
+# directed tests): eg2_top_verification's plain copies (cheriot-assembler-test-suite/README.md).
+IBEX_TESTS="${IBEX_TESTS:-$(cd "${EG2_ROOT}/.." && pwd)/cheriot-assembler-test-suite}"
