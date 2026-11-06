@@ -752,6 +752,12 @@ interface chip_if;
   wire [31:0] cms_tbre_clear_addr = '0;
   wire        cms_tbre_clear_rmw = 1'b0;
   wire        cms_tbre_clear_stale = 1'b0;
+  wire tlul_pkg::tl_h2d_t cms_core_revbm_h2d = ''0;
+  wire tlul_pkg::tl_d2h_t cms_core_revbm_d2h = ''0;
+  wire tlul_pkg::tl_h2d_t cms_revbm_dev_h2d  = ''0;
+  wire tlul_pkg::tl_d2h_t cms_revbm_dev_d2h  = ''0;
+  wire tlul_pkg::tl_h2d_t cms_sba_h2d        = ''0;
+  wire tlul_pkg::tl_d2h_t cms_sba_d2h        = ''0;
 `else
   wire        rram_rma_req = lc_ctrl_pkg::lc_tx_test_true_loose(`RRAM_CTRL_HIER.rma_req_i);
   wire        cms_clk              = `PD_MAIN_HIER.u_cheriot_mem_sys.clk_i;
@@ -760,6 +766,14 @@ interface chip_if;
   wire        cms_tbre_clear_rmw   = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_at_rmw &&
                                      `PD_MAIN_HIER.u_cheriot_mem_sys.rmw_tl_d2h.a_ready;
   wire        cms_tbre_clear_stale = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_stale_q;
+  // The revocation bitmap for the model (eg2_iss_wrapper watch_revbm, 2026-11-06): the core's lookups
+  // (corerevbm), every host's writes at the window's device port, and the debug module's SBA.
+  wire tlul_pkg::tl_h2d_t cms_core_revbm_h2d = `PD_MAIN_HIER.rv_core_ibex_corerevbm_tl_req;
+  wire tlul_pkg::tl_d2h_t cms_core_revbm_d2h = `PD_MAIN_HIER.rv_core_ibex_corerevbm_tl_rsp;
+  wire tlul_pkg::tl_h2d_t cms_revbm_dev_h2d  = `PD_MAIN_HIER.cheriot_mem_sys_revbm_tl_d_req;
+  wire tlul_pkg::tl_d2h_t cms_revbm_dev_d2h  = `PD_MAIN_HIER.cheriot_mem_sys_revbm_tl_d_rsp;
+  wire tlul_pkg::tl_h2d_t cms_sba_h2d        = `PD_MAIN_HIER.main_tl_rv_dm__sba_req;
+  wire tlul_pkg::tl_d2h_t cms_sba_d2h        = `PD_MAIN_HIER.main_tl_rv_dm__sba_rsp;
 `endif
 
   // For the chip scoreboard's TL-UL error prediction (chip_scoreboard.sv): the resets that clear

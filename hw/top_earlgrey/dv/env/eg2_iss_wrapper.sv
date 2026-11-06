@@ -509,6 +509,7 @@ class eg2_iss_wrapper extends uvm_component;
     fork
       watch_rram_writes();
       watch_tbre_clears();  // R18, 2026-10-26
+      watch_revbm();        // the bitmap at the core's lookups, 2026-11-06
       // The global escalation reaches every sram_ctrl (lc_escalate_en): the retention SRAM's keys
       // are discarded, whether or not the core retires another instruction before the reset.
       forever begin
@@ -597,6 +598,7 @@ class eg2_iss_wrapper extends uvm_component;
       // Every data access, also an interrupt-only item's, is accounted for (R9).
       foreach (item.dside[i]) sail_q.push_back('{a: item.dside[i], carrier: sail_steps});
       if (item.irq_only) return;  // CHERIoT-Sail takes interrupts from its own state
+      bm_apply_lookups();
       sail_step(item);
       check_stop_trigger(item);
       return;
@@ -1334,6 +1336,9 @@ class eg2_iss_wrapper extends uvm_component;
       for (int b = 0; b < 4; b++) cheriot_sail_cosim_write_mem_byte(RevBitsBase + off + b, 8'h00);
       vol_known[RevBitsBase + off] = 4'hf;
     end
+    // The record of the window's writes starts from that 0 (watch_revbm).
+    bm_hist.delete();
+    bm_lookups.delete();
     for (int r = 1; r < 16; r++) cheriot_sail_cosim_set_gpr_int(5'(r), eg2_cosim_get_gpr(cosim, r));
     cheriot_sail_cosim_handover(spike_pc,
                                 eg2_cosim_get_csr(cosim, int'(ibex_pkg::CSR_MTVEC)),
@@ -1811,6 +1816,11 @@ class eg2_iss_wrapper extends uvm_component;
 
   protected function void mem_write_byte(bit [31:0] addr, bit [7:0] data);
     bit is_mem = 1'b0;
+    // An SBA byte of the revocation bitmap that watch_revbm already gave the model at its bus time.
+    if (in_revbm(addr) && bm_sba_bytes.exists(addr) && bm_sba_bytes[addr] > 0) begin
+      bm_sba_bytes[addr]--;
+      return;
+    end
     for (int r = 0; r < NumMemRegions; r++) begin
       if (addr >= MemBase[r] && addr - MemBase[r] < MemSize[r]) begin
         is_mem = 1'b1;
@@ -1983,6 +1993,137 @@ class eg2_iss_wrapper extends uvm_component;
       end
     end
   endtask
+
+  // ---------------------------------------------------------------- The bitmap at the core's lookups
+  //
+  // The core's revocation filter reads the bitmap word of a loaded capability's base after the
+  // load's data (corerevbm), so the word it decides with is the one in memory at that lookup, not
+  // at the load's data. Another host's write of the word (the bench's SBA, chip_sw_cheriot_
+  // revocation_race) can land just before or after. Three things follow (2026-11-06):
+  //   - the window's writes are recorded at its device port (every host, bus time: bm_hist), the
+  //     memory's input, never the filter's;
+  //   - a lookup's word must be the one the record held at the lookup, or one written while it was
+  //     outstanding: anything else is an error (the filter read a value no writer produced);
+  //   - an SBA write of the window reaches the model at its bus time (not when its JTAG access
+  //     returns, which the vseq helpers' backdoor_write then reports a second time: skipped), and,
+  //     before a step, the window's writes up to the last completed lookup are applied: the model
+  //     decides the load with the word the lookup returned, as the filter did.
+  typedef struct { realtime t; bit [31:0] val; } bm_val_t;
+  typedef struct { realtime t_a; realtime t_d; int unsigned word; bit [31:0] data; } bm_lookup_t;
+  protected bm_val_t     bm_hist[int unsigned][$];
+  protected bm_lookup_t  bm_lookups[$];
+  protected int unsigned bm_sba_bytes[bit [31:0]];  // SBA bytes reported at bus time, per address
+  protected realtime     bm_guard;                  // two clock periods: a write's way into memory
+  int unsigned bm_lookups_checked, bm_lookups_newer, bm_lookup_errors;
+
+  protected function bit in_revbm(bit [31:0] addr);
+    return addr >= RevBitsBase && addr - RevBitsBase < RevBitsBytes;
+  endfunction
+
+  // The word's value in the record at `t` (0 before any write since the mode switch: handover).
+  protected function bit [31:0] bm_value_at(int unsigned w, realtime t);
+    bit [31:0] v = '0;
+    if (!bm_hist.exists(w)) return v;
+    foreach (bm_hist[w][i]) begin
+      if (bm_hist[w][i].t > t) break;
+      v = bm_hist[w][i].val;
+    end
+    return v;
+  endfunction
+
+  protected task watch_revbm();
+    int unsigned a_word[$];
+    realtime     a_time[$];
+    realtime     t_prev;
+    forever begin
+      tlul_pkg::tl_h2d_t h;
+      tlul_pkg::tl_d2h_t d;
+      @(posedge cfg.chip_vif.cms_clk);
+      if (t_prev > 0) bm_guard = 2 * ($realtime - t_prev);
+      t_prev = $realtime;
+      // Every host's writes, at the window's device port.
+      h = cfg.chip_vif.cms_revbm_dev_h2d;
+      d = cfg.chip_vif.cms_revbm_dev_d2h;
+      if (sail_active && h.a_valid && d.a_ready && h.a_opcode != tlul_pkg::Get) begin
+        int unsigned w  = (h.a_address & 32'hfff) >> 2;
+        bit [31:0]   nv = bm_value_at(w, $realtime);
+        for (int b = 0; b < 4; b++) if (h.a_mask[b]) nv[8 * b +: 8] = h.a_data[8 * b +: 8];
+        bm_hist[w].push_back('{t: $realtime, val: nv});
+      end
+      // The core's lookups: the word asked for, then the word returned.
+      h = cfg.chip_vif.cms_core_revbm_h2d;
+      d = cfg.chip_vif.cms_core_revbm_d2h;
+      if (sail_active && h.a_valid && d.a_ready && h.a_opcode == tlul_pkg::Get) begin
+        a_word.push_back((h.a_address & 32'hfff) >> 2);
+        a_time.push_back($realtime);
+      end
+      if (d.d_valid && h.d_ready && a_word.size() > 0) begin
+        int unsigned w   = a_word.pop_front();
+        realtime     t_a = a_time.pop_front();
+        if (sail_active && !d.d_error) begin
+          bm_lookups.push_back('{t_a: t_a, t_d: $realtime, word: w, data: d.d_data});
+        end
+      end
+      // The debug module's SBA writes of the window, for the model at their bus time.
+      h = cfg.chip_vif.cms_sba_h2d;
+      d = cfg.chip_vif.cms_sba_d2h;
+      if (sail_active && h.a_valid && d.a_ready && h.a_opcode != tlul_pkg::Get &&
+          in_revbm({h.a_address[31:2], 2'b00})) begin
+        for (int b = 0; b < 4; b++) begin
+          if (!h.a_mask[b]) continue;
+          begin
+            bit [31:0] a = {h.a_address[31:2], 2'b00} + b;
+            pending_wr.push_back(wr_byte($realtime, a, h.a_data[8 * b +: 8]));
+            if (bm_sba_bytes.exists(a)) bm_sba_bytes[a]++;
+            else bm_sba_bytes[a] = 1;
+          end
+        end
+      end
+    end
+  endtask
+
+  // Before a CHERIoT-mode step: every completed lookup is checked against the record, and the
+  // window's writes the last one saw are applied to the model (those up to its lookup, and a newer
+  // one the lookup returned).
+  protected function void bm_apply_lookups();
+    realtime t_eff = -1;
+    while (bm_lookups.size() > 0 && bm_lookups[0].t_d <= $realtime) begin
+      bm_lookup_t l   = bm_lookups.pop_front();
+      realtime    t_lo = l.t_a - bm_guard;
+      bit [31:0]  v0  = bm_value_at(l.word, t_lo);
+      bit         ok  = (l.data == v0);
+      realtime    t_ok = l.t_a;
+      bm_lookups_checked++;
+      if (!ok && bm_hist.exists(l.word)) begin
+        foreach (bm_hist[l.word][i]) begin
+          if (bm_hist[l.word][i].t <= t_lo || bm_hist[l.word][i].t > l.t_d) continue;
+          if (bm_hist[l.word][i].val == l.data) begin
+            ok   = 1'b1;
+            t_ok = bm_hist[l.word][i].t;
+          end
+        end
+        if (ok) bm_lookups_newer++;
+      end
+      if (!ok) begin
+        bm_lookup_errors++;
+        model_error($sformatf({"EG2_ISS the core's revocation filter read bitmap word %0d (0x%08h) ",
+                               "as 0x%08h, a value no writer produced around its lookup (the ",
+                               "word held 0x%08h)"}, l.word, RevBitsBase + 4 * l.word, l.data, v0));
+      end
+      t_eff = t_ok;
+    end
+    if (t_eff < 0) return;
+    // The window's pending writes up to t_eff, out of the queue's time order (only these).
+    for (int i = 0; i < pending_wr.size(); i++) begin
+      mem_wr_t w = pending_wr[i];
+      if (w.t > t_eff) break;
+      if (w.kind != WrByte || !in_revbm(w.addr)) continue;
+      model_write_byte(w.addr, w.data);
+      mark_known(w.addr, 4'b0001 << w.addr[1:0]);
+      pending_wr.delete(i);
+      i--;
+    end
+  endfunction
 
   // The bench makes a fetch of the word at `addr` fail (an integrity fault it injects on the
   // instruction path, or an uncorrectable ECC error in the RRAM row). The model is told of it only
