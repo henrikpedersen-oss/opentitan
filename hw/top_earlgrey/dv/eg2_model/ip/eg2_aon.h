@@ -506,6 +506,12 @@ class Eg2AonTimer : public Eg2IpModel {
       if (value(dc_) >= value(bark_)) {
         set_intr("wdog_timer_bark");
         if (auto *c = dynamic_cast<Eg2RvCoreIbexCfg *>(sys_.model("rv_core_ibex.cfg"))) c->nmi(1);
+        // README.md "Watchdog bark": "When there is a "bark" event, two outputs become high:
+        // wkup_req_o ... and intr_wdog_timer_bark_o"; the "level wakeup signal (wkup_req_o) stays
+        // high until software explicitly acknowledges it by software writing 0 to WKUP_CAUSE"
+        // (aon_timer.hjson AON_TIMER.WATCHDOG.BARK: "A bark triggers an interrupt and a wakeup").
+        set_value(cause_, 1);
+        if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup(4);
       }
       if (value(dc_) >= value(bite_)) {
         if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->reset_request(1);
@@ -622,8 +628,10 @@ class Eg2SensorCtrl : public Eg2IpModel {
   // theory_of_operation.md: enabled AST events are recorded in RECOV_ALERT or FATAL_ALERT as
   // selected by FATAL_ALERT_EN, then sent to the alert handler.
   void record_events() {
+    bool held = false;
     for (unsigned i = 0; i < kAlertEvents; ++i) {
       if (!((active_events() >> i) & 1) || (value(alert_en_[i]) & 0xf) != kMuBi4True) continue;
+      held |= (value(alert_trig_) >> i) & 1;
       if ((value(fatal_en_) >> i) & 1) {
         set_value(fatal_alert_, value(fatal_alert_) | (1u << i));
         raise_alert("fatal_alert");
@@ -632,7 +640,21 @@ class Eg2SensorCtrl : public Eg2IpModel {
         raise_alert("recov_alert");
       }
     }
+    // ALERT_TRIG "1 Continuously trigger alert until disabled" (sensor_ctrl.hjson): while a trigger
+    // holds an enabled event, sensor_ctrl keeps sending its alert, so an alert handler that is
+    // reset and configured again meanwhile (sensor_ctrl is always-on, the alert handler is not:
+    // rstmgr "Summary", a low-power exit resets the non-aon domains) sees it again. Sent again
+    // every 4 always-on cycles (the documents give no interval).
+    uint64_t now = sys_.now_ps();
+    if (held) {
+      sys_.schedule(this, sys_.clock_time_of_cycle(
+                              Eg2System::Clk::kAon,
+                              sys_.clock_cycles(Eg2System::Clk::kAon, now) + 4));
+    } else {
+      sys_.unschedule(this);
+    }
   }
+  void on_time(uint64_t) override { record_events(); }
   // The wake-up request (pwrmgr wake-up 5) stands while an AST event is active or recorded in
   // RECOV_ALERT / FATAL_ALERT, until software clears it. The documents say only that events are
   // "aggregated into a wakeup request"; how long it stands is from OpenTitan's chip test

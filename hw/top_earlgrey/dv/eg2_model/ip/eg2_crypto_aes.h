@@ -121,7 +121,17 @@ class Eg2Aes : public Eg2IpModel {
 
   void on_reset(Eg2ResetCause c) override {
     Eg2IpModel::on_reset(c);
+    fatal_ = false;
     start_after_reset();
+  }
+  // aes.hjson STATUS.ALERT_FATAL_FAULT: "A fatal fault has occurred and the AES unit needs to be
+  // reset (1)", among the examples "storage errors in the Control Register"; it stays set, with the
+  // fatal_fault alert, until the reset.
+  bool fatal_fault(const std::string &alert) override {
+    if (!Eg2IpModel::fatal_fault(alert)) return false;
+    if (alert == "fatal_fault") fatal_ = true;
+    update();
+    return true;
   }
   // The hardware reseeds on its own after reset, while software does other things: retry every
   // microsecond until edn0 delivers.
@@ -545,11 +555,13 @@ class Eg2Aes : public Eg2IpModel {
     if (stalled_) st |= 2;
     if (output_valid_) st |= 8;
     if (!stalled_ && !(manual() && start_) && !reseed_needed_) st |= 16;
+    if (fatal_) st |= 64;  // ALERT_FATAL_FAULT (6)
     set_value(status_, st);
   }
 
   uint16_t key0_[8], key1_[8], iv_[4], din_[4], dout_[4];
   uint16_t ctrl_, aux_, trigger_, status_, gcm_ctrl_;
+  bool fatal_ = false;
   bool reseed_needed_ = true, output_valid_ = false, start_ = false, stalled_ = false;
   bool side_valid_ = false, computing_ = false, dec_key_stale_ = true;
   uint64_t done_at_ = 0;

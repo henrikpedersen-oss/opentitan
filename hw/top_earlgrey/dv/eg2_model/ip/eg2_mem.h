@@ -82,6 +82,11 @@ class Eg2RramCtrl : public Eg2IpModel {
     wr_win_ = win_index("wr_fifo");
     for (uint16_t r : {status_, phy_, curr_lvl_, err_addr_, ctrl_regwen_}) set_modelled(r);
     set_modelled(op_status_);
+    std_fault_ = reg("STD_FAULT_STATUS");
+    fault_ = reg("FAULT_STATUS");
+    set_modelled(std_fault_);
+    set_modelled(fault_);
+    sec_cm_bench();
     // Fetches from the host window need EXEC (programmers_guide.md: "To enable code execution from
     // RRAM, software must write the magic value 0xa26a38f7 to the EXEC register. Any other value
     // disables instruction fetches") and RRAM not disabled (theory_of_operation.md "RRAM
@@ -97,9 +102,18 @@ class Eg2RramCtrl : public Eg2IpModel {
   // theory_of_operation.md "RRAM Escalation & Disable": RRAM is disabled by software (DIS.SW_DIS
   // any value but MuBi4False, rw1s) or by the global escalation (lc_escalate_en), and stays so
   // until a full reset ("the only way to restore normal operation is a full system reset").
-  // Not modelled: the local escalation from the controller's own faults (fault_status).
+  // The local escalation: rram_ctrl.hjson MEM.CTRL.LOCAL_ESC, "A subset of fatal errors cause
+  // memory to no longer be accessible. All errors in STD_FAULT_STATUS and FAULT_STATUS are part of
+  // this subset" (FAULT_STATUS.PHY_RELBL_ERR only with DIS.LOCAL_ESC_RELBL_ERR: not raised here).
   bool disabled() {
-    if ((value(dis_) & 0xf) != kMuBi4False || (sys_.lc_escalate_en && sys_.lc_escalate_en())) {
+    // rram_ctrl.hjson DIS.LOCAL_ESC_RELBL_ERR (bits 7:4): "Otherwise FAULT_STATUS.PHY_RELBL_ERR is
+    // excluded from the local escalation"; theory_of_operation.md "Multi-Bit Error
+    // (Uncorrectable)": it "only disables RRAM access once DIS.LOCAL_ESC_RELBL_ERR has been set to
+    // any value other than MuBi4False".
+    uint32_t esc_faults = value(fault_);
+    if (((value(dis_) >> 4) & 0xf) == kMuBi4False) esc_faults &= ~(1u << 9);
+    if ((value(dis_) & 0xf) != kMuBi4False || (sys_.lc_escalate_en && sys_.lc_escalate_en()) ||
+        (value(std_fault_) != 0 || esc_faults != 0)) {
       disabled_ = true;
     }
     return disabled_;
@@ -322,6 +336,215 @@ class Eg2RramCtrl : public Eg2IpModel {
   }
 
   bool disabled_ = false;  // latched until power_up()
+  uint16_t std_fault_ = 0, fault_ = 0;
+
+  // ---- Countermeasure faults (rram_ctrl.hjson "countermeasures", STD_FAULT_STATUS, FAULT_STATUS,
+  // the alert list) ----
+  // A fault the bench injects into one countermeasure's structure (an input event, never a change of
+  // the model's behaviour): the countermeasure detects it, sets the status bit the register
+  // description gives that structure, and the alert follows ("fatal_std_err: Fired whenever any bit
+  // in STD_FAULT_STATUS is set"; "fatal_err: Fired whenever any bit in FAULT_STATUS is set"); every
+  // such bit is part of the local escalation (disabled()). The structures per countermeasure are
+  // the ones the hjson lists, each with the bit whose description names it.
+  struct CmSite {
+    const char *what;
+    bool std;     // STD_FAULT_STATUS (else FAULT_STATUS)
+    unsigned bit;
+  };
+  static std::vector<CmSite> cm_sites(unsigned cm) {
+    switch (cm) {
+      case 0:  // CTRL.FSM.SPARSE: lcmgr, otp, arb, rd/wr
+        return {{"rram_ctrl_lcmgr FSM (lcmgr_err: \"an FSM sparse encoding error\")", true, 1},
+                {"rram_ctrl_otp FSM (otp_err)", true, 3},
+                {"rram_ctrl_arb FSM (ctrl_fsm_err: \"Any of the arbiter or rd/wr control FSMs\")",
+                 true, 10},
+                {"rram_ctrl_rd/wr FSM (ctrl_fsm_err)", true, 10}};
+      case 1:  // PHY_WR.FSM.SPARSE
+        return {{"rram_phy_wr FSM (phy_fsm_err: \"A RRAM phy fsm\")", true, 7}};
+      case 2:  // CTR.REDUN: the lcmgr's seed/address/word/page/wipe-index counters, otp, rd/wr, phy_wr
+        return {{"an rram_ctrl_lcmgr counter (lcmgr_err: \"or a count error\")", true, 1},
+                {"the rram_ctrl_otp counter (otp_err: \"or a count error\")", true, 3},
+                {"an rram_ctrl_rd/wr counter (ctrl_cnt_err)", true, 11},
+                {"the rram_phy_wr counter (phy_cnt_err)", true, 8}};
+      case 3:  // FIFO.CTR.REDUN: the controller's write FIFO, the phy FIFOs
+        return {{"the controller write FIFO's pointers (ctrl_fifo_err)", true, 12},
+                {"a phy FIFO's pointers (phy_fifo_err)", true, 6}};
+      case 6:  // PHY_ARBITER.CTRL.REDUN
+        return {{"a phy arbiter's two instances disagree (phy_arb_err)", true, 9}};
+      case 7:  // PHY_HOST_GRANT.CTRL.CONSISTENCY
+        return {{"the host granted with info partition access (host_gnt_err)", false, 13}};
+      case 8:  // PHY_RSP.CTRL.CONSISTENCY
+        return {{"an unexpected transaction done (spurious_done)", false, 12}};
+      case 9:  // PHY_RD_RSP.CTRL.INTEGRITY
+        return {{"data_valid with no pending request (phy_rd_ctrl_err)", false, 11}};
+      default:  // 4, 5: the TL-UL gates' FSMs: no status bit and no alert documented
+        return {};
+    }
+  }
+  uint32_t cm_pick_ = 0;  // which structure of the countermeasure (--stim bench.rram_pick=<n>)
+  void cm_fault(unsigned cm) {
+    std::vector<CmSite> sites = cm_sites(cm);
+    if (sites.empty()) {
+      Eg2ModelStop::request("undocumented: countermeasure " + std::to_string(cm) +
+                            " (a TL-UL gate FSM) has no status bit and no alert in rram_ctrl.hjson "
+                            "(dv_tickets.md, rram_ctrl TL-UL gate FSM faults)");
+      return;
+    }
+    const CmSite &s = sites[cm_pick_ % sites.size()];
+    sys_.fault_applied("rram_sec_cm", std::string("countermeasure ") + std::to_string(cm) + ": " +
+                                          s.what);
+    uint16_t r = s.std ? std_fault_ : fault_;
+    set_value(r, value(r) | (1u << s.bit));
+    raise_alert(s.std ? "fatal_std_err" : "fatal_err");
+    // What the bench checks next, through SBA and the alert handler: the bit and the alert.
+    sys_.at(sys_.now_ps() + 20000000ull, [this, s, cm] {
+      uint16_t r = s.std ? std_fault_ : fault_;
+      char d[96];
+      std::snprintf(d, sizeof d, "(%s = 0x%08x, bit %u)", s.std ? "STD_FAULT_STATUS" : "FAULT_STATUS",
+                    value(r), s.bit);
+      if (sys_.bench_check) {
+        sys_.bench_check(std::string(s.std ? "STD_FAULT_STATUS" : "FAULT_STATUS") + " bit set",
+                         (value(r) >> s.bit) & 1, d);
+        int id = Eg2System::alert_id("rram_ctrl", s.std ? "fatal_std_err" : "fatal_err");
+        Eg2IpModel *ah = sys_.model("alert_handler");
+        int ci = ah && id >= 0 ? ah->reg_index("ALERT_CAUSE_" + std::to_string(id)) : -1;
+        bool seen = ci >= 0 && (ah->value(uint16_t(ci)) & 1);
+        sys_.bench_check(std::string("rram_ctrl ") + (s.std ? "fatal_std_err" : "fatal_err") +
+                             " at the alert handler",
+                         seen, "(ALERT_CAUSE_" + std::to_string(id) + ")");
+      }
+      second_boot();
+    });
+  }
+  // The bench's second boot: boot_phase 1 in the image, then a power-on reset.
+  void second_boot() {
+    sys_.set_test_param("boot_phase", 1);
+    sys_.note("bench: second boot (power-on reset)");
+    sys_.apply_stim("rstmgr.por", "1");
+  }
+  void sec_cm_bench() {
+    sys_.stim_handlers["bench.rram_pick"] = [this](const std::string &v) {
+      cm_pick_ = uint32_t(std::stoul(v, nullptr, 0));
+      return true;
+    };
+    // chip_sw_eg2_rram_sec_cm_vseq: the software's first `EG2 RRAM seccm ` line.
+    sys_.sw_log_watchers.push_back([this](const std::string &m) {
+      unsigned cm;
+      if (std::sscanf(m.c_str(), "EG2 RRAM seccm fi arm 0x%x", &cm) == 1) cm_fault(cm);
+      if (m == "EG2 RRAM seccm verify arm") verify_fault();
+      uint32_t a, b;
+      if (std::sscanf(m.c_str(), "EG2 RRAM seccm swap 0x%x 0x%x", &a, &b) == 2) swap_fault(a, b);
+      if (m.rfind("EG2 RRAM seccm swap silent", 0) == 0) swap_judge(true);
+      if (m.rfind("EG2 RRAM seccm swap trapped", 0) == 0) swap_judge(false);
+    });
+    sys_.read_error = [this](uint32_t addr, bool take) { return relocated_read(addr, take); };
+    // A fault in the model, for showing the bench's swap checks fail: the relocated rows are
+    // swapped but no longer detected (the address XOR's check taken out).
+    sys_.stim_handlers["rram_ctrl.swap_undetected"] = [this](const std::string &v) {
+      swap_undetected_ = std::stoul(v, nullptr, 0) != 0;
+      return true;
+    };
+  }
+  // The row swap (chip_sw_eg2_rram_sec_cm_vseq scenario 0, sec_cm_mem_addr_infection): the bench
+  // swaps two physical RRAM rows, data and ECC, so that each is still a valid codeword.
+  // theory_of_operation.md "Address-XOR": each 32-bit bus word is stored XORed with its own
+  // address; "If a fault injection attack physically relocates a word to a different address, the
+  // XOR inversion on readback will produce a corrupted value. Because the corrupted value is fed
+  // into the ECC decoder, the relocation is detected as a data error". "Multi-Bit Error
+  // (Uncorrectable)": "Uncorrectable multi-bit errors trigger ecc_fatal_err, which results in a
+  // fatal alert", FAULT_STATUS.PHY_RELBL_ERR (bit 9; rram_ctrl.hjson fatal_err "Fired whenever any
+  // bit in FAULT_STATUS is set, including uncorrectable ECC errors"), which disables RRAM only once
+  // DIS.LOCAL_ESC_RELBL_ERR is set; a host read gets an in-band TL-UL error (programmers_guide.md
+  // "Uncorrectable ECC errors or integrity failures produce in-band TL-UL error responses"). The
+  // model stores no address XOR or ECC: it records which rows hold a relocated word. Not modelled:
+  // a controller read of a relocated row (ERR_CODE.rd_err), which the test does not make.
+  void swap_fault(uint32_t a, uint32_t b) {
+    std::vector<uint8_t> *m = memory(0);
+    uint32_t ra = a & ~15u, rb = b & ~15u;
+    if (!m || ra == rb || ra + 16 > m->size() || rb + 16 > m->size()) return;
+    for (unsigned i = 0; i < 16; ++i) std::swap((*m)[ra + i], (*m)[rb + i]);
+    relocated_ = {ra, rb};
+    char d[96];
+    std::snprintf(d, sizeof d, "RRAM rows 0x%x and 0x%x swapped (data and ECC)", ra, rb);
+    sys_.fault_applied("rram_swap", d);
+    // The bench waits for the software's report of its host read, or 2 ms if RRAM stopped it.
+    swap_deadline_ = sys_.now_ps() + 2000000000ull;
+    sys_.at(swap_deadline_, [this] {
+      if (!relocated_.empty()) swap_judge(false, true);
+    });
+  }
+  bool relocated_read(uint32_t addr, bool take) {
+    if (relocated_.empty() || swap_undetected_) return false;
+    auto it = sys_.memories.find("rram_ctrl.host");
+    if (it == sys_.memories.end() || addr < it->second->base()) return false;
+    uint32_t row = (addr - uint32_t(it->second->base())) & ~15u;
+    if (row != relocated_[0] && row != relocated_[1]) return false;
+    if (take) {
+      set_value(fault_, value(fault_) | (1u << 9));  // PHY_RELBL_ERR
+      raise_alert("fatal_err");
+      char d[96];
+      std::snprintf(d, sizeof d, "rram_ctrl: host read of relocated row 0x%x: uncorrectable ECC", row);
+      sys_.note(d);
+    }
+    return true;
+  }
+  // chip_sw_eg2_rram_sec_cm_vseq do_swap: an error if the software says its host read returned
+  // the relocated word silently, and one of rram_ctrl's fatal_err or fatal_std_err or
+  // rv_core_ibex's fatal_hw_err at the alert handler; then the rows repaired and the second boot.
+  void swap_judge(bool silent, bool no_line = false) {
+    if (relocated_.empty()) return;
+    std::vector<uint32_t> rows = relocated_;
+    relocated_.clear();
+    if (sys_.bench_check) {
+      // --stim bench.inject_fail=1 inverts the check (eg2_bench.h), as for a must-fail image.
+      sys_.bench_check("the relocated word was not returned silently",
+                       !silent != sys_.bench_inject_fail,
+                       no_line ? "(no report from the software)" : "");
+      Eg2IpModel *ah = sys_.model("alert_handler");
+      auto cause = [&](const char *ip, const char *name) {
+        int id = Eg2System::alert_id(ip, name);
+        int ci = ah && id >= 0 ? ah->reg_index("ALERT_CAUSE_" + std::to_string(id)) : -1;
+        return ci >= 0 && (ah->value(uint16_t(ci)) & 1);
+      };
+      bool fatal = cause("rram_ctrl", "fatal_err"), std_err = cause("rram_ctrl", "fatal_std_err"),
+           core = cause("rv_core_ibex", "fatal_hw_err");
+      char d[96];
+      std::snprintf(d, sizeof d, "(fatal_err %d fatal_std_err %d core %d)", fatal, std_err, core);
+      sys_.bench_check("an alert for the relocated word", fatal || std_err || core, d);
+    }
+    std::vector<uint8_t> *m = memory(0);
+    if (m) {
+      for (unsigned i = 0; i < 16; ++i) std::swap((*m)[rows[0] + i], (*m)[rows[1] + i]);
+    }
+    second_boot();
+  }
+  // The verify glitch: one bit of the macro's data flipped on a shadow read (theory_of_operation.md
+  // "RRAM Read Integrity": "every read operation is issued twice to the macro, and the two results
+  // are compared. If the two reads return different data ... rd_intg_err is raised as a fatal
+  // alert"; FAULT_STATUS.PHY_RD_INTG_ERR "The shadow response was not identical to the original
+  // response"; fatal_err; the local escalation). The software runs from RRAM, so the next read, and
+  // its shadow read, comes at once: the fault is applied at the arm. The read buffer is not
+  // modelled, so the bench's check that no entry still holds the word is not made here.
+  void verify_fault() {
+    sys_.fault_applied("rram_verify", "one data bit flipped on the next shadow (verify) read");
+    set_value(fault_, value(fault_) | (1u << 10));
+    raise_alert("fatal_err");
+    sys_.at(sys_.now_ps() + 20000000ull, [this] {
+      if (sys_.bench_check) {
+        char d[64];
+        std::snprintf(d, sizeof d, "(FAULT_STATUS = 0x%08x, bit 10)", value(fault_));
+        sys_.bench_check("FAULT_STATUS.PHY_RD_INTG_ERR set", (value(fault_) >> 10) & 1, d);
+        int id = Eg2System::alert_id("rram_ctrl", "fatal_err");
+        Eg2IpModel *ah = sys_.model("alert_handler");
+        int ci = ah && id >= 0 ? ah->reg_index("ALERT_CAUSE_" + std::to_string(id)) : -1;
+        sys_.bench_check("rram_ctrl fatal_err at the alert handler",
+                         ci >= 0 && (ah->value(uint16_t(ci)) & 1),
+                         "(ALERT_CAUSE_" + std::to_string(id) + ")");
+      }
+      sys_.note("bench: the read-buffer entry check is not made (the model has no read buffer)");
+      second_boot();
+    });
+  }
   uint16_t dis_, exec_, init_, ctrl_regwen_, control_, addr_, mp_cfg_, mp_region_, default_,
       info_cfg_, op_status_, status_, err_code_, err_addr_, phy_, fifo_clr_, fifo_lvl_, curr_lvl_;
   int rd_win_, wr_win_;
@@ -334,6 +557,9 @@ class Eg2RramCtrl : public Eg2IpModel {
   uint32_t wr_addr_ = 0;
   uint64_t rma_lfsr_ = 0x8f4d35b79a21c6e3ull;
   bool op_err_ = false;
+  std::vector<uint32_t> relocated_;  // the two swapped rows (offsets in the data partition)
+  uint64_t swap_deadline_ = 0;
+  bool swap_undetected_ = false;
 };
 
 // sram_ctrl (hw/ip/sram_ctrl: doc/theory_of_operation.md, programmer's guide, data/sram_ctrl.hjson).
@@ -559,20 +785,23 @@ struct Eg2TbreLayout {
 // registers. TBRE_START is ignored, setting TBRE_STATUS.start_err, outside CHERIoT mode (the mode
 // rv_core_ibex.cfg locked), with TBRE_NUM_CAPS zero, or with TBRE_BASE_ADDR outside the tagged
 // regions (main and sec SRAM, the NVM). Otherwise the sweep runs: TBRE_REGWEN low, TBRE_STATUS.busy,
-// TBRE_EPOCH odd, for two bus words per capability (one 100 MHz cycle each) up to the top of the
-// region; then the epoch counts the sweep and tbre_done is raised. Functional stand-in only: no
-// capability is revoked, because the model has no tags yet (M4), and sweep errors are not modelled.
+// TBRE_EPOCH odd, then the epoch counts the sweep (unless it had an error) and tbre_done is raised.
 //
-// With a layout (configure; the RTOS test SoC board, rtos_soc/) the sweep is the engine's
-// (doc/theory_of_operation.md "Revocation Engine"): the regions, the mode and the clock are the
-// layout's; it sweeps min(TBRE_NUM_CAPS, (top - TBRE_BASE_ADDR) / 8) capabilities, in address
-// order, cycles_per_cap clock cycles each (the doc gives no rate: "up to two words are in flight",
-// so at best one word a cycle), and for each one that is tagged, not a sealing capability, and whose
-// base has its revocation bit set clears its tag in the meta SRAM, never the data. A base outside
-// the bitmap (below heap_base, or past MemSizeRevbm) is not revoked (the doc is silent; the RTL's
-// TRVK filter, ibex_trvk.sv revbm_out_of_range, skips the lookup). Each capability is read and
-// cleared at one instant, so the doc's watch of core writes in flight has nothing to do. Errors
-// (sweep_err, the fatal alert) are not modelled: the model's memories answer every read.
+// The sweep is the engine's (doc/theory_of_operation.md "Revocation Engine"), on Earl Grey 2's
+// layout (eg2_layout, at the first start) or a board's (configure; the RTOS test SoC, rtos_soc/):
+// it sweeps min(TBRE_NUM_CAPS, (top - TBRE_BASE_ADDR) / 8) capabilities, in address order,
+// cycles_per_cap clock cycles each (the doc gives no rate: "up to two words are in flight", so at
+// best one word a cycle), and for each one that is tagged, not a sealing capability, and whose base
+// has its revocation bit set clears its tag in the meta SRAM, never the data. A base outside the
+// bitmap (below heap_base, or past MemSizeRevbm) is not revoked (Ibex cheriot.rst: only bases below
+// the heap base plus 64 times the bitmap size are looked up). Each capability is read and cleared at
+// one instant, so the doc's watch of core writes in flight has nothing to do. Errors ("Error
+// Handling", programmers_guide.md "Errors") come from the bench's faults (tbre_fault_arm): an error
+// response to a word read leaves that capability alone and sets sweep_err; an error or integrity
+// fault on a bitmap lookup counts as revoked, sets sweep_err and raises fatal_fault; a sweep with
+// sweep_err is not counted in the epoch.
+//
+// The core's bitmap port (corerevbm_tl) and its faults: below, core_revbm.
 class Eg2CheriotMemSys : public Eg2IpModel {
  public:
   Eg2CheriotMemSys(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
@@ -584,6 +813,240 @@ class Eg2CheriotMemSys : public Eg2IpModel {
     status_ = reg("TBRE_STATUS");
     epoch_ = reg("TBRE_EPOCH");
     for (uint16_t r : {regwen_, status_, epoch_}) set_modelled(r);
+    sys_.core_revbm = [this](uint32_t off, uint8_t *b) { return core_revbm(off, b); };
+    bench_ops();
+  }
+
+  // ---- The core's bitmap port, corerevbm_tl (Earl Grey 2) ----
+  // theory_of_operation.md: the revocation bitmap is the base of the meta SRAM (3 KiB at offset 0,
+  // "reachable from revbm_tl_d, corerevbm_tl, revocation engine"); bit b of word w covers the 8
+  // heap bytes at MainSramBaseAddr + (w * 32 + b) * 8. Ibex cheriot.rst: only capabilities based
+  // below the heap base plus 64 times the bitmap size are looked up (CheriotRevBitmapSizeBytes).
+  // A failed lookup revokes ("Revocation Engine": the TRVK filter revokes a capability "whose
+  // bitmap lookup fails"). The response faults are the bench's (revbm_err_arm), each with the result
+  // the documents give it:
+  //   bus_err  the core's port answers d_error with correct integrity: the lookup fails. No
+  //            document says it raises an alert (status/dv_tickets.md, "core bitmap d_error and
+  //            fatal_hw_err"), so the model raises none.
+  //   intg     the core's port response with a bit of its response integrity, data integrity or
+  //            data flipped: a bus integrity error at the core (rv_core_ibex interfaces.md
+  //            fatal_hw_err "A bus integrity error is seen"; ERR_STATUS.FATAL_INTG_ERR), and the
+  //            lookup fails.
+  //   mem_err  the meta SRAM's response to the lookup with a data bit flipped, its integrity
+  //            unchanged: cheriot_mem_sys's fatal_fault ("Error Handling": "Integrity fault on a meta
+  //            SRAM response"); the arbitration is "on transactions that are already
+  //            integrity-protected end to end", so the word reaches the core with the same broken
+  //            integrity: a bus integrity error there too, and the lookup fails.
+  static constexpr uint32_t kRevbmBytes = 0xc00;  // MemSizeRevbm (the meta SRAM map)
+  static constexpr uint32_t kHeapBase = 0x10000000;  // MainSramBaseAddr (cheriot_mem_sys.hjson)
+  bool core_revbm(uint32_t off, uint8_t *byte) {
+    *byte = 0;
+    if (off >= kRevbmBytes) return true;  // not looked up
+    auto it = sys_.memories.find("sram_ctrl_meta.ram");
+    if (it == sys_.memories.end()) return true;
+    *byte = it->second->data()[off];
+    uint32_t word = off / 4;
+    if (hold_.armed && !hold_.held && word == hold_.word) return hold_lookup(word);
+    if (!err_.armed || word != err_.word) return true;
+    err_.armed = false;
+    err_.hit = true;
+    static const char *kKind[] = {"d_error on the core's bitmap port (corerevbm_tl)",
+                                  "integrity broken on the core's bitmap port response",
+                                  "a data bit flipped in the meta SRAM's response"};
+    char what[200];
+    std::snprintf(what, sizeof what, "%s, field %u, bitmap word %u", kKind[err_.kind % 3],
+                  err_.field, word);
+    sys_.fault_applied("revbm_err", what);
+    if (err_.kind == 2) {
+      raise_alert("fatal_fault");
+      err_.cms_alert = true;
+    }
+    if (err_.kind != 0) {
+      if (sys_.core_bus_intg_error) sys_.core_bus_intg_error("revocation-bitmap response integrity");
+      err_.core_alert = true;
+    }
+    // A lookup is made only for a tagged capability that is not a sealing one (the load barrier):
+    // the failed lookup is the revoked verdict, and the capability reaches the core untagged.
+    err_.revoked = true;
+    sys_.at(sys_.now_ps() + 1, [this] { err_finish(); });
+    return false;
+  }
+
+ private:
+  struct RevbmErr {
+    bool armed = false, done = false, hit = false, revoked = false, core_alert = false,
+         cms_alert = false, end_waiting = false;
+    uint32_t kind = 0, field = 0, word = 0, end_n = 0;
+    uint64_t gen = 0;
+  } err_;
+  struct RevbmHold {
+    bool armed = false, held = false, reset_seen = false, done = false, end_waiting = false;
+    uint32_t word = 0, kind = 0, end_n = 0;
+  } hold_;
+  // The bench's hold before its power-on or NDM reset (chip_sw_eg2_revbm_errors_vseq hold_cycles,
+  // 1-400 main clock cycles: --stim bench.hold_cycles=<n>).
+  uint32_t hold_cycles_ = 100;
+  // The vseq's bounds, in main clock cycles: ArmTimeout for the read, then the run's end 1 ms after
+  // the fetch is off.
+  static constexpr uint64_t kArmTimeout = 2000000;
+  uint64_t main_cycles_ps(uint64_t n) const {
+    return sys_.clock_time_of_cycle(Eg2System::Clk::kMain,
+                                    sys_.clock_cycles(Eg2System::Clk::kMain, sys_.now_ps()) + n);
+  }
+  uint32_t word_of(uint32_t heap_addr) const { return ((heap_addr - kHeapBase) >> 8) & 0x3ff; }
+  bool check(const std::string &what, bool ok, const std::string &detail = "") {
+    return sys_.bench_check ? sys_.bench_check(what, ok, detail) : ok;
+  }
+
+  void bench_ops() {
+    sys_.bench_ops["revbm_err_arm"] = [this](uint32_t n, uint32_t a, uint32_t b) {
+      err_ = RevbmErr{};
+      err_.armed = true;
+      err_.kind = a & 0xff;
+      err_.field = (a >> 8) & 0xff;
+      err_.word = word_of(b);
+      uint64_t gen = ++err_gen_;
+      err_.gen = gen;
+      if (sys_.bench_ack) sys_.bench_ack(n, 0);
+      sys_.at(main_cycles_ps(kArmTimeout), [this, gen] {
+        if (err_.gen != gen || err_.hit || err_.done) return;
+        err_.armed = false;
+        check("bitmap read seen", false, "(corerevbm, word " + std::to_string(err_.word) + ")");
+        err_done();
+      });
+    };
+    sys_.bench_ops["revbm_err_end"] = [this](uint32_t n, uint32_t, uint32_t) {
+      if (err_.done) {
+        if (sys_.bench_ack) sys_.bench_ack(n, err_result());
+        return;
+      }
+      err_.end_waiting = true;
+      err_.end_n = n;
+    };
+    sys_.bench_ops["revbm_hold_reset"] = [this](uint32_t n, uint32_t a, uint32_t b) {
+      hold_ = RevbmHold{};
+      hold_.armed = true;
+      hold_.word = word_of(a);
+      hold_.kind = b;
+      if (sys_.bench_ack) sys_.bench_ack(n, 0);
+    };
+    sys_.bench_ops["revbm_hold_end"] = [this](uint32_t n, uint32_t, uint32_t) {
+      // After the reset: what boot 1 recorded (the model keeps it across the reset, as the
+      // bench's own state does).
+      if (sys_.bench_ack) {
+        sys_.bench_ack(n, uint32_t(hold_.held) | (uint32_t(hold_.reset_seen) << 1));
+      }
+    };
+    // chip_sw_eg2_revocation_corner_bench_vseq: one fault on the response to a TBRE request, kind 0
+    // d_error / 1 integrity on the read of swept word <addr>, 2 / 3 the same on the bitmap lookup
+    // of the word covering granule <addr>; tbre_fault_end answers whether it took effect.
+    sys_.bench_ops["tbre_fault_arm"] = [this](uint32_t n, uint32_t a, uint32_t b) {
+      tf_ = TbreFault{};
+      tf_.armed = true;
+      tf_.kind = a;
+      tf_.addr = b;
+      tf_.word = word_of(b);
+      if (sys_.bench_ack) sys_.bench_ack(n, 0);
+    };
+    sys_.bench_ops["tbre_fault_end"] = [this](uint32_t n, uint32_t, uint32_t) {
+      tf_.armed = false;
+      if (sys_.bench_ack) sys_.bench_ack(n, tf_.hit ? 1 : 0);
+    };
+    sys_.stim_handlers["bench.hold_cycles"] = [this](const std::string &v) {
+      hold_cycles_ = uint32_t(std::stoul(v, nullptr, 0));
+      return true;
+    };
+  }
+
+  uint32_t err_result() const {
+    return uint32_t(err_.hit) | (uint32_t(err_.revoked) << 1) | (uint32_t(err_.core_alert) << 3) |
+           (uint32_t(err_.cms_alert) << 4);
+  }
+  // The checks the vseq makes once the fault has been taken.
+  void err_finish() {
+    bool meta = err_.kind == 2;
+    check("bitmap read seen", true, "(corerevbm, word " + std::to_string(err_.word) + ")");
+    check("fault taken", err_.hit, "(the lookup took the changed response)");
+    check("verdict within the bound (no hang)", true);
+    check("failed check revoked", err_.revoked != sys_.bench_inject_fail,
+          std::string("(revoked ") + (err_.revoked ? "1" : "0") + ", tagged 0 at the verdict)");
+    if (meta) {
+      check("cheriot_mem_sys fatal_fault requested", err_.cms_alert,
+            std::string("(rv_core_ibex fatal_hw_err: ") + (err_.core_alert ? "1" : "0") + ")");
+    } else {
+      check("rv_core_ibex fatal_hw_err requested", err_.core_alert,
+            std::string("(cheriot_mem_sys fatal_fault: ") + (err_.cms_alert ? "1" : "0") + ")");
+    }
+    err_done();
+  }
+  void err_done() {
+    err_.done = true;
+    if (err_.end_waiting && sys_.bench_ack) sys_.bench_ack(err_.end_n, err_result());
+    end_if_fetch_off();
+  }
+  // With the core's fetch off (theory_of_operation.md: fatal_hw_err disables it until reset) the
+  // software never finishes: the bench's verdict ends the run, 1 ms on.
+  void end_if_fetch_off() {
+    sys_.at(main_cycles_ps(100), [this] {
+      if (!sys_.core_halted()) return;
+      sys_.note("bench: the CPU's fetch is off; the bench ends the run");
+      sys_.at(sys_.now_ps() + 1000000000ull, [this] {
+        if (sys_.bench_end) sys_.bench_end("the CPU's fetch is off after the bitmap fault");
+      });
+    });
+  }
+
+  // The lookup of the held word: its response is held (no answer reaches the core), then the
+  // reset of the chosen kind comes while it is outstanding.
+  bool hold_lookup(uint32_t word) {
+    hold_.held = true;
+    hold_.armed = false;
+    check("bitmap read held", true, "(word " + std::to_string(word) + ")");
+    sys_.hold_core("bench", "the core's bitmap read of word " + std::to_string(word) +
+                                " is held (no response)");
+    sys_.fault_applied("revbm_hold", "the core's bitmap read held until the reset");
+    if (hold_.kind == 1) {
+      sys_.at(main_cycles_ps(hold_cycles_), [this] {
+        sys_.note("bench: power-on reset during the bitmap read");
+        hold_release();
+        sys_.apply_stim("rstmgr.por", "1");
+      });
+    } else if (hold_.kind == 2) {
+      sys_.at(main_cycles_ps(hold_cycles_), [this] {
+        sys_.note("bench: NDM reset (rv_dm dmcontrol.ndmreset over JTAG) during the bitmap read");
+        hold_release();
+        sys_.apply_stim("debugger.dmactive", "1");
+        sys_.apply_stim("debugger.ndmreset", "1");
+        // ndm_reset: ndmreset back to 0 5-20 AON cycles later.
+        uint64_t aon = sys_.clock_cycles(Eg2System::Clk::kAon, sys_.now_ps());
+        sys_.at(sys_.clock_time_of_cycle(Eg2System::Clk::kAon, aon + 10),
+                [this] { sys_.apply_stim("debugger.ndmreset", "0"); });
+      });
+    } else {
+      // The software's watchdog bites (armed before the load): the chip resets by itself.
+      watch_reset_ = true;
+    }
+    return true;
+  }
+  void hold_release() {
+    hold_.reset_seen = true;
+    sys_.release_core("bench");
+    check("reset while the bitmap read was held", true,
+          "(kind " + std::to_string(hold_.kind) + ")");
+    // Written during the reset, before any software reads it.
+    sys_.set_test_param("reset_done", 1);
+  }
+
+ public:
+  void before_reset(Eg2ResetCause c) override {
+    Eg2IpModel::before_reset(c);
+    if (watch_reset_) {
+      watch_reset_ = false;
+      hold_.reset_seen = true;
+      sys_.release_core("bench");
+      check("reset while the bitmap read was held", true, "(the watchdog's bite)");
+      sys_.set_test_param("reset_done", 1);
+    }
   }
 
   void configure(const Eg2TbreLayout &l) {
@@ -607,7 +1070,9 @@ class Eg2CheriotMemSys : public Eg2IpModel {
     }
     set_value(status_, value(status_) & ~1u);
     set_value(regwen_, 1);
-    set_value(epoch_, (value(epoch_) & ~1u) + 2);
+    // "A sweep during which any error sets TBRE_STATUS.sweep_err is not counted, so the epoch
+    // returns to the even value it had before that start" (theory_of_operation.md, TBRE_EPOCH).
+    set_value(epoch_, (value(epoch_) & ~1u) + (sweep_failed_ ? 0 : 2));
     set_intr("tbre_done");
   }
   void on_reset(Eg2ResetCause c) override {
@@ -618,6 +1083,7 @@ class Eg2CheriotMemSys : public Eg2IpModel {
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
     if (r != start_ || !(wdata & wmask & 1) || !(value(regwen_) & 1)) return;
+    if (!swept_) eg2_layout();
     uint32_t a = value(base_addr_) & ~7u, n = value(num_);
     uint32_t top = region_top(a);
     bool cheriot;
@@ -642,6 +1108,7 @@ class Eg2CheriotMemSys : public Eg2IpModel {
     next_ = a;
     left_ = caps;
     done_ = 0;
+    sweep_failed_ = false;
     cycle0_ = sys_.clock_cycles(layout_.clk, sys_.now_ps());
     schedule_next();
   }
@@ -649,6 +1116,12 @@ class Eg2CheriotMemSys : public Eg2IpModel {
  private:
   // The top (exclusive) of the tagged region holding a, 0 outside every one.
   uint32_t region_top(uint32_t a) const {
+    if (swept_ && !spans_.empty()) {
+      for (const auto &sp : spans_) {
+        if (a >= sp.first && a < sp.second) return sp.second;
+      }
+      return 0;
+    }
     if (swept_) {
       for (const Eg2TbreLayout::Region &r : layout_.regions) {
         if (a >= r.base && a < r.top) return r.top;
@@ -694,6 +1167,30 @@ class Eg2CheriotMemSys : public Eg2IpModel {
       if (a < r.base || a >= r.top) continue;
       uint32_t g = (a - r.base) / 8;
       uint8_t &tags = (*layout_.meta)[r.tag_offset + g / 8];
+      // The engine reads both words of every capability (theory_of_operation.md "Revocation
+      // Engine"); the bench's fault on the response to one of them (tbre_fault_arm kind 0, 1).
+      if (tf_.armed && tf_.kind < 2 && (tf_.addr & ~3u) >= a && (tf_.addr & ~3u) < a + 8) {
+        tf_.armed = false;
+        tf_.hit = true;
+        char what[120];
+        std::snprintf(what, sizeof what, "%s on the response to the TBRE's read of 0x%08x",
+                      tf_.kind == 0 ? "d_error" : "an integrity bit flipped", tf_.addr);
+        sys_.fault_applied("tbre_fault", what);
+        if (tf_.kind == 0) {
+          // "Error response to a read of the revocation engine": word not cleared, sweep_err (no
+          // alert: "an error response to a read of the revocation engine ... only fails the sweep").
+          sweep_error(false);
+          return;
+        }
+        // "Any other error, or an integrity fault, on a response to the revocation engine":
+        // sweep_err and fatal_fault. Whether the capability is still resolved (its tag cleared or
+        // kept) no document says: status/dv_tickets.md "TBRE word integrity fault and the tag".
+        sweep_error(true);
+        Eg2ModelStop::request("undocumented: whether the TBRE resolves a capability whose word "
+                              "read had an integrity fault (dv_tickets.md, TBRE word integrity "
+                              "fault and the tag)");
+        return;
+      }
       if (!((tags >> (g % 8)) & 1)) return;
       const std::vector<uint8_t> &m = *r.data;
       uint32_t off = a - r.base, w0 = 0, w1 = 0;
@@ -706,7 +1203,21 @@ class Eg2CheriotMemSys : public Eg2IpModel {
       if (base < layout_.heap_base) return;
       uint32_t bit = (base - layout_.heap_base) / 8;
       if (bit / 8 >= layout_.revbm_bytes) return;
-      if (!(((*layout_.meta)[bit / 8] >> (bit % 8)) & 1)) return;
+      bool revoke = ((*layout_.meta)[bit / 8] >> (bit % 8)) & 1;
+      // The bench's fault on the engine's bitmap lookup of this word (tbre_fault_arm kind 2, 3):
+      // "Error, integrity fault or malformed response on a revocation engine bitmap lookup:
+      // Capability counted as revoked, TBRE_STATUS.sweep_err and fatal_fault alert".
+      if (tf_.armed && tf_.kind >= 2 && bit / 32 == tf_.word) {
+        tf_.armed = false;
+        tf_.hit = true;
+        char what[120];
+        std::snprintf(what, sizeof what, "%s on the TBRE's bitmap lookup of word %u",
+                      tf_.kind == 2 ? "d_error" : "an integrity bit flipped", tf_.word);
+        sys_.fault_applied("tbre_fault", what);
+        sweep_error(true);
+        revoke = true;
+      }
+      if (!revoke) return;
       if (no_invalidate) return;
       tags = uint8_t(tags & ~(1u << (g % 8)));
       ++revoked_;
@@ -719,6 +1230,55 @@ class Eg2CheriotMemSys : public Eg2IpModel {
   bool swept_ = false;
   uint32_t next_ = 0;
   uint64_t left_ = 0, done_ = 0, cycle0_ = 0, revoked_ = 0;
+  uint64_t err_gen_ = 0;
+  bool watch_reset_ = false;
+  bool sweep_failed_ = false;  // this sweep set sweep_err (the epoch does not count it)
+  std::vector<std::pair<uint32_t, uint32_t>> spans_;  // the tagged regions [base, top)
+  struct TbreFault {
+    bool armed = false, hit = false;
+    uint32_t kind = 0, addr = 0, word = 0;
+  } tf_;
+  void sweep_error(bool alert) {
+    set_value(status_, value(status_) | (1u << 9));  // TBRE_STATUS.sweep_err
+    sweep_failed_ = true;
+    if (alert) raise_alert("fatal_fault");
+  }
+  // Earl Grey 2's engine (cheriot_mem_sys.sv's address-map parameters, the meta SRAM map of
+  // theory_of_operation.md): main and sec SRAM, one tagged region from MainSramBaseAddr with its
+  // tags at 0x8C00; the NVM with its tags at 0x0C00; the bitmap at the meta SRAM's base, 3 KiB; the
+  // mode is rv_core_ibex.cfg's lock; the main clock.
+  void eg2_layout() {
+    auto mem = [this](const char *n) -> Eg2Memory * {
+      auto it = sys_.memories.find(n);
+      return it == sys_.memories.end() ? nullptr : it->second;
+    };
+    Eg2Memory *main = mem("sram_ctrl_main.ram"), *sec = mem("sram_ctrl_sec.ram"),
+              *nvm = mem("rram_ctrl.host"), *meta = mem("sram_ctrl_meta.ram");
+    if (!main || !meta) return;
+    Eg2TbreLayout l;
+    l.meta = &meta->data();
+    l.heap_base = main->base();
+    l.revbm_bytes = kRevbmBytes;
+    l.regions.push_back({main->base(), main->base() + main->size(), 0x8c00, &main->data()});
+    uint32_t heap_top = main->base() + main->size();
+    if (sec && sec->base() == heap_top) {
+      l.regions.push_back({sec->base(), sec->base() + sec->size(), 0x8c00 + main->size() / 64,
+                           &sec->data()});
+      heap_top = sec->base() + sec->size();
+    }
+    spans_.push_back({main->base(), heap_top});
+    if (nvm) {
+      l.regions.push_back({nvm->base(), nvm->base() + nvm->size(), 0x0c00, &nvm->data()});
+      spans_.push_back({nvm->base(), nvm->base() + nvm->size()});
+    }
+    l.cheriot = [this] {
+      auto *cfg = dynamic_cast<Eg2RvCoreIbexCfg *>(sys_.model("rv_core_ibex.cfg"));
+      return cfg && cfg->cheriot();
+    };
+    l.clk = Eg2System::Clk::kMain;
+    l.cycles_per_cap = 2;
+    configure(l);
+  }
 };
 
 }  // namespace eg2_model

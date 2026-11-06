@@ -23,8 +23,11 @@
 // store elsewhere writes its data and drops the tag. Every other store clears the tag of each
 // granule it writes.
 //
-// Not modelled (the run goes on without them): the revocation load filter (a capability loaded
-// through the revocation bitmap is not invalidated) and the hardware revoker; an NMI in CHERIoT
+// The load barrier (Ibex cheriot.rst TRVK): a CLC of a tagged, non-sealing capability whose base
+// lies in the heap has the bitmap bit of its base looked up through cheriot_mem_sys.corerevbm_tl
+// (Eg2System::core_revbm, the cheriot_mem_sys model); a set bit or a failed lookup clears the tag.
+//
+// Not modelled (the run goes on without them): an NMI in CHERIoT
 // mode (MPACT has none: the run stops, so an alert escalation that reaches the core's NMI in
 // CHERIoT mode ends an eg2sim run there); code changed after it ran once (MPACT's decode cache
 // keeps the old instruction).
@@ -92,6 +95,27 @@ class Eg2MpactCpu : public Eg2Iss {
     *value = eg2_mpact_gpr(m_, r);
     return true;
   }
+  // Debug mode (Ibex debug.rst "Debug Mode in CHERIoT"; eg2_mpact.h).
+  bool debug_enter() override {
+    eg2_mpact_debug_enter(m_);
+    return true;
+  }
+  bool debug_resume() override {
+    eg2_mpact_debug_resume(m_);
+    return true;
+  }
+  bool read_dpc(uint32_t *pc) override {
+    *pc = eg2_mpact_dpc(m_);
+    return true;
+  }
+  bool set_dpc(uint32_t pc) override {
+    eg2_mpact_set_dpc(m_, pc);
+    return true;
+  }
+  bool write_gpr(unsigned r, uint32_t value) override {
+    if (r == 0 || r >= 16) return false;  // x0 is read-only; RV32E
+    return eg2_mpact_set_gpr(m_, r, value) == 0;
+  }
   bool crash_dump(uint32_t *pc, uint32_t *npc, uint32_t *daddr) override {
     *pc = last_pc_;
     *npc = this->pc();
@@ -105,6 +129,7 @@ class Eg2MpactCpu : public Eg2Iss {
   static int store_cb(void *user, uint32_t addr, const void *data, uint32_t len,
                       const uint8_t *tags);
   static int revbm_cb(void *user, uint32_t offset, uint8_t *byte);
+  static bool eg2_revoked(uint32_t w0, uint32_t w1);
   // An Ibex custom CSR instruction (cfg_.ibex_csrs): true if insn was one, executed.
   bool ibex_csr(uint32_t insn);
   bool fetch(uint32_t addr, void *data, uint32_t len);
@@ -123,7 +148,11 @@ class Eg2MpactCpu : public Eg2Iss {
   static constexpr uint32_t kMcounterenMask = 0x1d;
   uint32_t last_pc_ = 0, last_insn_ = 0;
   uint32_t last_daddr_ = 0;
-  bool in_nmi_ = false;  // an NMI handler is running: no new NMI until its mret  // the last load's or store's address, for the crash dump
+  // A fetch fault was taken and its handler has not returned (mret): the next fetch fault is a
+  // double fault (Ibex exception_interrupts.rst "Double Fault Detection").
+  bool in_fetch_fault_ = false;
+  bool in_nmi_ = false;
+  bool nmi_pending_ = false;  // delivered to MPACT, taken at the next step (wakes the core from WFI)  // an NMI handler is running: no new NMI until its mret  // the last load's or store's address, for the crash dump
   bool last_fetch_fault_ = false, last_fence_i_ = false, last_emulated_ = false;
 };
 

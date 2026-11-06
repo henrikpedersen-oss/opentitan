@@ -137,6 +137,23 @@ class Eg2IpModel : public Eg2RegBlock {
       if (std::string(name) == irq_->alerts[i].name) sys_.raise_alert(irq_->alerts[i].id);
     }
   }
+  // A fault in one of the IP's countermeasures (the chip bench's sec_cm fault injection,
+  // chip_sw_all_escalation_resets_vseq): the IP raises the fatal alert the countermeasure feeds
+  // (comportability README "Alerts": fatal alerts "are continuously triggered until reset"). An IP
+  // whose documentation gives such a fault a status field overrides this and sets it too. false:
+  // the IP has no alert of that name.
+  virtual bool fatal_fault(const std::string &alert) {
+    for (uint8_t i = 0; irq_ && i < irq_->nalerts; ++i) {
+      if (alert == irq_->alerts[i].name) {
+        fatal_alerts_.push_back(irq_->alerts[i].id);
+        sys_.raise_alert(irq_->alerts[i].id);
+        return true;
+      }
+    }
+    return false;
+  }
+  // The fatal alerts a countermeasure fault holds until the IP is reset (fatal_fault).
+  std::vector<uint16_t> fatal_alerts_;
 
   // ---- Time and reset ----
   virtual void on_time(uint64_t /*now_ps*/) {}
@@ -158,13 +175,20 @@ class Eg2IpModel : public Eg2RegBlock {
     // (rstmgr theory_of_operation.md "System Reset Tree"): rv_dm, on the sys tree
     // (top_earlgrey.hjson reset_connections), keeps its state.
     if (cause == Eg2ResetCause::kNdm && m == "rv_dm") return true;
-    return m == "pwrmgr" || m == "rstmgr" || m == "clkmgr";
+    // clkmgr: only its dividers are on the por domain; "the other functions inside the clock
+    // manager operate on the life cycle reset domain", so "a user or escalation initiated reset
+    // still restores the clock manager to a default clean slate" (clkmgr theory_of_operation.md
+    // "Reset Domains"; rstmgr "Summary": HW and SW reset requests reset the LC tree). The NDM rule
+    // above (pinmux) keeps it.
+    if (m == "clkmgr") return cause == Eg2ResetCause::kNdm;
+    return m == "pwrmgr" || m == "rstmgr";
   }
   virtual void on_reset(Eg2ResetCause cause) {
     if (keeps_state(cause)) return;
     reset();
     status_level_ = 0;
     status_test_ = 0;
+    fatal_alerts_.clear();
     polls_.clear();
     sys_.unschedule(this);
     update_irqs();

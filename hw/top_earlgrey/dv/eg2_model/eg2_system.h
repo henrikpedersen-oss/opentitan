@@ -184,6 +184,11 @@ class Eg2System {
   bool plic_source(uint16_t id) const { return id < eg2_irqs::kPlicSources && plic_src_[id]; }
   std::function<void(uint16_t, bool)> on_plic_source;  // set by the rv_plic model
   bool meip = false, mtip = false, msip = false, nmi = false;
+  // Ibex's irq_nm_i as a level: rv_core_ibex's NMI_STATE & NMI_ENABLE (NMI_STATE "Current state",
+  // rw1c: it stays until software clears it). Ibex exception_interrupts.rst: "When handling the
+  // NMI, all interrupts including the NMI are ignored. Nested NMIs are not supported": the core
+  // takes it again after the handler's mret while the level stays high.
+  bool nmi_level = false;
 
   // ---- Alerts ----
   std::function<void(uint16_t)> on_alert;  // set by the alert handler model
@@ -356,6 +361,61 @@ class Eg2System {
   std::function<bool(const std::string &block)> clock_off;
   // rstmgr holds the block (by instance name) in software reset: an access to it never completes.
   std::function<bool(const std::string &block)> held_in_reset;
+
+  // ---- Console, the core's bitmap port, bus integrity ----
+  // Each complete line a UART sends (its window, the line without the end of line), set by the
+  // bench steps (eg2_bench.h).
+  std::function<void(const std::string &window, const std::string &line)> on_console_line;
+  // The core's TRVK revocation-bitmap lookup over cheriot_mem_sys.corerevbm_tl: the bitmap byte at
+  // `offset`; false for a failed lookup (an error or integrity fault on the response), which
+  // revokes. Set by the cheriot_mem_sys model; the CHERIoT-mode core asks it for each lookup.
+  std::function<bool(uint32_t offset, uint8_t *byte)> core_revbm;
+  // A bus integrity error the core's bus interface sees on a response (rv_core_ibex interfaces.md,
+  // fatal_hw_err: "A bus integrity error is seen"): ERR_STATUS.FATAL_INTG_ERR, fatal_hw_err, fetch
+  // disabled. Set by the rv_core_ibex model.
+  std::function<void(const std::string &why)> core_bus_intg_error;
+  // A bus word whose read answers with a TL-UL error response (d_error), recorded by the model that
+  // owns it (a relocated RRAM row: rram_ctrl theory_of_operation.md "Address-XOR"). The core asks
+  // read_error(addr, false) before a load and calls read_error(addr, true) when it takes the error
+  // (a load access fault).
+  std::function<bool(uint32_t addr, bool take)> read_error;
+  // A double fault (Ibex double_fault_seen_o; rv_core_ibex interfaces.md fatal_hw_err "A double
+  // fault is seen"): fatal_hw_err, fetch disabled. Set by the rv_core_ibex model.
+  std::function<void(const std::string &why)> core_double_fault;
+
+  // ---- Bench steps (eg2_bench.h) ----
+  // What the chip bench does for a test, done by the model (EG2 BENCH lines; Henrik 2026-11-04:
+  // the model is self-contained). An op's handler starts it; the step is answered by bench_ack(n,
+  // result), at once or when the op is complete. bench_check counts a check the bench makes
+  // (EG2CHK ok / FAIL lines); a failed one fails the run's verdict.
+  std::map<std::string, std::function<void(uint32_t n, uint32_t a, uint32_t b)>> bench_ops;
+  std::function<void(uint32_t n, uint32_t result)> bench_ack;
+  std::function<bool(const std::string &what, bool ok, const std::string &detail)> bench_check;
+  // A must-fail run (+eg2_inject_fail=1 on the chip; --stim bench.inject_fail=1 here): the bench
+  // inverts its check the image's build broke.
+  bool bench_inject_fail = false;
+  // The bench ends the run with its own verdict (the core's fetch is off, the software cannot).
+  std::function<void(const std::string &why)> bench_end;
+  // Each message the software logs (the DV log, decoded), for the bench's line-driven steps (the
+  // chip bench's sw_logger_vif lines).
+  std::vector<std::function<void(const std::string &)>> sw_log_watchers;
+  // ---- Host programs (ip/eg2_test_hosts.h) ----
+  // Each test status word the software writes, after the stimulus points have seen it.
+  std::vector<std::function<void(uint32_t)>> sw_status_watchers;
+  // A host program that boots the chip several times (it resets the chip between its phases, as
+  // the FPGA host does) takes a pass status that is not its last: true means that status does not
+  // end the run.
+  std::function<bool(uint32_t)> host_takes_status;
+  // The address of a test-image symbol as the running software sees it (its VMA: the .data copy in
+  // SRAM, not the load image), as a host's ELF lookup gives it.
+  std::function<bool(const std::string &, uint32_t *)> test_symbol_addr;
+  // The memories at a bus address while the model runs (a host's backdoor read or write).
+  std::function<bool(bool write, uint32_t addr, uint8_t *bytes, size_t n)> mem_rw;
+  // A parameter written into the test image (kEg2Param_<name>), as the bench's set_param.
+  bool set_test_param(const std::string &name, uint32_t v) {
+    uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
+    return write_test_symbol && write_test_symbol("kEg2Param_" + name, b, 4);
+  }
 
   // ---- Verdict ----
   void finish(bool passed, const std::string &why) {

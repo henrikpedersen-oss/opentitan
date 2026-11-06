@@ -112,6 +112,16 @@ class Eg2RegBlock : public sc_core::sc_module {
     }
     return false;
   }
+  // The same read back (a device's own engine reading its buffer memory).
+  bool win_read(const std::string &win, uint32_t off, uint8_t *data, size_t len) const {
+    for (uint16_t i = 0; i < desc_.nwins; ++i) {
+      if (win != desc_.wins[i].name) continue;
+      if (uint64_t(off) + len > win_mem_[i].size()) return false;
+      std::memcpy(data, &win_mem_[i][off], len);
+      return true;
+    }
+    return false;
+  }
 
   // The first access to an offset with neither a register nor a window (empty while none).
   const std::string &first_error() const { return first_error_; }

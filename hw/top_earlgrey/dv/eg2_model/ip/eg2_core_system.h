@@ -305,6 +305,20 @@ class Eg2AlertHandler : public Eg2IpModel {
     for (unsigned k = 0; k < kClasses; ++k) {
       if (r == clr_[k] && (wdata & wmask & 1) && (value(clr_regwen_[k]) & 1)) clear(k);
     }
+    // Fatal alerts "are continuously triggered until reset" (comportability README, "Alerts"; the
+    // alert sender latches a fatal alert until reset; Eg2IpModel::fatal_fault): an ALERT_CAUSE
+    // cleared while its sender still holds the alert is set again by the next alert event.
+    for (uint16_t id = 0; id < cause_.size(); ++id) {
+      if (r != cause_[id] || (value(cause_[id]) & 1)) continue;
+      for (Eg2IpModel *m : sys_.models()) {
+        bool held = false;
+        for (uint16_t a : m->fatal_alerts_) held = held || a == id;
+        if (held) {
+          alert(id);
+          break;
+        }
+      }
+    }
     // An INTR_STATE, INTR_ENABLE or INTR_TEST write may start or stop a class's interrupt
     // timeout; a CTRL write may enable it.
     update_timeouts();
@@ -716,6 +730,23 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
       fatal_core_error("dual-core lockstep mismatch");
       return true;
     };
+    // A response integrity error on one of the core's bus ports (interfaces.md fatal_hw_err: "A bus
+    // integrity error is seen"; rv_core_ibex.hjson ERR_STATUS.FATAL_INTG_ERR "rv_core_ibex detected
+    // a response integrity error"; Ibex security.rst "Bus integrity checking": a bus major alert).
+    sys_.core_bus_intg_error = [this](const std::string &why) { fatal_intg_error(why); };
+    sys_.core_double_fault = [this](const std::string &why) {
+      sys_.halt_core("rv_core_ibex", "fatal_hw_err (double fault: " + why +
+                                         "): instruction fetch disabled");
+      raise_alert("fatal_hw_err");
+    };
+  }
+
+  // ERR_STATUS.FATAL_INTG_ERR, fatal_hw_err, and fetch disabled until rv_core_ibex is reset
+  // (theory_of_operation.md "Fetch Enable").
+  void fatal_intg_error(const std::string &why) {
+    set_value(err_status_, value(err_status_) | (1u << 8));
+    sys_.halt_core("rv_core_ibex", "fatal_hw_err (" + why + "): instruction fetch disabled");
+    raise_alert("fatal_hw_err");
   }
 
   void on_reset(Eg2ResetCause c) override {
@@ -728,6 +759,7 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     rnd_ready_cycle_ = 0;
     nmi_src_ = 0;
     nmi_line_ = 0;
+    sys_.nmi_level = false;
   }
 
   bool cheriot() const { return cheriot_; }
@@ -842,6 +874,8 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     }
     if (off != 0) return;
     if (sys_.on_dv_status) sys_.on_dv_status(word);
+    // A host program that boots the chip again after this pass (ip/eg2_test_hosts.h) takes it.
+    if (word == 0x900d && sys_.host_takes_status && sys_.host_takes_status(word)) return;
     if (word == 0x900d) sys_.finish(true, "test passed (DV status 0x900d)");
     if (word == 0xbaad) sys_.finish(false, "test failed (DV status 0xbaad)");
     if (word == 0xb057) Eg2ModelStop::request("the ROM halted (DV status 0xb057)");
@@ -873,6 +907,7 @@ class Eg2RvCoreIbexCfg : public Eg2IpModel {
     uint32_t line = value(nmi_state_) & value(nmi_enable_) & 3;
     if (line & ~nmi_line_) sys_.nmi = true;
     nmi_line_ = line;
+    sys_.nmi_level = line != 0;
   }
   uint16_t mcw_, ena_, lock_, recov_, fatal_, rnd_data_, rnd_status_, nmi_enable_, nmi_state_,
       err_status_;

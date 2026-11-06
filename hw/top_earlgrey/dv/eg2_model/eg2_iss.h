@@ -75,6 +75,16 @@ class Eg2Iss {
   // Integer register xr's value (its address, for a capability register), for a debugger's
   // abstract register read while the core is halted. False if the ISS cannot give it.
   virtual bool read_gpr(unsigned /*r*/, uint32_t * /*value*/) { return false; }
+  // Debug mode, for an ISS that keeps its own program counter capability (Ibex debug.rst "Debug
+  // Mode in CHERIoT"): entry saves it in depcc and runs from mtcc, resume restores it from depcc.
+  // False if the ISS has no debug support (the caller then keeps dpc itself).
+  virtual bool debug_enter() { return false; }
+  virtual bool debug_resume() { return false; }
+  // dpc as the ISS keeps it (depcc's address); set_dpc sets it. False if the ISS cannot.
+  virtual bool read_dpc(uint32_t * /*pc*/) { return false; }
+  virtual bool set_dpc(uint32_t /*pc*/) { return false; }
+  // xr written by a debugger's abstract command, as an integer write. False if the ISS cannot.
+  virtual bool write_gpr(unsigned /*r*/, uint32_t /*value*/) { return false; }
 };
 
 #endif  // EG2_MODEL_EG2_ISS_H_

@@ -20,10 +20,23 @@
 //                update": the next host command, so here it stays set.
 //   FLASH_STATUS taken as committed when written (the document commits it on the SPI clock, which
 //                needs a host); BUSY and WEL only cleared by software (rw0c), never set.
-//   TPM          TPM_STATUS and TPM_CMD_ADDR read 0 (no TPM command received);
+//   TPM          without a host TPM_STATUS and TPM_CMD_ADDR read 0 (no TPM command received);
 //                tpm_header_not_empty (status) stays low. A word written to TPM_READ_FIFO is
 //                "written while a read command was not active, and it was not accepted":
-//                tpm_rdfifo_drop is raised (INTR_STATE description).
+//                tpm_rdfifo_drop is raised (INTR_STATE description). With a TPM host (the
+//                tpm_* calls below, from ip/eg2_test_hosts.h) the TPM submodule works as
+//                theory_of_operation.md "TPM over SPI" and programmers_guide.md "TPM Read" /
+//                "TPM Write" give it: a write waits (WAIT) while TPM_STATUS.wrfifo_pending or
+//                cmdaddr_notempty is set, then takes the payload into the TPM write FIFO (the
+//                ingress buffer from word SramTpmWrFifoOffset = 96, "always starting at the lowest
+//                address") and, on its last bit, pushes the command and address into TPM_CMD_ADDR
+//                and sets wrfifo_pending; a read pushes them at the end of the address phase and
+//                waits until the read FIFO (TPM_READ_FIFO words, 32-bit, little-endian) holds the
+//                requested size, then sends it and raises tpm_rdfifo_cmd_end. cmdaddr_notempty is
+//                tpm_header_not_empty's level; reading TPM_CMD_ADDR takes the entry (hwre) and
+//                clears rdfifo_aborted; writing 0 to wrfifo_pending (rw0c) frees the write FIFO.
+//                Not modelled: the return-by-HW registers (a host read of one stops the run,
+//                saying so), CRB mode, an aborted read, TPM_CFG.tpm_reg_chk_dis.
 //   Waiting      software that polls one of these registers kPollLimit times with no write to the
 //                block in between waits for a SPI host: the run stops, saying so.
 // The egress and ingress buffers are the window's plain memory (software's writes read back).
@@ -74,6 +87,7 @@ class Eg2SpiDevice : public Eg2IpModel {
     cmd_info_en4b_ = reg("CMD_INFO_EN4B");
     cmd_info_wrdi_ = reg("CMD_INFO_WRDI");
     egress_ = win_index("egress_buffer");
+    ingress_ = win_index("ingress_buffer");
     // The registers only a host changes: kept as they are (modelled), polled through poll_watch.
     for (const char *r : {"STATUS", "ADDR_MODE", "LAST_READ_ADDR", "FLASH_STATUS", "UPLOAD_STATUS",
                           "UPLOAD_STATUS2", "UPLOAD_CMDFIFO", "UPLOAD_ADDRFIFO", "TPM_STATUS",
@@ -85,7 +99,76 @@ class Eg2SpiDevice : public Eg2IpModel {
     debug_irqs();
   }
 
+  // ---- TPM over SPI, the host's side (a TPM transaction on tpm_csb) ----
+  // TCG PC Client Platform TPM Profile, SPI: a 4-byte header {R/W (bit 7, 1 = read), size - 1
+  // (bits 5:0)}, address[23:0]; then the device drives WAIT (0x00) or START (0x01) on MISO each
+  // byte until it can go on; then the data.
+  bool tpm_enabled() const { return value(tpm_cfg_) & 1; }
+  // The header has been sent (the address phase ends).
+  void tpm_header(uint8_t cmd, uint32_t addr) {
+    cmd_ = cmd;
+    addr_ = addr & 0xffffff;
+    bool read = cmd & 0x80;
+    unsigned size = (cmd & 0x3f) + 1;
+    dbgf(1, "TPM %s of %u bytes at 0x%06x from the host", read ? "read" : "write", size, addr_);
+    if (!read) return;
+    // Return-by-HW registers (theory_of_operation.md): the locality registers at 0xD4_x000.
+    static const uint16_t kHwRegs[] = {0x000, 0x008, 0x00c, 0x010, 0x014, 0x018, 0xf00, 0xf04};
+    if (!(value(tpm_cfg_) & 4) && (addr_ >> 16) == 0xd4) {
+      for (uint16_t o : kHwRegs) {
+        if ((addr_ & 0xfff) == o) {
+          char a[16];
+          std::snprintf(a, sizeof a, "0x%06x", addr_);
+          Eg2ModelStop::request(std::string("spi_device: a TPM read of a return-by-HW register (") +
+                                a + "): not modelled");
+          return;
+        }
+      }
+    }
+    if (cmd_valid_) {
+      Eg2ModelStop::request(
+          "spi_device: a TPM read command while TPM_CMD_ADDR is full: what the TPM does then is "
+          "not documented");
+      return;
+    }
+    // "The SW reads a word from TPM_CMD_ADDR" for a read (programmers_guide.md "TPM Read").
+    push_cmd();
+    rd_active_ = true;
+    rdfifo_.clear();
+    rd_size_ = size;
+  }
+  // WAIT or START in the wait phase: true once the device sends START.
+  bool tpm_start() {
+    if (cmd_ & 0x80) return rd_active_ && rdfifo_.size() * 4 >= rd_size_;
+    // "accepts the payload ... without the WAIT state if the write and command FIFOs are empty".
+    return !wrfifo_pending_ && !cmd_valid_;
+  }
+  // The write payload, after START: into the write FIFO; on its last bit the command and address
+  // into TPM_CMD_ADDR.
+  void tpm_write(const std::vector<uint8_t> &data) {
+    std::vector<uint8_t> &m = win_mem(uint16_t(ingress_));
+    for (size_t i = 0; i < data.size() && i < kTpmWrFifoBytes; ++i) m[kTpmWrFifoOff + i] = data[i];
+    wrfifo_pending_ = true;
+    push_cmd();
+  }
+  // The read data, after START: popped from the read FIFO; the command ends.
+  std::vector<uint8_t> tpm_read() {
+    std::vector<uint8_t> d;
+    for (uint32_t w : rdfifo_) {
+      for (int i = 0; i < 4 && d.size() < rd_size_; ++i) d.push_back(uint8_t(w >> (8 * i)));
+    }
+    rdfifo_.clear();
+    rd_active_ = false;
+    set_intr("tpm_rdfifo_cmd_end");
+    tpm_update();
+    return d;
+  }
+
  protected:
+  void reg_before_read(uint16_t r) override {
+    if (r == tpm_cmd_addr_) set_value(tpm_cmd_addr_, cmd_valid_ ? cmdaddr_ : 0);
+    if (r == tpm_status_) tpm_update();
+  }
   void reg_write(uint16_t r, uint32_t old, uint32_t wdata, uint32_t wmask) override {
     uint32_t v = value(r), w = wdata & wmask;
     if (r == control_) {
@@ -103,6 +186,20 @@ class Eg2SpiDevice : public Eg2IpModel {
     } else if (r == flash_status_ && v != old) {
       dbgf(1, "FLASH_STATUS 0x%06x (status 1-3 = 0x%02x 0x%02x 0x%02x, BUSY %u, WEL %u), taken as "
               "committed", v, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, v & 1, (v >> 1) & 1);
+    } else if (r == tpm_status_) {
+      // wrfifo_pending is rw0c: writing 0 frees the write FIFO (dif: "the only writeable CSR").
+      if (wrfifo_pending_ && !(wdata & wmask & 2)) {
+        wrfifo_pending_ = false;
+        dbg(1, "TPM_STATUS.wrfifo_pending cleared: the TPM write FIFO is free");
+      }
+      tpm_update();
+    } else if (r == tpm_rdfifo_ && rd_active_) {
+      if (rdfifo_.size() < kTpmRdFifoWords) {
+        rdfifo_.push_back(w);
+      } else {
+        dbgf(1, "TPM_READ_FIFO 0x%08x dropped: the read FIFO is full", w);
+        set_intr("tpm_rdfifo_drop");
+      }
     } else if (r == tpm_rdfifo_) {
       if (dbg_count("TPM read FIFO words dropped", 8))
         dbgf(1, "TPM_READ_FIFO 0x%08x dropped: no TPM read command is active (no SPI host): "
@@ -125,6 +222,14 @@ class Eg2SpiDevice : public Eg2IpModel {
     }
   }
   void reg_after_read(uint16_t r) override {
+    // TPM_CMD_ADDR is read-to-take (hwre); rdfifo_aborted "will clear automatically after the next
+    // valid command is read from TPM_CMD_ADDR".
+    if (r == tpm_cmd_addr_ && cmd_valid_) {
+      cmd_valid_ = false;
+      rdfifo_aborted_ = false;
+      tpm_update();
+      return;
+    }
     if ((r == cmdfifo_ || r == addrfifo_ || r == tpm_cmd_addr_) &&
         dbg_count("reads of empty upload or TPM FIFOs", 4)) {
       dbgf(1, "%s read with its FIFO empty (no SPI host has sent anything): reads 0",
@@ -180,6 +285,27 @@ class Eg2SpiDevice : public Eg2IpModel {
          lanes.c_str(), ((v >> 24) & 1) ? ", upload" : "", ((v >> 25) & 1) ? ", sets BUSY" : "");
   }
 
+  // SramTpmWrFifoOffset 96 and SramTpmWrFifoDepth 16 words; SramTpmRdFifoDepth 16 words
+  // (spi_device.hjson param_list).
+  static constexpr size_t kTpmWrFifoOff = 96 * 4, kTpmWrFifoBytes = 16 * 4, kTpmRdFifoWords = 16;
+  void push_cmd() {
+    cmdaddr_ = uint32_t(cmd_) << 24 | addr_;
+    cmd_valid_ = true;
+    tpm_update();
+  }
+  // TPM_STATUS {rdfifo_aborted, wrfifo_pending, cmdaddr_notempty}; tpm_header_not_empty follows
+  // cmdaddr_notempty (a status interrupt).
+  void tpm_update() {
+    set_value(tpm_status_, uint32_t(cmd_valid_) | uint32_t(wrfifo_pending_) << 1 |
+                               uint32_t(rdfifo_aborted_) << 2);
+    set_intr_level("tpm_header_not_empty", cmd_valid_);
+  }
+  uint8_t cmd_ = 0;
+  uint32_t addr_ = 0, cmdaddr_ = 0;
+  bool cmd_valid_ = false, wrfifo_pending_ = false, rdfifo_aborted_ = false, rd_active_ = false;
+  unsigned rd_size_ = 0;
+  std::vector<uint32_t> rdfifo_;
+  int ingress_ = -1;
   uint16_t control_, cfg_, addr_mode_, flash_status_, jedec_cc_, jedec_id_, read_th_, mailbox_,
       intercept_, cmdfifo_, addrfifo_, tpm_cfg_, tpm_status_, tpm_cmd_addr_, tpm_rdfifo_;
   uint16_t cmd_info_[kCmdInfos], cmd_info_en4b_, cmd_info_wrdi_;

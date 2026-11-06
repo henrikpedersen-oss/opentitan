@@ -176,7 +176,9 @@ class Eg2SpikeCpu : public sc_core::sc_module, public simif_t, public Eg2DebugHa
   uint64_t local_ps_ = 0;  // time ahead of SystemC time
   uint64_t debug_cycle_remainder_ps_ = 0;
   unsigned resets_ = 0;
-  bool fetch_denied_ = false;  // this step's fetch is from a region that refuses fetches
+  bool fetch_denied_ = false;
+  bool read_denied_ = false;  // this step's load reads a word that answers with a bus error
+  bool spike_in_nmi_ = false;  // an NMI handler runs on Spike: no NMI until its mret  // this step's fetch is from a region that refuses fetches
   bool translation_used_ = false;  // this step cached a translated instruction or data address
   uint32_t dump_pc_ = 0, dump_npc_ = 0, dump_daddr_ = 0;  // the crash dump's PCs and data address
   // The exception state Ibex latches at a trap (mtval, mepc), the previous one after a double fault

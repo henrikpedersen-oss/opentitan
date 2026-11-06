@@ -898,6 +898,7 @@ class Eg2Pinmux : public Eg2IpModel {
       set_pads(type ? mio_ : m, type ? m : dio_);
       return true;
     };
+    retention_check_setup();
     for (unsigned i = 0; i < kNumDet; ++i) restart(i);
   }
   void on_reset(Eg2ResetCause c) override {
@@ -1027,6 +1028,99 @@ class Eg2Pinmux : public Eg2IpModel {
     if (t == Eg2System::kNever) sys_.unschedule(this);
     else sys_.schedule(this, t);
   }
+  // ---- The pads in sleep (chip_sw_sleep_pin_mio_dio_val_vseq's checks, made by the model) ----
+  // Retention logic (theory_of_operation.md "Retention Logic"): "all muxing matrix and DIO outputs
+  // are routed through the retention logic", which "can be configured to be automatically
+  // activated upon sleep entry in order to either drive the output low, high, high-Z or to the last
+  // seen value (keep)"; "the sleep behavior of all outputs is activated in parallel via a trigger
+  // signal asserted by the power manager". Per pad, MIO_PAD_SLEEP_EN / DIO_PAD_SLEEP_EN.EN and
+  // MIO_PAD_SLEEP_MODE / DIO_PAD_SLEEP_MODE.OUT (registers.md): 0 Tie-Low "driven actively to
+  // zero", 1 Tie-High "driven actively to one", 2 High-Z "left undriven ... the actual driving
+  // behavior during deep sleep will then depend on the pull-up/-down configuration in
+  // MIO_PAD_ATTR" (pull_en bit 2, pull_select bit 3: 0 pull-down, 1 pull-up), 3 Keep "last driven
+  // value". An external pull on an undriven pad decides its level (the bench's pins_pd/pins_pu).
+  // The software's choice per pad comes from its log ("BEGIN Chosen Retention Types", "DIO [<i>]:
+  // <v>", "MIO [<i>]: <v>", "END Chosen Retention Types"), as the vseq reads it. --stim
+  // pinmux.sleep_pad_check=1@<point> (in low power) compares every chosen pad's level with the
+  // choice three times, with no external pull, all pulled down and all pulled up (the vseq's
+  // three passes); Keep pads are not checked (the vseq skips them). One bench check per pass, then
+  // the bench's verdict ends the run, as the vseq's override_test_status_and_finish. With --stim
+  // bench.inject_fail=1 the first chosen pad's expectation is inverted (the check must go red).
+  void retention_check_setup() {
+    for (unsigned i = 0; i < kNumMio; ++i) mio_attr_[i] = reg(("MIO_PAD_ATTR_" + std::to_string(i)).c_str());
+    for (unsigned i = 0; i < kNumDio; ++i) dio_attr_[i] = reg(("DIO_PAD_ATTR_" + std::to_string(i)).c_str());
+    for (int &c : mio_chosen_) c = -1;
+    for (int &c : dio_chosen_) c = -1;
+    sys_.sw_log_watchers.push_back([this](const std::string &m) {
+      if (m == "BEGIN Chosen Retention Types") {
+        listing_ = true;
+        for (int &c : mio_chosen_) c = -1;
+        for (int &c : dio_chosen_) c = -1;
+      } else if (m == "END Chosen Retention Types") {
+        listing_ = false;
+      } else if (listing_) {
+        unsigned i = 0, v = 0;
+        if (std::sscanf(m.c_str(), "DIO [%u]: %x", &i, &v) == 2 && i < kNumDio) dio_chosen_[i] = int(v);
+        if (std::sscanf(m.c_str(), "MIO [%u]: %x", &i, &v) == 2 && i < kNumMio) mio_chosen_[i] = int(v);
+      }
+    });
+    sys_.stim_handlers["pinmux.sleep_pad_check"] = [this](const std::string &) {
+      sleep_pad_check();
+      return true;
+    };
+  }
+  // The pad's level in sleep: 0, 1, 'z' (undriven, no pull), 'k' (Keep: not checked), 'o' (no
+  // sleep behaviour enabled: the peripheral's output, which the model does not drive).
+  char sleep_level(bool dio, unsigned i, int ext_pull) const {
+    uint32_t en = value(dio ? dio_sleep_en_[i] : mio_sleep_en_[i]) & 1;
+    uint32_t mode = value(dio ? dio_sleep_mode_[i] : mio_sleep_mode_[i]) & 3;
+    uint32_t attr = value(dio ? dio_attr_[i] : mio_attr_[i]);
+    if (!en) return 'o';
+    if (mode == 0) return '0';
+    if (mode == 1) return '1';
+    if (mode == 3) return 'k';
+    if (ext_pull >= 0) return char('0' + ext_pull);
+    if ((attr >> 2) & 1) return char('0' + ((attr >> 3) & 1));
+    return 'z';
+  }
+  void sleep_pad_check() {
+    static const char *const kPass[3] = {"no pull", "pull-down", "pull-up"};
+    bool inverted = sys_.bench_inject_fail;
+    for (int pass = 0; pass < 3; ++pass) {
+      int ext = pass == 0 ? -1 : pass == 1 ? 0 : 1;
+      unsigned checked = 0, bad = 0;
+      std::string first;
+      bool flip = inverted;
+      for (int d = 0; d < 2; ++d) {
+        unsigned n = d ? kNumDio : kNumMio;
+        for (unsigned i = 0; i < n; ++i) {
+          int c = d ? dio_chosen_[i] : mio_chosen_[i];
+          if (c < 0 || c == 3) continue;
+          char want = c == 0 ? '0' : c == 1 ? '1' : ext < 0 ? 'z' : char('0' + ext);
+          if (flip) {
+            want = want == '1' ? '0' : '1';
+            flip = false;
+          }
+          char got = sleep_level(d, i, ext);
+          ++checked;
+          if (got != want && !bad++) {
+            first = std::string(d ? "DIO[" : "MIO[") + std::to_string(i) + "] chosen " +
+                    std::to_string(c) + ": expected " + want + ", the pad is " + got;
+          }
+        }
+      }
+      if (sys_.bench_check) {
+        sys_.bench_check(std::string("pad retention, ") + kPass[pass], checked > 0 && bad == 0,
+                         std::to_string(checked) + " pads, " + std::to_string(bad) + " wrong" +
+                             (bad ? " (first: " + first + ")" : ""));
+      }
+    }
+    if (sys_.bench_end) sys_.bench_end("the pads in sleep checked");
+  }
+  uint16_t mio_attr_[kNumMio], dio_attr_[kNumDio];
+  int mio_chosen_[kNumMio] = {}, dio_chosen_[kNumDio] = {};
+  bool listing_ = false;
+
   uint16_t en_[kNumDet], det_[kNumDet], th_[kNumDet], sel_[kNumDet], cause_;
   uint16_t mio_sleep_en_[kNumMio], mio_sleep_mode_[kNumMio];
   uint16_t dio_sleep_en_[kNumDio], dio_sleep_mode_[kNumDio];

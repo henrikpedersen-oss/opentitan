@@ -5,6 +5,8 @@
 // eg2sim: the EG2 SystemC model run on its own (doc/system_model in eg2_top_verification).
 //
 //   eg2sim --rom <rom.elf> --test <test.elf> [--otp <image.24.vmem>] [--max-insns N]
+//   eg2sim --rom <mask_rom.elf> --rram-image <test>_rom_ext_assembled.img [--test <test_rom_ext.elf>] --otp <keyed .24.vmem>
+//     (secure boot: the test ELF only for its symbols and log strings)
 //          [--spike-log <file>] [--set <window>.<REGISTER>=<value> ...]
 //          [--seed N] [--param <name>=<value> ...] [--log-dir <dir>] [--stim <key>=<value> ...]
 //          [--sym <name>=<value>[:<bytes>] ...] [--cheriot-iss mpact|none]
@@ -92,6 +94,8 @@
 
 #include <systemc>
 
+#include "eg2_bench.h"
+#include "eg2_bench_seq.h"
 #include "eg2_dvlog.h"
 #include "eg2_ip_model.h"
 #include "eg2_regblock.h"
@@ -102,6 +106,8 @@
 #endif
 #include "eg2_targets.h"
 #include "ip/eg2_crypto_entropy.h"
+#include "ip/eg2_jtag_host.h"
+#include "ip/eg2_test_hosts.h"
 #include "ip/eg2_periph_stim.h"
 #include "sw/device/lib/testing/eg2/eg2_tables.h"
 
@@ -159,7 +165,7 @@ Eg2CoreConfig earlgrey_core() {
 
 // Copy every loadable segment of a 32-bit ELF to its load address (p_paddr); collect its symbols.
 bool load_elf(const std::string &path, std::vector<Eg2Memory *> &mems,
-              std::map<std::string, uint32_t> *symbols = nullptr) {
+              std::map<std::string, uint32_t> *symbols = nullptr, bool segments = true) {
   std::ifstream f(path, std::ios::binary);
   if (!f) {
     std::fprintf(stderr, "eg2sim: cannot open %s\n", path.c_str());
@@ -200,6 +206,7 @@ bool load_elf(const std::string &path, std::vector<Eg2Memory *> &mems,
       }
     }
   }
+  if (!segments) return true;  // symbols only: the image is loaded another way
   for (uint16_t i = 0; i < phnum; ++i) {
     size_t ph = phoff + size_t(i) * phentsize;
     uint32_t type = rd32(ph), offset = rd32(ph + 4), paddr = rd32(ph + 12),
@@ -213,6 +220,23 @@ bool load_elf(const std::string &path, std::vector<Eg2Memory *> &mems,
                    paddr);
       return false;
     }
+  }
+  return true;
+}
+
+// Load a raw RRAM image (the bench's <test>_rom_ext_assembled.img: ROM_EXT and the signed
+// application, as the secure-boot runs place them) from the RRAM's base.
+bool load_rram_image(const std::string &path, Eg2Memory *rram) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f || !rram) {
+    std::fprintf(stderr, "eg2sim: cannot load %s into RRAM\n", path.c_str());
+    return false;
+  }
+  std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
+  if (img.empty() || img.size() > rram->size() || !rram->write(rram->base(), img.data(), img.size())) {
+    std::fprintf(stderr, "eg2sim: %s (%zu bytes) does not fit the RRAM (%u bytes)\n", path.c_str(),
+                 img.size(), rram->size());
+    return false;
   }
   return true;
 }
@@ -577,7 +601,7 @@ int sc_main(int argc, char **argv) {
     );
     return 1;
   }
-  std::string rom, test, otp, otp_out, spike_log;
+  std::string rom, test, otp, otp_out, spike_log, rram_image;
   std::vector<std::string> sets, params, syms_set, faults;
   std::vector<TrigStim> trig_stims;
   std::string seed, cheriot_iss = "mpact", rng = "model";
@@ -587,6 +611,7 @@ int sc_main(int argc, char **argv) {
     std::string a = argv[i];
     if (a == "--rom") rom = argv[i + 1];
     else if (a == "--test") test = argv[i + 1];
+    else if (a == "--rram-image") rram_image = argv[i + 1];
     else if (a == "--otp") otp = argv[i + 1];
     else if (a == "--otp-out") otp_out = argv[i + 1];
     else if (a == "--set") sets.push_back(argv[i + 1]);
@@ -627,7 +652,7 @@ int sc_main(int argc, char **argv) {
     }
   }
   if (rom.empty()) {
-    std::fprintf(stderr, "usage: eg2sim --rom <rom.elf> [--test <test.elf>] [--otp <vmem>] "
+    std::fprintf(stderr, "usage: eg2sim --rom <rom.elf> [--test <test.elf> | --rram-image <img>] [--otp <vmem>] "
                          "[--otp-out <vmem>] [--seed N] [--param name=value] [--log-dir <dir>] "
                          "[--max-insns N] [--spike-log <file>] [--set win.REG=value] "
                          "[--stim key=value] [--sym name=value[:bytes]] "
@@ -700,7 +725,15 @@ int sc_main(int argc, char **argv) {
     revbm->second->share_start_of(*meta->second);
   }
   std::map<std::string, uint32_t> syms;
-  if (!load_elf(rom, mems) || (!test.empty() && !load_elf(test, mems, &syms))) return 1;
+  // With --rram-image the test ELF gives its symbols and log strings only: its segments would
+  // overwrite the signed image.
+  if (!load_elf(rom, mems) ||
+      (!test.empty() && !load_elf(test, mems, &syms, rram_image.empty())))
+    return 1;
+  if (!rram_image.empty()) {
+    auto r = sys.memories.find("rram_ctrl.host");
+    if (!load_rram_image(rram_image, r == sys.memories.end() ? nullptr : r->second)) return 1;
+  }
   if (!otp.empty() && !load_otp(otp, blocks)) return 1;
   // Some chip sequences end a software test after their own checks. This only accepts "pass";
   // model-side bench checks registered in verdict_checks still run before the verdict is accepted.
@@ -751,6 +784,18 @@ int sc_main(int argc, char **argv) {
     }
     return false;
   };
+  sys.test_symbol_addr = [&syms](const std::string &name, uint32_t *addr) {
+    auto it = syms.find(name);
+    if (it == syms.end()) return false;
+    *addr = it->second;
+    return true;
+  };
+  sys.mem_rw = [&mems](bool write, uint32_t addr, uint8_t *b, size_t n) {
+    for (Eg2Memory *m : mems) {
+      if (write ? m->write(addr, b, n) : m->read(addr, b, n)) return true;
+    }
+    return false;
+  };
   sys.write_test_symbol = [&syms, &mems, &sys, test](const std::string &name, const uint8_t *in,
                                                      size_t n) {
     auto it = syms.find(name);
@@ -768,6 +813,22 @@ int sc_main(int argc, char **argv) {
     }
     return false;
   };
+  // The chip bench's steps (EG2 BENCH lines), done by the model (eg2_bench.h).
+  static Eg2Bench bench(sys);
+  // The FPGA/silicon host programs a host test runs against the software (host.program,
+  // ip/eg2_test_hosts.h).
+  static eg2_model::Eg2TestHosts test_hosts(sys);
+  // The fault and backdoor steps of OpenTitan's chip-test sequences, as stimulus keys
+  // (eg2_bench_seq.h; bench.txt gives them per test).
+  static Eg2BenchSeq bench_seq(sys);
+  // The debugger on a host over JTAG: TAP selection and the RISC-V DTM in front of rv_dm
+  // (jtag.* keys, ip/eg2_jtag_host.h).
+  for (Eg2IpModel *m : sys.models()) {
+    if (auto *dm = dynamic_cast<eg2_model::Eg2RvDm *>(m)) {
+      static eg2_model::Eg2JtagHost jtag_host(*dm);
+      break;
+    }
+  }
   // A chip-bench sequence reloads the software image after an RMA wipe. This input repeats that
   // host action; the lifecycle model itself only requests the documented wipe.
   sys.stim_handlers["test.reload"] = [&test, &mems, &sys](const std::string &v) {
@@ -942,8 +1003,14 @@ int sc_main(int argc, char **argv) {
       if (value_now(t, &v)) fire(t, v, sys.now_ps());
     }
   };
-  dvlog.on_msg = [point](const std::string &msg) { point(TrigStim::Point::kLog, msg, 0); };
-  sys.on_dv_status = [point](uint32_t w) { point(TrigStim::Point::kStatus, "", w); };
+  dvlog.on_msg = [point, &sys](const std::string &msg) {
+    point(TrigStim::Point::kLog, msg, 0);
+    for (auto &w : sys.sw_log_watchers) w(msg);
+  };
+  sys.on_dv_status = [point, &sys](uint32_t w) {
+    point(TrigStim::Point::kStatus, "", w);
+    for (auto &f : sys.sw_status_watchers) f(w);
+  };
   sys.on_chip_event = [point](const std::string &e) { point(TrigStim::Point::kEvent, e, 0); };
   // The core asks pwrmgr at each WFI it sleeps on: that is the core's sleep (core_sleep_o).
   if (auto lpr = sys.low_power_requested) {

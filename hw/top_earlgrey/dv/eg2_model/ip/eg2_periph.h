@@ -48,8 +48,8 @@ namespace eg2_model {
 //
 // Loopbacks: CTRL.SLPBK, "any outgoing bits to TX are received through RX" and the TX line stays
 // 1: a byte sent goes into the RX FIFO (while CTRL.RX is set) instead of out. CTRL.LLPBK,
-// "incoming bits are forwarded to TX": each byte received from the peer also goes out as an output
-// item.
+// "incoming bits are forwarded to TX" and "the internal design sees RX value as 1 always": each
+// byte from the peer goes out as an output item, whatever CTRL.RX is, and none enters the RX FIFO.
 //
 // Log: each byte the core reads from RDATA is also a line "< %02h %c" in <instance>.model.log, as
 // the bench's chip.log writes the RX side. Debug lines (<instance>.debug.log): CTRL, FIFO_CTRL and
@@ -58,9 +58,11 @@ namespace eg2_model {
 // FIFO, every interrupt that rises while enabled; at --periph-debug 2 every byte written, sent,
 // received and read.
 //
-// Not modelled: parity and frame errors, break detection (the peer sends
-// valid characters only), the noise filter, OVRD and VAL (the TX pin override and the oversampled
-// RX value).
+// VAL, the last 16 oversampled RX values: the line idle, all ones (theory_of_operation.md "The
+// TX/RX serial lines are high when idle"; the peer sends no break). ROM_EXT's rescue takes all
+// zeros for a break (uart_break_detect).
+// Not modelled: parity and frame errors, break detection (the peer sends valid characters only),
+// the noise filter, OVRD (the TX pin override).
 class Eg2Uart : public Eg2IpModel {
  public:
   static constexpr unsigned kTxFifoDepth = 32;  // uart.hjson TxFifoDepth
@@ -76,6 +78,8 @@ class Eg2Uart : public Eg2IpModel {
     fifo_ctrl_ = reg("FIFO_CTRL");
     rdata_ = reg("RDATA");
     timeout_ctrl_ = reg("TIMEOUT_CTRL");
+    val_ = reg("VAL");
+    set_modelled(val_);
     set_modelled(rdata_);
     set_modelled(status_);
     set_modelled(fifo_status_);
@@ -110,13 +114,19 @@ class Eg2Uart : public Eg2IpModel {
     }
     if (now >= next_char_) {
       next_char_ = Eg2System::kNever;
-      if (!peer_.empty() && rx_enabled()) {
+      bool llpbk = value(ctrl_) & (1u << 5);
+      if (!peer_.empty() && (rx_enabled() || llpbk)) {
         uint8_t b = peer_.front();
         peer_.erase(peer_.begin());
-        dbgf(2, "received 0x%02x '%c' from the peer", b, printable(b));
-        receive(b);
-        if (value(ctrl_) & (1u << 5)) out(b);  // LLPBK
-        timeout_at_ = timeout_enabled() ? now + bit_time() * timeout_bits() : Eg2System::kNever;
+        if (llpbk) {  // forwarded to TX; the receiver sees RX as 1 (uart.hjson CTRL.LLPBK)
+          dbgf(2, "byte 0x%02x '%c' from the peer forwarded to TX (line loopback)", b,
+               printable(b));
+          out(b);
+        } else {
+          dbgf(2, "received 0x%02x '%c' from the peer", b, printable(b));
+          receive(b);
+          timeout_at_ = timeout_enabled() ? now + bit_time() * timeout_bits() : Eg2System::kNever;
+        }
       }
     }
     if (now >= timeout_at_) {
@@ -170,6 +180,7 @@ class Eg2Uart : public Eg2IpModel {
     plan(sys_.now_ps());
   }
   void reg_before_read(uint16_t r) override {
+    if (r == val_) set_value(val_, 0xffff);
     if (r == rdata_) set_value(rdata_, rx_.empty() ? 0 : rx_.front());
   }
   void reg_after_read(uint16_t r) override {
@@ -244,7 +255,8 @@ class Eg2Uart : public Eg2IpModel {
   }
   // The next peer character, and the RX timeout, as the next time to act.
   void plan(uint64_t now) {
-    if (next_char_ == Eg2System::kNever && !peer_.empty() && rx_enabled() && char_time() != 0) {
+    if (next_char_ == Eg2System::kNever && !peer_.empty() && (rx_enabled() || (value(ctrl_) & (1u << 5))) &&
+        char_time() != 0) {
       next_char_ = now + char_time();
     }
     uint64_t t = std::min(std::min(next_char_, timeout_at_), tx_end_);
@@ -263,6 +275,14 @@ class Eg2Uart : public Eg2IpModel {
   // A byte from the peer at run time (the chip bench's UART agent, Eg2System::inputs), received
   // now, as the chip received it.
   void peer_byte(uint8_t b) {
+    // CTRL.LLPBK (uart.hjson): "incoming bits are forwarded to TX ... the internal design sees RX
+    // value as 1 always if line loopback is enabled": the byte goes out on TX at the pins, whatever
+    // CTRL.RX is, and the receiver sees an idle line (nothing enters the RX FIFO).
+    if (value(ctrl_) & (1u << 5)) {
+      dbgf(2, "byte 0x%02x '%c' from the peer forwarded to TX (line loopback)", b, printable(b));
+      out(b);
+      return;
+    }
     if (!rx_enabled()) {
       dbgf(2, "byte 0x%02x '%c' from the peer ignored: CTRL.RX is off", b, printable(b));
       return;
@@ -300,6 +320,11 @@ class Eg2Uart : public Eg2IpModel {
     sys_.emit(desc().window, item);
     if (b == '\n' || b == '\r') {
       if (!line_.empty()) std::printf("%s| %s\n", desc().window, line_.c_str());
+      if (!line_.empty() && sys_.on_console_line) {
+        std::string l;
+        l.swap(line_);
+        sys_.on_console_line(desc().window, l);
+      }
       line_.clear();
     } else {
       line_ += char(b);
@@ -322,7 +347,7 @@ class Eg2Uart : public Eg2IpModel {
     set_intr_level("tx_empty", empty);
     set_intr_level("rx_watermark", rx_.size() >= kRxLvl[(fc >> 2) & 7]);
   }
-  uint16_t ctrl_, wdata_, status_, fifo_status_, fifo_ctrl_, rdata_, timeout_ctrl_;
+  uint16_t ctrl_, wdata_, status_, fifo_status_, fifo_ctrl_, rdata_, timeout_ctrl_, val_;
   std::vector<uint8_t> fifo_, rx_, peer_, peer_all_;
   uint64_t stuck_polls_ = 0;
   uint64_t next_char_ = Eg2System::kNever, timeout_at_ = Eg2System::kNever;

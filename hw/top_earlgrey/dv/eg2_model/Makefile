@@ -23,6 +23,16 @@ HDRS := $(wildcard *.h ip/*.h rtos_soc/*.h) $(EG2_ROOT)/sw/device/lib/testing/eg
 SRCS += $(EG2_ROOT)/hw/ip/aes/model/aes.c \
         $(addprefix $(EG2_ROOT)/hw/ip/hmac/dv/cryptoc_dpi/,sha256.c sha384.c sha512.c)
 
+# usbdev's host (ip/eg2_periph_usb.h, --stim usbdev.host=1): usb-host/, the model's own copy of
+# OpenTitan's RTL USB host hw/dv/dpi/usbdpi (EG2 fork at cc3c79b207), changed here: its host step
+# split from the bit-level driver (usbdpi_frame_tick, usbdpi_host_step, usbdpi_device_eop). Compiled
+# as C++; usb-host/svdpi.h stands in for the simulator's header.
+USB_HOST := usb-host
+SRCS     += $(addprefix $(USB_HOST)/,usbdpi.c usb_transfer.c usbdpi_test.c usbdpi_stream.c usb_monitor.c usb_utils.c \
+                              usb_crc.c)
+HDRS     += $(wildcard $(USB_HOST)/*.h)
+CXXFLAGS += -Iusb-host
+
 # CHERIoT mode: EG2_MPACT points at libeg2_mpact.so, MPACT-CHERIoT behind the C interface of
 # $(EG2_MPACT)/include/eg2_mpact.h (eg2_top_verification's flake package mpact-cheriot, in devShell
 # `model`). Without it eg2sim stops the run at the CHERIoT lock.

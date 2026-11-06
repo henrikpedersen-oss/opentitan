@@ -186,11 +186,18 @@ class Eg2EntropySrc : public Eg2IpModel {
     sha3_started_ = false;
     inserted_.clear();
     observe_words_.clear();
+    observe_since_ = kObserveOff;
     update();
   }
 
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t, uint32_t) override {
+    // The observe FIFO fills from the time the block is enabled in observe mode (refill_observe).
+    if (!enabled() || !observing()) {
+      observe_since_ = kObserveOff;
+    } else if (observe_since_ == kObserveOff) {
+      observe_since_ = sys_.now_ps();
+    }
     // Firmware override, insert (theory_of_operation.md "Firmware Override"): with FW_OV_CONTROL
     // in override and insert mode, FW_OV_WR_DATA words go into the SHA3 conditioner while
     // FW_OV_SHA3_START is MuBi4True; setting it MuBi4False finishes SHA3-384 and the 384-bit
@@ -283,14 +290,40 @@ class Eg2EntropySrc : public Eg2IpModel {
   }
   bool observing() const { return mubi4_true(value(fw_ov_control_) & 0xf); }
   void refill_observe() {
-    if (!enabled() || !observing() || !observe_words_.empty()) return;
+    if (!enabled() || !observing()) return;
     // entropy_src programmers_guide.md, "Firmware Override - Observe": "firmware can observe
     // post-health test entropy bits (including entropy bits used for startup health testing)" by
-    // reading FW_OV_RD_DATA. Eight 4-bit noise symbols make one FIFO word. Gap draft: the
-    // documents do not state the nibble order or a model-time production
-    // rate, and disagree on a 1 kbit or 2 kbit capacity. The model puts the first symbol in bits
-    // 3:0 to match the capture format and produces a word when firmware observes an empty FIFO,
-    // without choosing between the documented capacities.
+    // reading FW_OV_RD_DATA. Eight 4-bit noise symbols make one FIFO word. The documents do not
+    // state the nibble order: the first symbol goes in bits 3:0, the capture format's.
+    // Rate: AST README "RNG": "The expected rng_b_o valid output rate is about 50KHz", one 4-bit
+    // symbol per valid, so a word every 8 / 50 kHz = 160 us from the time the block is enabled in
+    // observe mode. Capacity: the hjson's ObserveFifoDepth, 32 words, and programmers_guide.md
+    // "Firmware Override - Extract & Insert": "The observe FIFO will collect 1 kBit of contiguous
+    // entropy bits. Any entropy bits arriving after the observe FIFO is full are being
+    // discarded" (FW_OV_RD_FIFO_OVERFLOW). With a noise source from the host (eg2sim --rng, the rng
+    // suite's statistical captures) the host supplies the symbols as fast as firmware reads them:
+    // a word whenever firmware finds the FIFO empty, the rate not modelled.
+    if (eg2_noise_source()) {
+      if (observe_words_.empty()) push_observe_word();
+      return;
+    }
+    const uint64_t now = sys_.now_ps();
+    if (observe_since_ == kObserveOff || now < observe_since_) observe_since_ = now;
+    uint64_t n = (now - observe_since_) / kObserveWordPs;
+    observe_since_ += n * kObserveWordPs;
+    for (uint64_t i = 0; i < n; ++i) {
+      if (observe_words_.size() >= kObserveFifoDepth) {
+        set_value(fw_ov_rd_fifo_overflow_, 1);  // later words are discarded
+        break;
+      }
+      push_observe_word();
+    }
+  }
+  static constexpr uint64_t kObserveOff = ~0ull;
+  static constexpr uint64_t kObserveWordPs = 160000000ull;  // 8 symbols at 50 kHz
+  static constexpr size_t kObserveFifoDepth = 32;           // ObserveFifoDepth (1 kbit)
+  uint64_t observe_since_ = kObserveOff;
+  void push_observe_word() {
     uint32_t word = 0;
     if (eg2_rng_t *src = eg2_noise_source()) {
       for (unsigned i = 0; i < 8; ++i) {
@@ -303,8 +336,7 @@ class Eg2EntropySrc : public Eg2IpModel {
       std::memcpy(&word, seed, sizeof word);
     }
     observe_words_.push_back(word);
-    set_value(observe_fifo_depth_, 1);
-    set_value(fw_ov_rd_fifo_overflow_, 0);
+    set_value(observe_fifo_depth_, uint32_t(observe_words_.size()));
     set_intr("es_observe_fifo_ready");
   }
   void refill() {

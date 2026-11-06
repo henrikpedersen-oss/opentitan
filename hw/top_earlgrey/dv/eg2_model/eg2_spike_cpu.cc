@@ -102,9 +102,11 @@ Eg2SpikeCpu::Eg2SpikeCpu(sc_core::sc_module_name name, const Eg2CoreConfig &cfg,
 void Eg2SpikeCpu::enter_debug(unsigned cause) {
   halted_events_ = 0;
   if (cheriot_) {
-    // MPACT-CHERIoT has no debug mode: its PC is dpc. Its interface does not give the privilege it
-    // runs in, so dcsr.prv reads M (3); xdebugver is 4 (Ibex cs_registers.rst, dcsr).
+    // Ibex debug.rst "Debug Mode in CHERIoT": PCC is saved in depcc and replaced by mtcc, as when
+    // taking a trap; dpc is depcc's address. The CHERIoT ISS's interface does not give the
+    // privilege it runs in, so dcsr.prv reads M (3); xdebugver is 4 (Ibex cs_registers.rst, dcsr).
     cheriot_dpc_ = cheriot_iss_->pc();
+    if (cheriot_iss_->debug_enter()) cheriot_iss_->read_dpc(&cheriot_dpc_);
     cheriot_dcsr_ = (4u << 28) | ((cause & 7) << 6) | 3u;
   } else {
     state_t *s = processor_->get_state();
@@ -238,6 +240,12 @@ void Eg2SpikeCpu::ibex_csr_write(uint32_t c, uint32_t v) {
 int Eg2SpikeCpu::access_register(uint32_t regno, bool write, uint32_t *value) {
   if (cheriot_) {
     if (!write && regno == CSR_DPC) return *value = cheriot_dpc_, 0;
+    // dpc written: depcc's address (eg2_mpact_set_dpc; the metadata rule is not documented).
+    if (write && regno == CSR_DPC) {
+      if (!cheriot_iss_->set_dpc(*value)) return 2;
+      cheriot_iss_->read_dpc(&cheriot_dpc_);
+      return 0;
+    }
     if (!write && regno == CSR_DCSR) return *value = cheriot_dcsr_, 0;
     if (regno == 0xbc1 || regno == 0xbc2) {
       // Ibex cs_registers.rst: mshwm and mshwmb are CHERIoT-only WARL CSRs whose low four bits
@@ -252,7 +260,13 @@ int Eg2SpikeCpu::access_register(uint32_t regno, bool write, uint32_t *value) {
     if (!write && regno >= 0x1000 && regno < 0x1010) {
       return cheriot_iss_->read_gpr(regno - 0x1000, value) ? 0 : 2;
     }
-    return 2;  // MPACT's interface writes no register and reads no CSR
+    // A 32-bit write of xn: an integer write (Ibex cheriot.rst: the capability portion is
+    // "untagged by integer writes"); x0 ignores it, as in RISC-V mode.
+    if (write && regno == 0x1000) return 0;
+    if (write && regno > 0x1000 && regno < 0x1010) {
+      return cheriot_iss_->write_gpr(regno - 0x1000, *value) ? 0 : 2;
+    }
+    return 2;  // other CSRs, and a capability's metadata or tag: not reached (ticket)
   }
   state_t *s = processor_->get_state();
   if (regno >= 0x1000 && regno < 0x1020) {
@@ -338,8 +352,11 @@ void Eg2SpikeCpu::resume() {
   if (!debug_) return;
   debug_ = false;
   if (cheriot_) {
-    std::printf("eg2sim: debug mode left at %s (CHERIoT mode: MPACT-CHERIoT goes on at its pc)\n",
-                Eg2System::get().where().c_str());
+    // Ibex debug.rst: "dret restores PCC from depcc" (dcsr.step in CHERIoT mode: not modelled).
+    bool restored = cheriot_iss_->debug_resume();
+    std::printf("eg2sim: debug mode left at %s (CHERIoT mode: %s)\n",
+                Eg2System::get().where().c_str(),
+                restored ? "PCC restored from depcc" : "the CHERIoT ISS goes on at its pc");
     return;
   }
   state_t *s = processor_->get_state();
@@ -488,6 +505,10 @@ void Eg2SpikeCpu::ibex_reset() {
   // (sync_exc_seen, double_fault_seen) through its mask, so they can read 1 before any trap: the
   // chip bench mismatched on it at the test ROM's first csrr cpuctrlsts (rtl_tickets.md F15).
   processor_->put_csr(CSR_CPUCTRLSTS, 0);
+  // Ibex cs_registers.rst: "mseccfgh reads as all 0s and ignores all writes" with PMP. The pinned
+  // Spike creates mseccfg but no mseccfgh, so the mask ROM's csrr mseccfgh trapped as illegal.
+  s->csrmap[CSR_MSECCFGH] =
+      std::make_shared<masked_csr_t>(processor_.get(), CSR_MSECCFGH, 0, 0);
 }
 
 void Eg2SpikeCpu::set_cheriot_iss(Eg2Iss *iss) {
@@ -537,7 +558,7 @@ void Eg2SpikeCpu::drive_irqs() {
   Eg2System &sys = Eg2System::get();
   if (cheriot_) {
     cheriot_iss_->set_irqs(sys.meip, sys.mtip, sys.msip);
-    if (sys.nmi) {
+    if (sys.nmi || sys.nmi_level) {
       if (!cheriot_iss_->nmi()) {
         request_stop("NMI in CHERIoT mode: " + std::string(cheriot_iss_->name()) +
                      " has no NMI (not modelled)");
@@ -555,10 +576,10 @@ void Eg2SpikeCpu::drive_irqs() {
   mip->write_pre_val(mip->read());
   // Ibex's NMI (alert escalation, watchdog bark): Spike takes state.nmi before the next
   // instruction and clears it.
-  if (sys.nmi) {
-    processor_->get_state()->nmi = true;
-    sys.nmi = false;
-  }
+  // The line is a level (Eg2System::nmi_level): taken again after the handler's mret while it is
+  // still high, ignored while the handler runs.
+  if ((sys.nmi || sys.nmi_level) && !spike_in_nmi_) processor_->get_state()->nmi = true;
+  sys.nmi = false;
 }
 
 std::vector<uint32_t> Eg2SpikeCpu::crash_dump() {
@@ -640,6 +661,7 @@ void Eg2SpikeCpu::run() {
       processor_->reset();
       ibex_reset();
       dmi_.clear();
+      spike_in_nmi_ = false;
       debug_ = false;  // the reset takes the core out of debug mode
       cheriot_ = false;
       lock_pending_ = false;
@@ -727,6 +749,14 @@ bool Eg2SpikeCpu::step_spike() {
       dump_daddr_ = x(2) + ((((c >> 9) & 0xf) << 2) | (((c >> 7) & 3) << 6));
     }
   }
+  // A load of a word that answers with a bus error (Eg2System::read_error): no direct pointer for
+  // it in this step, so Spike reads through mmio_load, which refuses: a load access fault, as the
+  // chip's d_error gives (rram_ctrl programmers_guide.md: "Uncorrectable ECC errors or integrity
+  // failures produce in-band TL-UL error responses which will trigger a processor exception").
+  bool is_load = data_access && (((insn & 3) == 3 && (insn & 0x7f) == 0x03) ||
+                                 (insn & 0xe003) == 0x4000 || (insn & 0xe003) == 0x4002);
+  read_denied_ = is_load && sys.read_error && sys.read_error(dump_daddr_, false);
+  if (read_denied_) processor_->get_mmu()->flush_tlb();
   // A CSR instruction on mcounteren (0x306) while rv_core_ibex's MCOUNTEREN_WRITABLE is not
   // MuBi4True reads but does not write it (Eg2System::mcounteren_writable).
   bool mc_locked = (insn & 0x7f) == 0x73 && ((insn >> 12) & 3) != 0 && (insn >> 20) == 0x306 &&
@@ -749,6 +779,7 @@ bool Eg2SpikeCpu::step_spike() {
   // after a single-stepped instruction, or a trigger with the debug-mode action.
   if (processor_->get_state()->debug_mode) {
     if (deny) fetch_denied_ = false;
+    read_denied_ = false;
     translation_used_ = false;
     debug_ = true;
     halted_events_ = 0;
@@ -771,12 +802,18 @@ bool Eg2SpikeCpu::step_spike() {
     }
     dump_mtval_ = uint32_t(processor_->get_csr(CSR_MTVAL));
     dump_mepc_ = uint32_t(processor_->get_csr(CSR_MEPC));
+    if (uint32_t(processor_->get_csr(CSR_MCAUSE)) == 0x8000001fu) spike_in_nmi_ = true;
   } else if (insn == 0x30200073) {  // mret
     in_handler_ = false;
+    spike_in_nmi_ = false;
   }
   dump_pc_ = pc;
   dump_npc_ = uint32_t(processor_->get_state()->pc);
   if (deny) fetch_denied_ = false;
+  if (read_denied_) {
+    read_denied_ = false;
+    processor_->get_mmu()->flush_tlb();
+  }
   if (deny || translation_used_) {
     translation_used_ = false;
     processor_->get_mmu()->flush_tlb();
@@ -829,6 +866,7 @@ char *Eg2SpikeCpu::addr_to_mem(reg_t addr) {
   if (sys.addr_translate) addr = sys.addr_translate(uint32_t(addr), ibus);
   if (addr != original) translation_used_ = true;
   if (fetch_denied_ && ibus && !sys.fetch_allowed(uint32_t(addr))) return nullptr;
+  if (read_denied_ && !ibus && sys.read_error && sys.read_error(uint32_t(addr), false)) return nullptr;
   for (const tlm::tlm_dmi &d : dmi_) {
     if (addr >= d.get_start_address() && addr <= d.get_end_address()) {
       return reinterpret_cast<char *>(d.get_dmi_ptr() + (addr - d.get_start_address()));
@@ -868,6 +906,7 @@ bool Eg2SpikeCpu::mmio_load(reg_t addr, size_t len, uint8_t *bytes) {
     if (addr != original) translation_used_ = true;
   }
   if (fetch_denied_ && ibus && !sys.fetch_allowed(uint32_t(addr))) return false;
+  if (read_denied_ && !ibus && sys.read_error && sys.read_error(uint32_t(addr), true)) return false;
   return transport(tlm::TLM_READ_COMMAND, addr, len, bytes);
 }
 

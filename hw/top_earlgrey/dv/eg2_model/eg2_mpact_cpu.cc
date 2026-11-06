@@ -15,6 +15,8 @@
 namespace {
 
 constexpr uint32_t kGranule = 8;
+// MainSramBaseAddr (cheriot_mem_sys.hjson): bitmap bit b covers the 8 heap bytes at base + 8b.
+constexpr uint32_t kEg2HeapBase = TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR;
 
 // The tagged memories and where their tags are in sram_ctrl_meta's RAM (the meta SRAM map).
 struct TagRegion {
@@ -154,9 +156,42 @@ Eg2MpactCpu::Eg2MpactCpu(Transport transport, const Eg2MpactConfig *cfg)
   }
 }
 
+// Earl Grey 2's load barrier, on the capability the CLC loaded, before MPACT sees it (Ibex
+// cheriot.rst "TRVK Revocation Bitmap Interface"; load_store_unit.rst: the loaded tag "passes
+// through the TRVK revocation filter before reaching the register file. If the filter determines the
+// capability has been software-revoked, the tag is silently cleared"): a tagged capability that is
+// not a sealing one (CHERIoT ISA 7.8; compressed permissions p[4:3] == 0 with any of p[2:0]) whose
+// base lies in the heap (MainSramBaseAddr up to 64 times the bitmap size, cheriot.rst) has the
+// bitmap bit of its base looked up through cheriot_mem_sys's corerevbm port
+// (Eg2System::core_revbm); a set bit or a failed lookup clears the tag, nothing else. (MPACT's own
+// barrier, which the RTOS test SoC uses, also rewrites the capability's metadata when it revokes;
+// 2026-11-05, eg2_trvk_truth_table_cheriot's high words.)
+bool Eg2MpactCpu::eg2_revoked(uint32_t w0, uint32_t w1) {
+  uint32_t p = (w1 >> 25) & 0x3f;
+  if (((p >> 3) & 3) == 0 && (p & 7) != 0) return false;  // a sealing capability
+  unsigned ce = (w1 >> 18) & 0xf, e = ce == 15 ? 24 : ce;
+  uint32_t bb = w1 & 0x1ff, mid = (w0 >> e) & 0x1ff;
+  uint64_t top = uint64_t(w0) >> (e + 9);
+  if (mid < bb) top -= 1;
+  uint32_t base = uint32_t((top << (e + 9)) | (uint64_t(bb) << e));
+  if (base < kEg2HeapBase) return false;
+  Eg2System &sys = Eg2System::get();
+  if (!sys.core_revbm) return false;
+  uint32_t g = (base - kEg2HeapBase) / kGranule;
+  uint8_t byte = 0;
+  if (!sys.core_revbm(g / 8, &byte)) return true;  // a failed lookup revokes
+  return (byte >> (g % 8)) & 1;
+}
+
 int Eg2MpactCpu::revbm_cb(void *user, uint32_t offset, uint8_t *byte) {
   auto *self = static_cast<Eg2MpactCpu *>(user);
-  return self->cfg_.revbm(offset, byte) ? 0 : 1;
+  if (self->board_) return self->cfg_.revbm(offset, byte) ? 0 : 1;
+  Eg2System &sys = Eg2System::get();
+  if (!sys.core_revbm) {
+    *byte = 0;
+    return 0;
+  }
+  return sys.core_revbm(offset, byte) ? 0 : 1;
 }
 
 // cpuctrlsts and secureseed (Ibex doc/03_reference/cs_registers.rst): on Earl Grey, and on a board
@@ -182,7 +217,9 @@ bool Eg2MpactCpu::ibex_csr(uint32_t insn) {
 Eg2MpactCpu::~Eg2MpactCpu() { eg2_mpact_destroy(m_); }
 
 void Eg2MpactCpu::handover(const Eg2Handover &s) {
+  in_fetch_fault_ = false;
   in_nmi_ = false;
+  nmi_pending_ = false;
   eg2_mpact_handover_state h{};
   h.pc = s.pc;
   h.mtvec = s.mtvec;
@@ -206,7 +243,7 @@ bool Eg2MpactCpu::interrupt_pending() {
   uint32_t mip = 0, mie = 0;
   eg2_mpact_csr(m_, "mip", &mip);
   eg2_mpact_csr(m_, "mie", &mie);
-  return (mip & mie) != 0;
+  return (mip & mie) != 0 || nmi_pending_;
 }
 
 bool Eg2MpactCpu::fetch(uint32_t addr, void *data, uint32_t len) {
@@ -220,10 +257,23 @@ bool Eg2MpactCpu::step() {
   last_pc_ = eg2_mpact_pc(m_);
   // last_insn_ is still the previous instruction here: an mret ends the NMI handler.
   if (in_nmi_ && last_insn_ == 0x30200073) in_nmi_ = false;
+  nmi_pending_ = false;  // this step takes a delivered NMI
+  if (last_insn_ == 0x30200073) in_fetch_fault_ = false;
   uint16_t lo = 0, hi = 0;
   last_fetch_fault_ = !fetch(last_pc_, &lo, 2) || ((lo & 3) == 3 && !fetch(last_pc_ + 2, &hi, 2));
   last_insn_ = (lo & 3) == 3 ? lo | uint32_t(hi) << 16 : lo;
   if (last_fetch_fault_) {
+    // Ibex exception_interrupts.rst "Double Fault Detection": "a synchronous exception occurring
+    // whilst handling a previous synchronous exception" (sync_exception_seen is cleared by mret);
+    // rv_core_ibex interfaces.md: fatal_hw_err when "A double fault is seen", which disables fetch
+    // (theory_of_operation.md "Local Escalation Path"). Only fetch faults are tracked here (MPACT
+    // takes the other exceptions itself); MPACT would end the process on the recursive trap.
+    Eg2System &sys = Eg2System::get();
+    if (in_fetch_fault_ && !board_ && sys.core_double_fault) {
+      sys.core_double_fault("an instruction access fault in the handler of one");
+      return true;
+    }
+    in_fetch_fault_ = true;
     eg2_mpact_fetch_fault(m_);
     return true;
   }
@@ -291,9 +341,12 @@ bool Eg2MpactCpu::take_back(Eg2Handover *s) {
 bool Eg2MpactCpu::wfi_done() const { return !last_fetch_fault_ && eg2_mpact_wfi(m_); }
 
 bool Eg2MpactCpu::nmi() {
+  // The handler ended with the instruction just executed: a level NMI is taken before the next.
+  if (in_nmi_ && last_insn_ == 0x30200073) in_nmi_ = false;
   if (!in_nmi_) {
     eg2_mpact_nmi(m_);
     in_nmi_ = true;
+    nmi_pending_ = true;
   }
   return true;
 }
@@ -353,11 +406,20 @@ int Eg2MpactCpu::fetch_cb(void *user, uint32_t addr, void *data, uint32_t len) {
 int Eg2MpactCpu::load_cb(void *user, uint32_t addr, void *data, uint32_t len, uint8_t *tags) {
   auto *self = static_cast<Eg2MpactCpu *>(user);
   self->last_daddr_ = addr;  // before the access: a hung access is the one the dump must name
+  // A word that answers with a bus error (Eg2System::read_error): a load access fault.
+  Eg2System &sys = Eg2System::get();
+  if (sys.read_error && sys.read_error(addr, false) && sys.read_error(addr, true)) return 1;
   if (!self->transport_(tlm::TLM_READ_COMMAND, addr, len, static_cast<uint8_t *>(data))) return 1;
   for (uint32_t i = 0; tags && i < len / kGranule; ++i) {
     unsigned bit;
     uint8_t *t = self->tag_byte(addr + i * kGranule, &bit);
     tags[i] = t ? (*t >> bit) & 1 : 0;
+  }
+  if (!self->board_ && tags && len == kGranule && tags[0]) {
+    const uint8_t *b = static_cast<const uint8_t *>(data);
+    uint32_t w0 = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24;
+    uint32_t w1 = uint32_t(b[4]) | uint32_t(b[5]) << 8 | uint32_t(b[6]) << 16 | uint32_t(b[7]) << 24;
+    if (eg2_revoked(w0, w1)) tags[0] = 0;
   }
   return 0;
 }

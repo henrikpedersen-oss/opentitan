@@ -17,8 +17,10 @@
 // (STATUS.RXSTALL) until software reads. The peer's bytes come from --stim spi_host<N>.rx=<hex
 // bytes>, then 0xff (an idle bus); with --stim spi_host<N>.peer=echo the peer instead answers with
 // the bytes it was sent, in order (the chip bench's SPI device agent in its echo mode), 0xff while
-// it has none.
-// Windows: TXDATA takes the bytes of a write by its byte enables. The RX FIFO holds words: a
+// it has none. With --stim spi_host<N>.peer=flash the peer is a W25Q01JV SPI NOR flash
+// (eg2_spi_flash.h): each byte, dummy segment and CS release goes to it.
+// Windows: TXDATA takes the bytes of a write by its byte enables; at the end of a TX or
+// bidirectional segment the unused bytes of the last word are ignored (theory_of_operation.md). The RX FIFO holds words: a
 // segment's received bytes are packed into words, its last word padded with zeros (the RTL's packer:
 // the documentation does not say what a partial word holds); RXDATA's read pops one word.
 // ByteOrder is 1 (little-endian): the first byte on the bus is the word's least significant byte.
@@ -48,11 +50,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "../eg2_ip_model.h"
 #include "eg2_periph_stim.h"
+#include "eg2_spi_flash.h"
 
 namespace eg2_model {
 
@@ -77,6 +81,9 @@ class Eg2SpiHost : public Eg2IpModel {
     peer_ = Eg2PeriphStim::hex_bytes(std::string(d.window) + ".rx");
     auto it = Eg2PeriphStim::all().find(std::string(d.window) + ".peer");
     echo_mode_ = it != Eg2PeriphStim::all().end() && it->second == "echo";
+    // --stim spi_host<N>.peer=flash: the W25Q01JV flash on the bus (eg2_spi_flash.h).
+    if (it != Eg2PeriphStim::all().end() && it->second == "flash")
+      flash_ = std::make_unique<Eg2SpiFlash>();
     debug_irqs();
     update();
   }
@@ -120,12 +127,14 @@ class Eg2SpiHost : public Eg2IpModel {
     if (win != tx_win_) return;
     const std::vector<uint8_t> &m = win_mem(win);
     if (len != 1 && len != 2 && len != 4) error(5);  // ACCESSINVAL
+    ++tx_words_in_;  // each TXDATA write is one FIFO word (its byte enables)
     for (unsigned i = 0; i < len; ++i) {
       if (tx_.size() >= 4 * kTxWords) {
         error(1);  // OVERFLOW
         break;
       }
       tx_.push_back(m[off + i]);
+      tx_word_.push_back(tx_words_in_);
     }
     if (dbg_on(2)) {
       uint32_t v = 0;
@@ -170,7 +179,9 @@ class Eg2SpiHost : public Eg2IpModel {
     uint32_t configopts;
   };
   void sw_reset() {
+    if (flash_) flash_->cs_release(sys_.now_ps());  // the segment stops: CS rises
     tx_.clear();
+    tx_word_.clear();
     rx_.clear();
     rx_valid_.clear();
     cmds_.clear();
@@ -296,17 +307,23 @@ class Eg2SpiHost : public Eg2IpModel {
     if (txn_segs_ == 0) txn_cs_ = cur_.csid;
     ++txn_segs_;
     if (cur_.dir == 0) txn_dummy_ += cur_.bytes;
+    if (cur_.dir == 0 && flash_) flash_->dummy(sys_.now_ps());
     uint32_t word = 0;
+    uint64_t last_word = 0;
     for (unsigned i = 0; i < cur_.bytes; ++i) {
       uint8_t out = 0;
       if (tx) {
         out = tx_.front();
         tx_.pop_front();
+        last_word = tx_word_.front();
+        tx_word_.pop_front();
         if (txn_tx_n_++ < kTxnBytes) txn_tx_.push_back(out);
       }
       if (rx) {
         uint8_t in = 0xff;
-        if (echo_mode_) {
+        if (flash_) {
+          in = flash_->xfer(tx, out, sys_.now_ps());
+        } else if (echo_mode_) {
           if (!echo_.empty()) {
             in = echo_.front();
             echo_.pop_front();
@@ -323,6 +340,7 @@ class Eg2SpiHost : public Eg2IpModel {
         }
         if (txn_rx_n_++ < kTxnBytes) txn_rx_.push_back(in);
       }
+      if (tx && !rx && flash_) flash_->xfer(true, out, sys_.now_ps());
       if (tx && echo_mode_) echo_.push_back(out);
       // The byte the chip drives on SD0, as the bench's SPI agent logs it.
       if (tx) {
@@ -333,10 +351,24 @@ class Eg2SpiHost : public Eg2IpModel {
         sys_.emit(desc().window, "xx (not defined: an RX segment)");
       }
     }
+    // theory_of_operation.md: "For TX (or Bidirectional) segments, unused bytes from the latest TX
+    // FIFO word are simply ignored at the end of a segment."
+    if (tx && cur_.bytes > 0) {
+      unsigned dropped = 0;
+      while (!tx_word_.empty() && tx_word_.front() == last_word) {
+        tx_.pop_front();
+        tx_word_.pop_front();
+        ++dropped;
+      }
+      if (dropped) dbgf(2, "%u unused byte%s of the last TX word ignored", dropped, dropped > 1 ? "s" : "");
+    }
     dbgf(2, "segment done: CS %u, %s %u %s x%u%s", cur_.csid, dir_name(cur_.dir), cur_.bytes,
          unit(cur_.dir, cur_.bytes), lanes(cur_.speed),
          cur_.csaat ? ", CS kept active" : "");
-    if (!cur_.csaat) txn_end("CS released");
+    if (!cur_.csaat) {
+      txn_end("CS released");
+      if (flash_) flash_->cs_release(sys_.now_ps());
+    }
     busy_ = stalled_ = false;
   }
   void update() {
@@ -361,6 +393,8 @@ class Eg2SpiHost : public Eg2IpModel {
   uint16_t control_, status_, configopts_, csid_, command_, err_en_, err_st_, ev_en_;
   uint16_t rx_win_, tx_win_;
   std::deque<uint8_t> tx_, echo_;
+  std::deque<uint64_t> tx_word_;  // the TXDATA write each TX byte came from
+  uint64_t tx_words_in_ = 0;
   std::deque<uint32_t> rx_;
   std::deque<uint8_t> rx_valid_;  // the bytes of each RX word that came from the bus
   // The transaction in progress, for its debug line: the first kTxnBytes bytes each way.
@@ -370,6 +404,7 @@ class Eg2SpiHost : public Eg2IpModel {
   size_t txn_tx_n_ = 0, txn_rx_n_ = 0, txn_dummy_ = 0;
   std::vector<uint8_t> txn_tx_, txn_rx_;
   bool echo_mode_ = false;
+  std::unique_ptr<Eg2SpiFlash> flash_;
   std::deque<Seg> cmds_;
   std::vector<uint8_t> peer_;
   Seg cur_{};
