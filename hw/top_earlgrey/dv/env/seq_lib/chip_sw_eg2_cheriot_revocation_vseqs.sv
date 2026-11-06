@@ -236,7 +236,12 @@ class chip_sw_eg2_revocation_bench_vseq extends chip_sw_eg2_cheriot_vseq;
     bit [31:0] addr;
     bit write;
     while (count_on) begin
+      // Sampled mid-cycle: the back-pressure tasks force and release the core port's d_ready and
+      // d_valid one picosecond after the edge, the time cycle() returns, so a sample there raced
+      // them and missed some of the core's requests (trvk_backpressure: core 32-35, crossbar 36,
+      // revoc27 2026-11-05).
       cycle();
+      @(negedge cfg.chip_vif.cpu_clk_rst_if.clk);
       if (a_fire(CoreData, addr, write)) begin
         last_core_in = addr >= cnt_lo && addr < cnt_hi;
         if (last_core_in) cnt_core++;
