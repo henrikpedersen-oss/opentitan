@@ -95,12 +95,21 @@ class chip_sw_eg2_rram_sec_cm_vseq extends chip_sw_eg2_chk_base_vseq;
     `DV_CHECK_FATAL(uvm_hdl_release(path), path)
   endtask
 
-  protected function void asserts_off();
+  // The TL protocol checkers on the core's instruction port. A faulted TL gate FSM (u_tl_gate,
+  // u_wr_tl_gate) answers the core's fetches outside the protocol, so pendingReqPerSrc fires there
+  // (chip_sw_rram_sec_cm_host_tl_lc_gate_fsm_sparse, 2026-11-06): off for those faults only.
+  protected function void asserts_off(bit core_tl = 1'b0);
     $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_ctrl");
+    if (core_tl) begin
+      $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_host_rv_core_ibex__corei");
+      $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.tlul_assert_host_instr");
+    end
   endfunction
 
   protected function void asserts_on();
     $asserton(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_ctrl");
+    $asserton(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_xbar_main.tlul_assert_host_rv_core_ibex__corei");
+    $asserton(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.tlul_assert_host_instr");
   endfunction
 
   // rram_ctrl's core registers through SBA.
@@ -244,7 +253,7 @@ class chip_sw_eg2_rram_sec_cm_vseq extends chip_sw_eg2_chk_base_vseq;
     int bit_idx = -1;
     int unsigned alert = TopEarlgreyAlertIdRramCtrlFatalStdErr;
     bit seen, std_seen, fatal_seen;
-    asserts_off();
+    asserts_off(which inside {4, 5});
     case (which)
       0, 1, 4, 5: begin  // sparse FSMs, through their sec_cm proxies
         sec_cm_pkg::sec_cm_base_if_proxy proxy;

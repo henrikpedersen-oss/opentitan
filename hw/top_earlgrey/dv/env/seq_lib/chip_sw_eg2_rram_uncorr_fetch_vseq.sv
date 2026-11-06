@@ -60,8 +60,13 @@ class chip_sw_eg2_rram_uncorr_fetch_vseq extends chip_sw_eg2_chk_base_vseq;
     return $sformatf("%0s[%0d]", cfg.mem_bkdr_util_h[RramData].get_full_path(0), off >> 4);
   endfunction
 
+  // rram_phy_rd's IntgError ("abort when an integrity error is seen") fires when the read buffer's
+  // check catches the corruption, which is what this test makes it do: off from the first
+  // corruption to the second boot. Only that one: AllocCheck_A and the others stay on, so a buffer
+  // state problem after the error still shows.
   protected function void corrupt(bit [31:0] off);
     bit [143:0] mask = '0;
+    $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_ctrl.u_rram_phy.u_rram_phy_rd.IntgError");
     int unsigned lo = $urandom_range(0, 1) ? 64 : 0;
     int unsigned a = lo + $urandom_range(0, 63);
     int unsigned b;
@@ -84,6 +89,7 @@ class chip_sw_eg2_rram_uncorr_fetch_vseq extends chip_sw_eg2_chk_base_vseq;
       cfg.rram_uncorr_words.delete({off[31:4], 4'h0});
     end
     flipped.delete();
+    $asserton(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_ctrl.u_rram_phy.u_rram_phy_rd.IntgError");
     set_param("boot_phase", 1);
     `uvm_info(`gfn, "EG2 RRAM uncorr: rows repaired, second boot", UVM_LOW)
     apply_reset();
