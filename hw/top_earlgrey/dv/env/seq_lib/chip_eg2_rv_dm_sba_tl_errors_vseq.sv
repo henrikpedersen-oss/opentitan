@@ -63,7 +63,7 @@ class chip_eg2_rv_dm_sba_tl_errors_vseq extends chip_eg2_rv_dm_base_vseq;
   localparam bit [31:0] GapAddrs[6] = '{
     top_earlgrey_pkg::TOP_EARLGREY_UART0_BASE_ADDR +
         top_earlgrey_pkg::TOP_EARLGREY_UART0_SIZE_BYTES,
-    top_earlgrey_pkg::TOP_EARLGREY_GPIO_BASE_ADDR + top_earlgrey_pkg::TOP_EARLGREY_GPIO_SIZE_BYTES,
+    top_earlgrey_pkg::TOP_EARLGREY_GPIO0_BASE_ADDR + top_earlgrey_pkg::TOP_EARLGREY_GPIO0_SIZE_BYTES,
     top_earlgrey_pkg::TOP_EARLGREY_RV_TIMER_BASE_ADDR +
         top_earlgrey_pkg::TOP_EARLGREY_RV_TIMER_SIZE_BYTES,
     top_earlgrey_pkg::TOP_EARLGREY_I2C0_BASE_ADDR + top_earlgrey_pkg::TOP_EARLGREY_I2C0_SIZE_BYTES,

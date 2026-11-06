@@ -10,11 +10,11 @@
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"  // Generated.
 
-#define EG2_DEV_COUNT 46
+#define EG2_DEV_COUNT 47
 #define EG2_INTR_COUNT 20
 #define EG2_ERR_COUNT 58
-#define EG2_ALERT_COUNT 68
-#define EG2_WINDOW_COUNT 55
+#define EG2_ALERT_COUNT 69
+#define EG2_WINDOW_COUNT 56
 
 // clang-format off
 // Every register window: X(device, "name", base, size).
@@ -23,7 +23,8 @@
   X(kEg2DevUart1, "uart1", TOP_EARLGREY_UART1_BASE_ADDR, TOP_EARLGREY_UART1_SIZE_BYTES) \
   X(kEg2DevUart2, "uart2", TOP_EARLGREY_UART2_BASE_ADDR, TOP_EARLGREY_UART2_SIZE_BYTES) \
   X(kEg2DevUart3, "uart3", TOP_EARLGREY_UART3_BASE_ADDR, TOP_EARLGREY_UART3_SIZE_BYTES) \
-  X(kEg2DevGpio, "gpio", TOP_EARLGREY_GPIO_BASE_ADDR, TOP_EARLGREY_GPIO_SIZE_BYTES) \
+  X(kEg2DevGpio0, "gpio0", TOP_EARLGREY_GPIO0_BASE_ADDR, TOP_EARLGREY_GPIO0_SIZE_BYTES) \
+  X(kEg2DevGpio1, "gpio1", TOP_EARLGREY_GPIO1_BASE_ADDR, TOP_EARLGREY_GPIO1_SIZE_BYTES) \
   X(kEg2DevSpiDevice, "spi_device", TOP_EARLGREY_SPI_DEVICE_BASE_ADDR, TOP_EARLGREY_SPI_DEVICE_SIZE_BYTES) \
   X(kEg2DevI2c0, "i2c0", TOP_EARLGREY_I2C0_BASE_ADDR, TOP_EARLGREY_I2C0_SIZE_BYTES) \
   X(kEg2DevI2c1, "i2c1", TOP_EARLGREY_I2C1_BASE_ADDR, TOP_EARLGREY_I2C1_SIZE_BYTES) \
@@ -72,7 +73,8 @@
   X("uart1", TOP_EARLGREY_UART1_BASE_ADDR, TOP_EARLGREY_UART1_SIZE_BYTES) \
   X("uart2", TOP_EARLGREY_UART2_BASE_ADDR, TOP_EARLGREY_UART2_SIZE_BYTES) \
   X("uart3", TOP_EARLGREY_UART3_BASE_ADDR, TOP_EARLGREY_UART3_SIZE_BYTES) \
-  X("gpio", TOP_EARLGREY_GPIO_BASE_ADDR, TOP_EARLGREY_GPIO_SIZE_BYTES) \
+  X("gpio0", TOP_EARLGREY_GPIO0_BASE_ADDR, TOP_EARLGREY_GPIO0_SIZE_BYTES) \
+  X("gpio1", TOP_EARLGREY_GPIO1_BASE_ADDR, TOP_EARLGREY_GPIO1_SIZE_BYTES) \
   X("spi_device", TOP_EARLGREY_SPI_DEVICE_BASE_ADDR, TOP_EARLGREY_SPI_DEVICE_SIZE_BYTES) \
   X("i2c0", TOP_EARLGREY_I2C0_BASE_ADDR, TOP_EARLGREY_I2C0_SIZE_BYTES) \
   X("i2c1", TOP_EARLGREY_I2C1_BASE_ADDR, TOP_EARLGREY_I2C1_SIZE_BYTES) \
@@ -149,18 +151,18 @@
 
 // Error flags in registers: X(device, offset, mask, "register").
 #define EG2_ERR_TABLE(X) \
-  /* i3c0 */ X(kEg2DevI3c0, 0x20, 0x10000000, "TARG_STATUS") \
+  /* i3c0 */ X(kEg2DevI3c0, 0x20, 0x4000000, "TARG_STATUS") \
   /* i3c0 */ X(kEg2DevI3c0, 0x28, 0x2, "TARG_SINK_STATUS") \
   /* i3c0 */ X(kEg2DevI3c0, 0x70, 0xc0000000, "BUFFER_STATUS") \
   /* i3c0 */ X(kEg2DevI3c0, 0x220, 0x200, "PIO_INTR_STATUS") \
   /* i3c0 */ X(kEg2DevI3c0, 0x2f8, 0x8400c, "STBY_CR_INTR_STATUS") \
-  /* i3c0 */ X(kEg2DevI3c0, 0x314, 0x70, "TARG_INTR_STATUS") \
-  /* i3c1 */ X(kEg2DevI3c1, 0x20, 0x10000000, "TARG_STATUS") \
+  /* i3c0 */ X(kEg2DevI3c0, 0x314, 0xf0, "TARG_INTR_STATUS") \
+  /* i3c1 */ X(kEg2DevI3c1, 0x20, 0x4000000, "TARG_STATUS") \
   /* i3c1 */ X(kEg2DevI3c1, 0x28, 0x2, "TARG_SINK_STATUS") \
   /* i3c1 */ X(kEg2DevI3c1, 0x70, 0xc0000000, "BUFFER_STATUS") \
   /* i3c1 */ X(kEg2DevI3c1, 0x220, 0x200, "PIO_INTR_STATUS") \
   /* i3c1 */ X(kEg2DevI3c1, 0x2f8, 0x8400c, "STBY_CR_INTR_STATUS") \
-  /* i3c1 */ X(kEg2DevI3c1, 0x314, 0x70, "TARG_INTR_STATUS") \
+  /* i3c1 */ X(kEg2DevI3c1, 0x314, 0xf0, "TARG_INTR_STATUS") \
   /* otp_ctrl.core */ X(kEg2DevOtpCtrlCore, 0x10, 0xff, "STATUS") \
   /* otp_ctrl.core */ X(kEg2DevOtpCtrlCore, 0x14, 0x7ff, "PARTITION_STATUS_0") \
   /* otp_ctrl.core */ X(kEg2DevOtpCtrlCore, 0x18, 0x7, "ERR_CODE_0") \
@@ -191,11 +193,11 @@
   /* rram_ctrl.core */ X(kEg2DevRramCtrlCore, 0x288, 0x3fff, "FAULT_STATUS") \
   /* aes */ X(kEg2DevAes, 0x84, 0x60, "STATUS") \
   /* hmac */ X(kEg2DevHmac, 0x1c, 0xffffffff, "ERR_CODE") \
-  /* kmac */ X(kEg2DevKmac, 0x1c, 0x30000, "STATUS") \
+  /* kmac */ X(kEg2DevKmac, 0x1c, 0x30000000, "STATUS") \
   /* kmac */ X(kEg2DevKmac, 0xe0, 0xffffffff, "ERR_CODE") \
   /* otbn */ X(kEg2DevOtbn, 0x20, 0xff, "FATAL_ALERT_CAUSE") \
-  /* keymgr_dpe */ X(kEg2DevKeymgrDpe, 0x108, 0x7, "ERR_CODE") \
-  /* keymgr_dpe */ X(kEg2DevKeymgrDpe, 0x10c, 0x3fff, "FAULT_STATUS") \
+  /* keymgr_dpe */ X(kEg2DevKeymgrDpe, 0x110, 0x7, "ERR_CODE") \
+  /* keymgr_dpe */ X(kEg2DevKeymgrDpe, 0x114, 0x3fff, "FAULT_STATUS") \
   /* csrng */ X(kEg2DevCsrng, 0x70, 0x76700003, "ERR_CODE") \
   /* entropy_src */ X(kEg2DevEntropySrc, 0xb8, 0x200, "DEBUG_STATUS") \
   /* entropy_src */ X(kEg2DevEntropySrc, 0xc0, 0x71f0000f, "ERR_CODE") \
@@ -214,7 +216,8 @@
   X("uart1_fatal_fault", kEg2DevUart1, 0xc, 0) \
   X("uart2_fatal_fault", kEg2DevUart2, 0xc, 0) \
   X("uart3_fatal_fault", kEg2DevUart3, 0xc, 0) \
-  X("gpio_fatal_fault", kEg2DevGpio, 0xc, 0) \
+  X("gpio0_fatal_fault", kEg2DevGpio0, 0xc, 0) \
+  X("gpio1_fatal_fault", kEg2DevGpio1, 0xc, 0) \
   X("spi_device_fatal_fault", kEg2DevSpiDevice, 0xc, 0) \
   X("i2c0_fatal_fault", kEg2DevI2c0, 0xc, 0) \
   X("i2c1_fatal_fault", kEg2DevI2c1, 0xc, 0) \

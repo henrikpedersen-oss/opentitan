@@ -11567,6 +11567,8 @@
           desc:
             '''
             Size of the TRVK revocation bitmap in bytes, at most 2^CheriotRevBitmapAddrWidth.
+            0 means the whole 2^CheriotRevBitmapAddrWidth bytes, so a top that sets only the
+            width keeps the window that width addresses.
             Capabilities based at or above the heap base plus 64 times this size are not
             looked up and never revoked.
             '''

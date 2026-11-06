@@ -294,7 +294,7 @@ static bool unmapped_phase(uint32_t devices, bool with_host1) {
     }
   }
   if (devices & kDevGpio) {
-    ok = unmapped_access("gpio", TOP_EARLGREY_GPIO_BASE_ADDR, kGpioUnmapped) && ok;
+    ok = unmapped_access("gpio", TOP_EARLGREY_GPIO0_BASE_ADDR, kGpioUnmapped) && ok;
   }
   return ok;
 }

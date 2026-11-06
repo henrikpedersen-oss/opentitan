@@ -50,8 +50,8 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
 
   localparam bit [31:0] AonThold = top_earlgrey_pkg::TOP_EARLGREY_AON_TIMER_BASE_ADDR + 32'hc;
   localparam bit [31:0] HoleAddr = top_earlgrey_pkg::TOP_EARLGREY_UART1_BASE_ADDR + 32'h38;
-  localparam bit [31:0] GapAddr = top_earlgrey_pkg::TOP_EARLGREY_GPIO_BASE_ADDR +
-                                  top_earlgrey_pkg::TOP_EARLGREY_GPIO_SIZE_BYTES;
+  localparam bit [31:0] GapAddr = top_earlgrey_pkg::TOP_EARLGREY_GPIO0_BASE_ADDR +
+                                  top_earlgrey_pkg::TOP_EARLGREY_GPIO0_SIZE_BYTES;
   localparam bit [31:0] TbreBase = top_earlgrey_pkg::TOP_EARLGREY_CHERIOT_MEM_SYS_REGS_BASE_ADDR +
                                    32'h14;
   localparam bit [31:0] RevbmBase = top_earlgrey_pkg::TOP_EARLGREY_CHERIOT_MEM_SYS_REVBM_BASE_ADDR;

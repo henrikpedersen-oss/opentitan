@@ -63,7 +63,7 @@ static void access(uint32_t addr, bool store, uint32_t idx) {
 
 static void device_loads(void) {
   access(TOP_EARLGREY_RV_TIMER_BASE_ADDR + RV_TIMER_CTRL_REG_OFFSET, false, 5);
-  access(TOP_EARLGREY_GPIO_BASE_ADDR, false, 6);
+  access(TOP_EARLGREY_GPIO0_BASE_ADDR, false, 6);
   access(TOP_EARLGREY_AON_TIMER_BASE_ADDR + 0x4, false, 7);
   access(TOP_EARLGREY_UART1_BASE_ADDR + 0x10, false, 8);
   access(TOP_EARLGREY_SRAM_CTRL_SEC_REGS_BASE_ADDR + 0x4, false, 9);

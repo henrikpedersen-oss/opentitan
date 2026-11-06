@@ -48,7 +48,7 @@ always @(posedge `CPU_CORE_HIER.rst_ni) eg2_mut_core_resets++;
 `define EG2_TF        `PD_MAIN_HIER.u_cheriot_mem_sys.u_cheriot_tag_filter
 `define EG2_ACC_TRVK  `PD_MAIN_HIER.u_cheriot_mem_sys.u_cheriot_access_check_trvk
 `define EG2_XPERI     `PD_MAIN_HIER.u_xbar_peri
-`define EG2_S1N       `EG2_XPERI.u_s1n_25
+`define EG2_S1N       `EG2_XPERI.u_s1n_26
 `define EG2_XMAIN     `PD_MAIN_HIER.u_xbar_main
 `define EG2_SRAM_MAIN `PD_MAIN_HIER.u_sram_ctrl_main
 `define EG2_SRAM_ADPT `PD_MAIN_HIER.u_sram_ctrl_main.u_tlul_adapter_sram_racl.tlul_adapter_sram

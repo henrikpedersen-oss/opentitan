@@ -30,7 +30,7 @@
 `EG2_TL_TAP(uart1,      `EG2_PD_MAIN.u_uart1)
 `EG2_TL_TAP(uart2,      `EG2_PD_MAIN.u_uart2)
 `EG2_TL_TAP(uart3,      `EG2_PD_MAIN.u_uart3)
-`EG2_TL_TAP(gpio,       `EG2_PD_MAIN.u_gpio)
+`EG2_TL_TAP(gpio,       `EG2_PD_MAIN.u_gpio0)
 `EG2_TL_TAP(spi_device, `EG2_PD_MAIN.u_spi_device)
 `EG2_TL_TAP(i2c0,       `EG2_PD_MAIN.u_i2c0)
 `EG2_TL_TAP(i2c1,       `EG2_PD_MAIN.u_i2c1)
@@ -47,7 +47,7 @@
 
 // The MIO pads' output enables and levels, as pinmux hands them to the pad ring (the GPIO
 // monitor maps them to GPIOs by the pinmux configuration it sees on the pinmux tap).
-eg2_pads_if u_eg2_pads_if (.clk(`EG2_PD_MAIN.u_gpio.clk_i));
+eg2_pads_if u_eg2_pads_if (.clk(`EG2_PD_MAIN.u_gpio0.clk_i));
 assign u_eg2_pads_if.mio_out = dut.mio_out;
 assign u_eg2_pads_if.mio_oe  = dut.mio_oe;
 
