@@ -1,0 +1,267 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// gpio of the EG2 SystemC model (hw/top_earlgrey/ip_autogen/gpio: data/gpio.hjson,
+// doc/theory_of_operation.md, doc/programmers_guide.md).
+//
+// State: DATA_OUT, DATA_OE, the four interrupt enables and the filter enable, one bit per GPIO.
+// Every register that views them is kept coherent after every write:
+//   DIRECT_OUT / DIRECT_OE        the whole word
+//   MASKED_OUT_* / MASKED_OE_*    "upper 16 bits ... are used as mask"; a read returns the 16 data
+//                                 bits of its half, the mask reads 0
+//   PER_PIN_IO_i                  data_out (bit 0) is DATA_OUT[i], data_in (bit 8) DATA_IN[i]
+//   PER_PIN_OE_i                  DATA_OE[i]
+//   PER_PIN_INTR_CTRL_i           bits 0-3 the rising, falling, level-high and level-low enables, bit 4
+//                                 the filter enable, of GPIO[i]
+// DATA_IN: the chip routes each GPIO through pinmux to a pad and back. The model does not model the
+// pads: a GPIO whose output is enabled reads its own output, one whose output is disabled reads
+// what outside drives (--stim gpio.in=<hex>, default 0). The input filter (16 stable cycles) is a
+// pass-through: no model time passes between a write and the next read anyway.
+// Interrupts: "the interrupt for GPIO[i] is raised on a rising edge if INTR_CTRL_EN_RISING[i] is
+// set" and likewise for falling edges; a level interrupt is raised while the input has the level
+// and its enable is set, so clearing it while the level holds raises it again.
+// A write to PER_PIN_IO_i that does not cover its bytes 0 and 1 answers an error and changes nothing
+// (programmer's guide: "A byte write returns an error and has no effect"). Not modelled: the straps
+// (HW_STRAPS_DATA_IN reads its reset value).
+// Output items: on every change of what the pads drive, one line in gpio.model.log,
+// "<data_out & data_oe in hex> <data_oe in hex>": the chip bench's gpio.chip.log line without its
+// "routed" word (the GPIOs pinmux routes to the bench's own GPIO pads, which the model does not
+// know).
+// Debug lines: each change of what the pads drive (per GPIO: driven high, driven low, released),
+// the interrupt enables and the input filter as written, a byte write to PER_PIN_IO refused,
+// interrupts raised; at --periph-debug 2 every input change.
+
+#ifndef EG2_MODEL_IP_EG2_PERIPH_GPIO_H_
+#define EG2_MODEL_IP_EG2_PERIPH_GPIO_H_
+
+#include <cstdint>
+#include <cstdio>
+#include <deque>
+#include <sstream>
+#include <string>
+
+#include "../eg2_ip_model.h"
+#include "eg2_periph_stim.h"
+
+namespace eg2_model {
+
+class Eg2Gpio : public Eg2IpModel {
+ public:
+  static constexpr unsigned kNumIos = 32;
+
+  Eg2Gpio(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
+      : Eg2IpModel(n, d, base) {
+    data_in_ = reg("DATA_IN");
+    direct_out_ = reg("DIRECT_OUT");
+    mout_lo_ = reg("MASKED_OUT_LOWER");
+    mout_hi_ = reg("MASKED_OUT_UPPER");
+    direct_oe_ = reg("DIRECT_OE");
+    moe_lo_ = reg("MASKED_OE_LOWER");
+    moe_hi_ = reg("MASKED_OE_UPPER");
+    en_[0] = reg("INTR_CTRL_EN_RISING");
+    en_[1] = reg("INTR_CTRL_EN_FALLING");
+    en_[2] = reg("INTR_CTRL_EN_LVLHIGH");
+    en_[3] = reg("INTR_CTRL_EN_LVLLOW");
+    en_[4] = reg("CTRL_EN_INPUT_FILTER");
+    for (unsigned i = 0; i < kNumIos; ++i) {
+      pin_io_[i] = reg(("PER_PIN_IO_" + std::to_string(i)).c_str());
+      pin_oe_[i] = reg(("PER_PIN_OE_" + std::to_string(i)).c_str());
+      pin_ctrl_[i] = reg(("PER_PIN_INTR_CTRL_" + std::to_string(i)).c_str());
+      set_modelled(pin_io_[i]);
+    }
+    set_modelled(data_in_);
+    debug_irqs();
+    outside_ = Eg2PeriphStim::u32("gpio.in", 0);
+    sys_.stim_handlers["gpio.in"] = [this](const std::string &v) {
+      outside_ = uint32_t(std::stoul(v, nullptr, 0));
+      update();
+      return true;
+    };
+    // A slash-separated sequence of <driven value>:<output enables>. It mirrors the chip bench's
+    // ordered pad waits: values before the first expected one are ignored; after that, every pad
+    // transition must be the next expected value. gpio theory_of_operation.md defines the output
+    // and output-enable signals; the pinmux route used by gpio_test is one-to-one.
+    sys_.stim_handlers["gpio.pad_expect"] = [this](const std::string &v) {
+      expected_.clear();
+      expected_started_ = false;
+      std::istringstream all(v);
+      std::string item;
+      while (std::getline(all, item, '/')) {
+        size_t colon = item.find(':');
+        if (colon == std::string::npos) return false;
+        uint32_t drv = uint32_t(std::stoul(item.substr(0, colon), nullptr, 0));
+        uint32_t oe = uint32_t(std::stoul(item.substr(colon + 1), nullptr, 0));
+        expected_.push_back({drv, oe});
+      }
+      return !expected_.empty();
+    };
+    sys_.verdict_checks.push_back([this] {
+      return expected_.empty() ? std::string()
+                               : std::string("gpio.pad_expect: software ended before all expected "
+                                             "pad values were observed");
+    });
+    reset_state();
+  }
+  void on_reset(Eg2ResetCause c) override {
+    Eg2IpModel::on_reset(c);
+    reset_state();
+  }
+
+ protected:
+  bool reg_before_write(uint16_t r, uint32_t, uint32_t wmask) override {
+    for (unsigned i = 0; i < kNumIos; ++i) {
+      if (r == pin_io_[i] && (wmask & 0xffffu) != 0xffffu) {
+        dbgf(1, "PER_PIN_IO_%u: byte write refused with an error, nothing changed", i);
+        fail_access();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
+    uint32_t w = wdata & wmask;
+    uint32_t ctrl_old[5];
+    for (unsigned k = 0; k < 5; ++k) ctrl_old[k] = ctrl_[k];
+    if (r == direct_out_) out_ = (out_ & ~wmask) | w;
+    else if (r == direct_oe_) oe_ = (oe_ & ~wmask) | w;
+    else if (r == mout_lo_ || r == mout_hi_) out_ = masked(out_, w, r == mout_hi_);
+    else if (r == moe_lo_ || r == moe_hi_) oe_ = masked(oe_, w, r == moe_hi_);
+    else {
+      bool done = false;
+      for (unsigned k = 0; k < 5 && !done; ++k) {
+        if (r == en_[k]) {
+          ctrl_[k] = (ctrl_[k] & ~wmask) | w;
+          done = true;
+        }
+      }
+      for (unsigned i = 0; i < kNumIos && !done; ++i) {
+        if (r == pin_io_[i] && (wmask & 1)) {
+          out_ = (out_ & ~(1u << i)) | ((w & 1) << i);
+          done = true;
+        } else if (r == pin_oe_[i] && (wmask & 1)) {
+          oe_ = (oe_ & ~(1u << i)) | ((w & 1) << i);
+          done = true;
+        } else if (r == pin_ctrl_[i] && (wmask & 0x1f)) {
+          for (unsigned k = 0; k < 5; ++k) {
+            ctrl_[k] = (ctrl_[k] & ~(1u << i)) | (((w >> k) & 1) << i);
+          }
+          done = true;
+        }
+      }
+    }
+    static const char *kCtrl[5] = {"rising-edge interrupt", "falling-edge interrupt",
+                                   "level-high interrupt", "level-low interrupt", "input filter"};
+    for (unsigned k = 0; k < 5; ++k) {
+      if (ctrl_[k] != ctrl_old[k])
+        dbgf(1, "%s enabled on GPIOs 0x%08x (was 0x%08x)", kCtrl[k], ctrl_[k], ctrl_old[k]);
+    }
+    update();
+  }
+
+ private:
+  // What changed on the pads, per GPIO (the first 8 changes listed).
+  void debug_pads(uint32_t drv, uint32_t oe) {
+    if (!dbg_count("pad changes", 64)) return;
+    uint32_t changed = (drv ^ driven_) | (oe ^ driven_oe_);
+    std::string s;
+    unsigned n = 0;
+    for (unsigned i = 0; i < kNumIos; ++i) {
+      if (!((changed >> i) & 1)) continue;
+      if (++n > 8) {
+        s += ", ...";
+        break;
+      }
+      s += (s.empty() ? "" : ", ") + std::string("GPIO") + std::to_string(i) +
+           (!((oe >> i) & 1) ? " released" : ((drv >> i) & 1) ? " driven high" : " driven low");
+    }
+    dbgf(1, "pads: %s (now driving 0x%08x, output enables 0x%08x)", s.c_str(), drv, oe);
+  }
+  // A masked write: "upper 16 bits ... used as mask", the lower 16 the data, for half `upper`.
+  static uint32_t masked(uint32_t cur, uint32_t w, bool upper) {
+    uint32_t mask = w >> 16, data = w & 0xffff;
+    unsigned sh = upper ? 16 : 0;
+    return (cur & ~(mask << sh)) | ((data & mask) << sh);
+  }
+  void reset_state() {
+    out_ = oe_ = 0;
+    for (uint32_t &c : ctrl_) c = 0;
+    in_ = input();
+    driven_ = ~0u;
+    update();
+  }
+  uint32_t input() const {
+    return (out_ & oe_) | (outside_ & ~oe_);
+  }
+  void update() {
+    uint32_t in = input();
+    uint32_t rise = ~in_ & in, fall = in_ & ~in;
+    if (rise | fall) dbgf(2, "DATA_IN 0x%08x (rose 0x%08x, fell 0x%08x)", in, rise, fall);
+    in_ = in;
+    // Every view of the state.
+    set_value(direct_out_, out_);
+    set_value(direct_oe_, oe_);
+    set_value(mout_lo_, out_ & 0xffff);
+    set_value(mout_hi_, out_ >> 16);
+    set_value(moe_lo_, oe_ & 0xffff);
+    set_value(moe_hi_, oe_ >> 16);
+    for (unsigned k = 0; k < 5; ++k) set_value(en_[k], ctrl_[k]);
+    set_value(data_in_, in);
+    for (unsigned i = 0; i < kNumIos; ++i) {
+      set_value(pin_io_[i], ((out_ >> i) & 1) | (((in >> i) & 1) << 8));
+      set_value(pin_oe_[i], (oe_ >> i) & 1);
+      uint32_t c = 0;
+      for (unsigned k = 0; k < 5; ++k) c |= ((ctrl_[k] >> i) & 1) << k;
+      set_value(pin_ctrl_[i], c);
+    }
+    // Interrupts: edges, and levels while they hold.
+    uint32_t raise = (rise & ctrl_[0]) | (fall & ctrl_[1]) | (in & ctrl_[2]) | (~in & ctrl_[3]);
+    for (unsigned i = 0; i < kNumIos; ++i) {
+      if ((raise >> i) & 1) set_intr(i);
+    }
+    // What the pads drive, as an output item when it changes.
+    uint32_t drv = out_ & oe_;
+    if (drv != driven_ || oe_ != driven_oe_) {
+      if (driven_ != ~0u) {
+        char item[32];
+        std::snprintf(item, sizeof item, "%08x %08x", drv, oe_);
+        sys_.emit(desc().window, item);
+        debug_pads(drv, oe_);
+      }
+      driven_ = drv;
+      driven_oe_ = oe_;
+      check_pads(drv, oe_);
+    }
+  }
+
+  void check_pads(uint32_t drv, uint32_t oe) {
+    if (expected_.empty()) return;
+    const auto want = expected_.front();
+    if (!expected_started_ && (drv != want.first || oe != want.second)) return;
+    expected_started_ = true;
+    if (drv != want.first || oe != want.second) {
+      char why[180];
+      std::snprintf(why, sizeof why,
+                    "gpio.pad_expect mismatch: expected pads 0x%08x enables 0x%08x, got "
+                    "0x%08x enables 0x%08x",
+                    want.first, want.second, drv, oe);
+      sys_.finish(false, why);
+      return;
+    }
+    std::printf("eg2sim: gpio.pad_expect saw pads 0x%08x enables 0x%08x\n", drv, oe);
+    expected_.pop_front();
+  }
+
+  uint16_t data_in_, direct_out_, mout_lo_, mout_hi_, direct_oe_, moe_lo_, moe_hi_;
+  uint16_t en_[5];
+  uint16_t pin_io_[kNumIos], pin_oe_[kNumIos], pin_ctrl_[kNumIos];
+  uint32_t out_ = 0, oe_ = 0, in_ = 0, outside_ = 0, ctrl_[5] = {};
+  uint32_t driven_ = ~0u, driven_oe_ = 0;
+  std::deque<std::pair<uint32_t, uint32_t>> expected_;
+  bool expected_started_ = false;
+};
+
+}  // namespace eg2_model
+
+#endif  // EG2_MODEL_IP_EG2_PERIPH_GPIO_H_

@@ -1,0 +1,32 @@
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# libeg2_mpact.so, built as package //eg2 of the MPACT-CHERIoT workspace (google/mpact-cheriot),
+# into which nix/mpact-cheriot.nix copies this directory. Only the eg2_mpact_* functions are
+# exported; abseil, protobuf and MPACT stay inside.
+
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
+cc_binary(
+    name = "libeg2_mpact.so",
+    srcs = [
+        "eg2_mpact.cc",
+        "eg2_mpact.h",
+    ],
+    additional_linker_inputs = ["eg2_mpact.lds"],
+    linkopts = ["-Wl,--version-script=$(location eg2_mpact.lds)"],
+    linkshared = True,
+    linkstatic = True,
+    deps = [
+        "//cheriot:cheriot_state",
+        "//cheriot:cheriot_top",
+        "//cheriot:riscv_cheriot_decoder",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/strings",
+        "@mpact-riscv//riscv:riscv_state",
+        "@mpact-sim//mpact/sim/generic:core",
+        "@mpact-sim//mpact/sim/generic:instruction",
+        "@mpact-sim//mpact/sim/util/memory",
+    ],
+)
