@@ -2114,6 +2114,7 @@ class eg2_iss_wrapper extends uvm_component;
     end
     if (t_eff < 0) return;
     // The window's pending writes up to t_eff, out of the queue's time order (only these).
+`ifdef EG2_COSIM
     for (int i = 0; i < pending_wr.size(); i++) begin
       mem_wr_t w = pending_wr[i];
       if (w.t > t_eff) break;
@@ -2123,6 +2124,7 @@ class eg2_iss_wrapper extends uvm_component;
       pending_wr.delete(i);
       i--;
     end
+`endif
   endfunction
 
   // The bench makes a fetch of the word at `addr` fail (an integrity fault it injects on the
