@@ -218,12 +218,12 @@ static uint32_t gpio_mask(uint32_t devices, bool with_host1) {
 }
 
 static bool gpio_phase(uint32_t mask) {
-  eg2_dev_id_t dev = kEg2DevGpio;
+  eg2_dev_id_t dev = kEg2DevGpio0;
   bool ok = true;
   for (uint32_t g = 0; g < 32; ++g) {
     if (mask & (1u << g)) {
-      eg2_periph_pin_out(eg2_periph_gpio_pad(g), kTopEarlgreyPinmuxOutselGpioGpio0 + g);
-      eg2_periph_pin_in(kTopEarlgreyPinmuxPeripheralInGpioGpio0 + g, eg2_periph_gpio_pad(g));
+      eg2_periph_pin_out(eg2_periph_gpio_pad(g), kTopEarlgreyPinmuxOutselGpio0Gpio0 + g);
+      eg2_periph_pin_in(kTopEarlgreyPinmuxPeripheralInGpio0Gpio0 + g, eg2_periph_gpio_pad(g));
     }
   }
   eg2_dev_write32(dev, GPIO_DIRECT_OUT_REG_OFFSET, 0);

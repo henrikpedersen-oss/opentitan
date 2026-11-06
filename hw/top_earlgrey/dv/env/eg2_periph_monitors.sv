@@ -672,7 +672,7 @@ endclass
 // (pinmux: hw/top_earlgrey/ip_autogen/pinmux/data/pinmux.hjson).
 //
 // A new monitor (OpenTitan has no GPIO agent): its items are the GPIOs as the pads carry them.
-// A GPIO reaches a pad when that pad's MIO_OUTSEL selects it (MioOutGpioGpio0 + 3 + i); the pads'
+// A GPIO reaches a pad when that pad's MIO_OUTSEL selects it (MioOutGpio0Gpio0 + 3 + i); the pads'
 // output enables and levels are those pinmux drives into the pad ring (eg2_pads_if). Actual: a
 // new item whenever what the routed GPIOs drive changes. Expected, from the TL-UL writes of gpio
 // (DIRECT_OUT, MASKED_OUT_LOWER/UPPER, DIRECT_OE, MASKED_OE_LOWER/UPPER, PER_PIN_IO_i,
@@ -684,7 +684,9 @@ class eg2_gpio_monitor extends uvm_monitor;
   `uvm_component_utils(eg2_gpio_monitor)
 
   localparam int unsigned NPads = pinmux_reg_pkg::NMioPads;
-  localparam int unsigned OutselGpio0 = 3 + int'(top_earlgrey_pkg::MioOutGpioGpio0);
+  // The pinmux output select of this monitor's GPIO 0: gpio0's by default, gpio1's for the second
+  // monitor (eg2_periph_env; upstream added gpio1 on 2026-10-30).
+  int unsigned outsel_base = 3 + int'(top_earlgrey_pkg::MioOutGpio0Gpio0);
 
   uvm_tlm_analysis_fifo #(tl_seq_item) tl_fifo;      // gpio's port
   uvm_tlm_analysis_fifo #(tl_seq_item) pinmux_fifo;  // pinmux's port
@@ -749,7 +751,7 @@ class eg2_gpio_monitor extends uvm_monitor;
     foreach (GpioPads[b]) begin
       if (int'(GpioPads[b]) != pad) continue;
       pinmux_cg.sample(b, sel < 2 ? 0 : sel == 2 ? 1 :
-                       (int'(sel) - OutselGpio0 >= 0 && int'(sel) - OutselGpio0 < 32) ? 2 : 3);
+                       (int'(sel) - outsel_base >= 0 && int'(sel) - outsel_base < 32) ? 2 : 3);
     end
   endfunction
 
@@ -774,7 +776,7 @@ class eg2_gpio_monitor extends uvm_monitor;
     routed = '0;
     foreach (pad_of[g]) pad_of[g] = -1;
     for (int p = 0; p < NPads; p++) begin
-      int g = int'(outsel[p]) - OutselGpio0;
+      int g = int'(outsel[p]) - outsel_base;
       if (g >= 0 && g < 32 && pad_of[g] < 0) begin
         pad_of[g] = p;
         routed[g] = 1'b1;

@@ -217,9 +217,9 @@ static void arm_irq(uint32_t kind, uint32_t period) {
     case kIrqGpio:
       // Rising edges on every GPIO input interrupt (through the PLIC); the bench drives the edges
       // (chip_sw_eg2_testrig_seq_vseq) on the pads the test ROM routes to GPIO.
-      eg2_dev_write32(kEg2DevGpio, GPIO_INTR_STATE_REG_OFFSET, 0xffffffffu);
-      eg2_dev_write32(kEg2DevGpio, GPIO_INTR_CTRL_EN_RISING_REG_OFFSET, 0xffffffffu);
-      eg2_dev_write32(kEg2DevGpio, GPIO_INTR_ENABLE_REG_OFFSET, 0xffffffffu);
+      eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_STATE_REG_OFFSET, 0xffffffffu);
+      eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_CTRL_EN_RISING_REG_OFFSET, 0xffffffffu);
+      eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_ENABLE_REG_OFFSET, 0xffffffffu);
       for (uint32_t id = kPlicIdGpio0; id < kPlicIdGpio0 + 32; ++id) {
         eg2_ms_plic_enable(id, true);
       }
@@ -243,8 +243,8 @@ static void disarm_irq(void) {
     eg2_ms_plic_complete(id);
   }
   eg2_ms_plic_enable(kPlicIdAon, false);
-  eg2_dev_write32(kEg2DevGpio, GPIO_INTR_ENABLE_REG_OFFSET, 0);
-  eg2_dev_write32(kEg2DevGpio, GPIO_INTR_STATE_REG_OFFSET, 0xffffffffu);
+  eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_ENABLE_REG_OFFSET, 0);
+  eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_STATE_REG_OFFSET, 0xffffffffu);
   for (uint32_t id = kPlicIdGpio0; id < kPlicIdGpio0 + 32; ++id) {
     eg2_ms_plic_enable(id, false);
   }

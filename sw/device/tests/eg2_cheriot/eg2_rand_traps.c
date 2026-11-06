@@ -194,8 +194,8 @@ static void irq_event(eg2_tally_t *t, uint32_t which, bool in_wfi, uint32_t idx)
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_IE0_0_REG_OFFSET + 4 * (kGpioPlicId / 32),
                     1u << (kGpioPlicId % 32));
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_THRESHOLD0_REG_OFFSET, 0);
-    eg2_dev_write32(kEg2DevGpio, GPIO_INTR_ENABLE_REG_OFFSET, 1);
-    eg2_dev_write32(kEg2DevGpio, GPIO_INTR_TEST_REG_OFFSET, 1);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_ENABLE_REG_OFFSET, 1);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_TEST_REG_OFFSET, 1);
   }
   irq_step("source raised");
   bool taken = wait_irq(which, before);
@@ -217,8 +217,8 @@ static void irq_event(eg2_tally_t *t, uint32_t which, bool in_wfi, uint32_t idx)
   } else {
     uint32_t id = eg2_dev_read32(kEg2DevRvPlic, RV_PLIC_CC0_REG_OFFSET);
     eg2_check(t, "irq ext claim", idx, id, kGpioPlicId);
-    eg2_dev_write32(kEg2DevGpio, GPIO_INTR_ENABLE_REG_OFFSET, 0);
-    eg2_dev_write32(kEg2DevGpio, GPIO_INTR_STATE_REG_OFFSET, 1);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_ENABLE_REG_OFFSET, 0);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_INTR_STATE_REG_OFFSET, 1);
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_CC0_REG_OFFSET, id);
     eg2_dev_write32(kEg2DevRvPlic, RV_PLIC_IE0_0_REG_OFFSET + 4 * (kGpioPlicId / 32), 0);
   }

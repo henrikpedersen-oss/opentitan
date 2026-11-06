@@ -38,6 +38,7 @@ class eg2_periph_env extends uvm_env;
   tl_monitor            m_tl_mon[string];
   protected tl_agent_cfg m_tl_cfg[string];
   eg2_gpio_monitor      m_gpio_mon;
+  eg2_gpio_monitor      m_gpio1_mon;
   eg2_usbdev_monitor    m_usb_mon;
   eg2_spi_device_monitor m_spid_mon;
   eg2_sysrst_ctrl_monitor m_sysrst_mon;
@@ -50,6 +51,7 @@ class eg2_periph_env extends uvm_env;
   eg2_spi_device_sb     m_spi_device_sb;
   eg2_i2c_sb            m_i2c_sb[NUM_I2CS];
   eg2_gpio_sb           m_gpio_sb;
+  eg2_gpio_sb           m_gpio1_sb;
   eg2_usbdev_sb         m_usbdev_sb;
   eg2_jtag_sb           m_jtag_sb;
   eg2_tl_port_sb        m_pinmux_sb;
@@ -95,6 +97,7 @@ class eg2_periph_env extends uvm_env;
     add_tap("uart2", TOP_EARLGREY_UART2_BASE_ADDR, TOP_EARLGREY_UART2_SIZE_BYTES);
     add_tap("uart3", TOP_EARLGREY_UART3_BASE_ADDR, TOP_EARLGREY_UART3_SIZE_BYTES);
     add_tap("gpio", TOP_EARLGREY_GPIO0_BASE_ADDR, TOP_EARLGREY_GPIO0_SIZE_BYTES);
+    add_tap("gpio1", TOP_EARLGREY_GPIO1_BASE_ADDR, TOP_EARLGREY_GPIO1_SIZE_BYTES);
     add_tap("spi_device", TOP_EARLGREY_SPI_DEVICE_BASE_ADDR, TOP_EARLGREY_SPI_DEVICE_SIZE_BYTES);
     add_tap("i2c0", TOP_EARLGREY_I2C0_BASE_ADDR, TOP_EARLGREY_I2C0_SIZE_BYTES);
     add_tap("i2c1", TOP_EARLGREY_I2C1_BASE_ADDR, TOP_EARLGREY_I2C1_SIZE_BYTES);
@@ -139,6 +142,11 @@ class eg2_periph_env extends uvm_env;
 
     m_gpio_mon = eg2_gpio_monitor::type_id::create("m_gpio_mon", this);
     if (!uvm_config_db#(virtual eg2_pads_if)::get(this, "", "pads_vif", m_gpio_mon.pads_vif)) begin
+      `uvm_fatal(`gfn, "no pads_vif (tb/eg2_periph_tl.svh)")
+    end
+    m_gpio1_mon = eg2_gpio_monitor::type_id::create("m_gpio1_mon", this);
+    m_gpio1_mon.outsel_base = 3 + int'(top_earlgrey_pkg::MioOutGpio1Gpio0);
+    if (!uvm_config_db#(virtual eg2_pads_if)::get(this, "", "pads_vif", m_gpio1_mon.pads_vif)) begin
       `uvm_fatal(`gfn, "no pads_vif (tb/eg2_periph_tl.svh)")
     end
     m_usb_mon = eg2_usbdev_monitor::type_id::create("m_usb_mon", this);
@@ -188,6 +196,10 @@ class eg2_periph_env extends uvm_env;
     m_gpio_sb = eg2_gpio_sb::type_id::create("m_gpio_sb", this);
     describe(m_gpio_sb, "gpio", "port 0", "gpio",
              "General-purpose pins: inputs with interrupts, outputs, straps",
+             "eg2/hw/top_earlgrey/ip_autogen/gpio/README.md");
+    m_gpio1_sb = eg2_gpio_sb::type_id::create("m_gpio1_sb", this);
+    describe(m_gpio1_sb, "gpio1", "port 0", "gpio",
+             "General-purpose pins, the second instance (upstream 2026-10-30)",
              "eg2/hw/top_earlgrey/ip_autogen/gpio/README.md");
     m_usbdev_sb = eg2_usbdev_sb::type_id::create("m_usbdev_sb", this);
     describe(m_usbdev_sb, "usbdev", "port 0", "usbdev", "USB full-speed device",
@@ -310,6 +322,7 @@ class eg2_periph_env extends uvm_env;
     foreach (m_i2c_sb[i]) m_tl_dest[m_i2c_sb[i].inst] = m_i2c_sb[i].tl_fifo;
     m_tl_dest["spi_device"] = m_spi_device_sb.tl_fifo;
     m_tl_dest["gpio"]       = m_gpio_sb.tl_fifo;
+    m_tl_dest["gpio1"]      = m_gpio1_sb.tl_fifo;
     m_tl_dest["usbdev"]     = m_usbdev_sb.tl_fifo;
     m_tl_dest["pinmux"]     = m_pinmux_sb.tl_fifo;
     m_tl_dest["pwrmgr"]     = m_pwrmgr_sb.tl_fifo;
@@ -389,6 +402,12 @@ class eg2_periph_env extends uvm_env;
     m_tl_mon["pinmux"].d_chan_port.connect(m_gpio_mon.pinmux_fifo.analysis_export);
     m_gpio_mon.pin_port.connect(m_gpio_sb.act_fifo.analysis_export);
     m_gpio_mon.tl_exp_port.connect(m_gpio_sb.exp_fifo.analysis_export);
+    m_gpio1_mon.tl_vif = m_tl_cfg["gpio1"].vif;
+    m_gpio1_mon.pinmux_vif = m_tl_cfg["pinmux"].vif;
+    m_tl_mon["gpio1"].d_chan_port.connect(m_gpio1_mon.tl_fifo.analysis_export);
+    m_tl_mon["pinmux"].d_chan_port.connect(m_gpio1_mon.pinmux_fifo.analysis_export);
+    m_gpio1_mon.pin_port.connect(m_gpio1_sb.act_fifo.analysis_export);
+    m_gpio1_mon.tl_exp_port.connect(m_gpio1_sb.exp_fifo.analysis_export);
 
     m_usb_mon.vif = cfg.usb20_vif;
     m_usb_mon.tl_vif = m_tl_cfg["usbdev"].vif;
@@ -445,6 +464,7 @@ class eg2_periph_env extends uvm_env;
         m_i2c_sb[i].create_cov(m_i2c_sb[i].get_full_name());
       end
       m_gpio_mon.create_cov(m_gpio_mon.get_full_name());
+      m_gpio1_mon.create_cov(m_gpio1_mon.get_full_name());
       m_usbdev_sb.create_cov(m_usbdev_sb.get_full_name());
       m_usb_mon.create_cov(m_usb_mon.get_full_name());
       m_spid_mon.create_cov(m_spid_mon.get_full_name());
@@ -462,6 +482,7 @@ class eg2_periph_env extends uvm_env;
       foreach (m_i2c_sb[i]) m_i2c_sb[i].create_tl_cov(m_i2c_sb[i].get_full_name());
       m_spi_device_sb.create_tl_cov(m_spi_device_sb.get_full_name());
       m_gpio_sb.create_tl_cov(m_gpio_sb.get_full_name());
+      m_gpio1_sb.create_tl_cov(m_gpio1_sb.get_full_name());
       m_usbdev_sb.create_tl_cov(m_usbdev_sb.get_full_name());
       m_pinmux_sb.create_tl_cov(m_pinmux_sb.get_full_name());
     end
@@ -522,7 +543,7 @@ class eg2_periph_env extends uvm_env;
     foreach (m_spi_host_sb[i]) s = {s, "\n  ", m_spi_host_sb[i].counts()};
     s = {s, "\n  ", m_spi_device_sb.counts()};
     foreach (m_i2c_sb[i]) s = {s, "\n  ", m_i2c_sb[i].counts()};
-    s = {s, "\n  ", m_gpio_sb.counts(), "\n  ", m_usbdev_sb.counts(), "\n  ", m_jtag_sb.counts(),
+    s = {s, "\n  ", m_gpio_sb.counts(), "\n  ", m_gpio1_sb.counts(), "\n  ", m_usbdev_sb.counts(), "\n  ", m_jtag_sb.counts(),
          "\n  ", m_pinmux_sb.counts(), "\n  ", m_pwrmgr_sb.counts()};
     s = {s, "\n  ", m_sysrst_sb.counts(), "\n  ", m_adc_sb.counts(), "\n  ", m_sensor_sb.counts(),
          "\n  ", m_wkup_sb.counts()};

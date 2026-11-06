@@ -148,17 +148,17 @@ void eg2_result_in_test(void) { dv_status(kEg2DvInTest); }
 #ifdef EG2_RESULT_GPIO_PIN
 static void gpio_verdict(bool passed) {
   const uint32_t pin = 1u << EG2_RESULT_GPIO_PIN;
-  uint32_t out = eg2_dev_read32(kEg2DevGpio, GPIO_DIRECT_OUT_REG_OFFSET);
-  eg2_dev_write32(kEg2DevGpio, GPIO_DIRECT_OE_REG_OFFSET,
-                  eg2_dev_read32(kEg2DevGpio, GPIO_DIRECT_OE_REG_OFFSET) | pin);
+  uint32_t out = eg2_dev_read32(kEg2DevGpio0, GPIO_DIRECT_OUT_REG_OFFSET);
+  eg2_dev_write32(kEg2DevGpio0, GPIO_DIRECT_OE_REG_OFFSET,
+                  eg2_dev_read32(kEg2DevGpio0, GPIO_DIRECT_OE_REG_OFFSET) | pin);
   if (passed) {
-    eg2_dev_write32(kEg2DevGpio, GPIO_DIRECT_OUT_REG_OFFSET, out | pin);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_DIRECT_OUT_REG_OFFSET, out | pin);
     return;
   }
   // A failure toggles the pin, so a stuck-high pin is never taken for a pass.
   for (int i = 0; i < 8; ++i) {
     out ^= pin;
-    eg2_dev_write32(kEg2DevGpio, GPIO_DIRECT_OUT_REG_OFFSET, out);
+    eg2_dev_write32(kEg2DevGpio0, GPIO_DIRECT_OUT_REG_OFFSET, out);
   }
 }
 #else
