@@ -215,7 +215,7 @@ The OpenTitan Earl Grey 2 architecture supports the following key features:
           <ul>
             <li>2x I3C Controller + Target (on muxed pins, restricted pin sets, tightly controlled timing)
               <ul>
-                <li>Signaling modes: HDR-DDR (24 Mbps), SDR (12 Mbps)</li>
+                <li>Signaling modes: HDR-DDR (24 Mbps signaling, 19.2 Mbps data), SDR (12 Mbps signaling, 10.6 Mbps data)</li>
                 <li>Programmed I/O (PIO) mode implementation of Host Controller Interface (HCI)</li>
                 <li>Transfer Command Response Interface (TCRI)</li>
                 <li>In-band interrupts (IBI)</li>
@@ -256,7 +256,7 @@ The OpenTitan Earl Grey 2 architecture supports the following key features:
             </li>
             <li>3x I2C (on muxed pins)</li>
             <li>4x UART (on muxed pins)</li>
-            <li>32x GPIO (on muxed pins)</li>
+            <li>2x GPIO with 32 pins each (on muxed pins)</li>
             <li>Pin Multiplexer</li>
             <li>ADC Controller</li>
             <li>System Reset Controller</li>

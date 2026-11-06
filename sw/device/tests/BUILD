@@ -3331,7 +3331,6 @@ opentitan_test(
     srcs = ["otbn_kmac_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
-        DARJEELING_TEST_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw340_sival": None,
             "//hw/top_earlgrey:silicon_creator": None,
@@ -3816,6 +3815,13 @@ cc_library(
                 [],
             )
             for ip in PWRMGR_SUPPORTED_IPS
+        ] + [
+            # The I3C wake-up source is skipped, so it needs no DIF.
+            opentitan_if_ip(
+                "i3c",
+                ["HAS_I3C"],
+                [],
+            ),
         ],
     ),
     target_compatible_with = [OPENTITAN_CPU],
@@ -4053,6 +4059,7 @@ opentitan_test(
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw340_sival": None,
+            "//hw/top_darjeeling:sim_dv": None,
         },
     ),
     verilator = verilator_params(tags = ["broken"]),

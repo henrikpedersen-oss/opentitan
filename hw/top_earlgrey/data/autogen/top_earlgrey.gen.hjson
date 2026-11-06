@@ -626,7 +626,8 @@
             uart1
             uart2
             uart3
-            gpio
+            gpio0
+            gpio1
             spi_device
             i2c0
             i2c1
@@ -1036,7 +1037,7 @@
       generate_dif: true
     }
     {
-      name: gpio
+      name: gpio0
       type: gpio
       template_type: gpio
       clock_srcs:
@@ -1077,7 +1078,7 @@
           default: "1"
           local: "false"
           expose: "true"
-          name_top: GpioGpioAsyncOn
+          name_top: Gpio0GpioAsyncOn
         }
         {
           name: GpioAsHwStrapsEn
@@ -1086,7 +1087,7 @@
           default: "0"
           local: "false"
           expose: "true"
-          name_top: GpioGpioAsHwStrapsEn
+          name_top: Gpio0GpioAsHwStrapsEn
         }
       ]
       inter_signal_list:
@@ -1103,7 +1104,7 @@
           act: rcv
           width: 1
           default: 1'b0
-          inst_name: gpio
+          inst_name: gpio0
           index: -1
         }
         {
@@ -1115,7 +1116,7 @@
           act: req
           width: 1
           default: "'0"
-          inst_name: gpio
+          inst_name: gpio0
           index: -1
         }
         {
@@ -1130,7 +1131,7 @@
           type: uni
           act: rcv
           width: 1
-          inst_name: gpio
+          inst_name: gpio0
           index: -1
         }
         {
@@ -1141,7 +1142,7 @@
           type: uni
           act: req
           width: 1
-          inst_name: gpio
+          inst_name: gpio0
           index: -1
         }
         {
@@ -1151,11 +1152,11 @@
           type: req_rsp
           act: rsp
           width: 1
-          inst_name: gpio
+          inst_name: gpio0
           default: ""
           end_idx: -1
           top_type: one-to-one
-          top_signame: gpio_tl
+          top_signame: gpio0_tl
           index: -1
         }
       ]
@@ -1164,6 +1165,139 @@
         null:
         {
           hart: 0x40040000
+        }
+      }
+      generate_dif: true
+    }
+    {
+      name: gpio1
+      type: gpio
+      template_type: gpio
+      clock_srcs:
+      {
+        clk_i: io_div4
+      }
+      clock_group: peri
+      reset_connections:
+      {
+        rst_ni:
+        {
+          name: lc_io_div4
+          domain: Main
+        }
+      }
+      param_decl:
+      {
+        GpioAsHwStrapsEn: "0"
+        GpioAsyncOn: "1"
+      }
+      ipgen_params:
+      {
+        per_pin_view: true
+      }
+      attr: ipgen
+      domain: Main
+      clock_connections:
+      {
+        clk_i: clkmgr_clocks_i.clk_io_div4_peri
+      }
+      memory: {}
+      param_list:
+      [
+        {
+          name: GpioAsyncOn
+          desc: Instantiates 2-flop synchronizers on all GPIO inputs if set to 1.
+          type: bit
+          default: "1"
+          local: "false"
+          expose: "true"
+          name_top: Gpio1GpioAsyncOn
+        }
+        {
+          name: GpioAsHwStrapsEn
+          desc: Enable HW straps sampling logic for GPIO inputs at initial cold boot
+          type: bit
+          default: "0"
+          local: "false"
+          expose: "true"
+          name_top: Gpio1GpioAsHwStrapsEn
+        }
+      ]
+      inter_signal_list:
+      [
+        {
+          name: strap_en
+          desc:
+            '''
+            The strap enable signal tells gpio to take a snapshot of the input pins.
+            The behaviour of this signal after that event will have no effect.
+            '''
+          struct: logic
+          type: uni
+          act: rcv
+          width: 1
+          default: 1'b0
+          inst_name: gpio1
+          index: -1
+        }
+        {
+          name: sampled_straps
+          desc: This vector contains the sampled strap values.
+          struct: gpio_straps
+          package: gpio_pkg
+          type: uni
+          act: req
+          width: 1
+          default: "'0"
+          inst_name: gpio1
+          index: -1
+        }
+        {
+          name: racl_policies
+          desc:
+            '''
+            Incoming RACL policy vector from a racl_ctrl instance.
+            The policy selection vector (parameter) selects the policy for each register.
+            '''
+          struct: racl_policy_vec
+          package: top_racl_pkg
+          type: uni
+          act: rcv
+          width: 1
+          inst_name: gpio1
+          index: -1
+        }
+        {
+          name: racl_error
+          desc: RACL error log information of this module.
+          struct: racl_error_log
+          package: top_racl_pkg
+          type: uni
+          act: req
+          width: 1
+          inst_name: gpio1
+          index: -1
+        }
+        {
+          name: tl
+          struct: tl
+          package: tlul_pkg
+          type: req_rsp
+          act: rsp
+          width: 1
+          inst_name: gpio1
+          default: ""
+          end_idx: -1
+          top_type: one-to-one
+          top_signame: gpio1_tl
+          index: -1
+        }
+      ]
+      base_addrs:
+      {
+        null:
+        {
+          hart: 0x40050000
         }
       }
       generate_dif: true
@@ -1264,14 +1398,7 @@
           act: req
           width: 1
           inst_name: spi_device
-          default: ""
-          package: ""
-          end_idx: -1
-          top_type: broadcast
-          top_signame: spi_device_sck_monitor
           index: -1
-          external: true
-          conn_type: false
         }
         {
           name: racl_policies
@@ -1318,7 +1445,7 @@
       {
         null:
         {
-          hart: 0x40050000
+          hart: 0x40060000
         }
       }
       generate_dif: true
@@ -1697,19 +1824,38 @@
           domain: Main
         }
       }
+      domain: Main
+      domain_secondary: Aon
       param_decl:
       {
         ClkFreq: "96000000"
         HalfCycleScl: "1"
         NumTargets: "2"
       }
-      domain: Main
+      clock_srcs_secondary:
+      {
+        clk_aon_i: aon
+      }
+      clock_group_secondary: peri
+      reset_connections_secondary:
+      {
+        rst_aon_ni:
+        {
+          name: lc_aon
+          domain: Aon
+        }
+      }
       clock_connections:
       {
         clk_i: clkmgr_clocks_i.clk_io_peri
         clk_aon_i: clkmgr_clocks_i.clk_aon_peri
         scan_clk_i: clkmgr_clocks_i.clk_io_div2_peri
       }
+      clock_connections_secondary:
+      {
+        clk_aon_i: clkmgr_clocks.clk_aon_peri
+      }
+      is_split_ip: true
       memory: {}
       param_list:
       [
@@ -1836,25 +1982,101 @@
       [
         {
           name: rstdet_enable
+          desc: Enables the SCL/SDA inputs of the Target Reset Detector in the secondary partition; deasserted while the Target is disconnected from the bus.
           struct: logic
           type: uni
           act: req
           width: 1
           inst_name: i3c0
+          default: ""
+          package: ""
+          end_idx: -1
+          top_type: broadcast
+          top_signame: i3c0_rstdet_enable
           index: -1
+          external: true
+          conn_type: false
+        }
+        {
+          name: rstdet_enable
+          desc: Enables the SCL/SDA inputs of the Target Reset Detector; deasserted while the Target is disconnected from the bus.
+          struct: logic
+          type: uni
+          act: rcv
+          width: 1
+          partition: secondary
+          inst_name: i3c0
+          default: ""
+          package: ""
+          domain: Aon
+          top_signame: i3c0_rstdet_enable
+          index: -1
+          external: true
+          conn_type: false
         }
         {
           name: rstdet
+          desc: Control and status interface to the Target Reset Detector in the secondary partition.
           struct: i3c_rstdet
           package: i3c_pkg
           type: req_rsp
           act: req
           width: 1
           inst_name: i3c0
+          default: ""
+          end_idx: -1
+          top_type: one-to-one
+          top_signame: i3c0_rstdet
+          index: -1
+          external: true
+          conn_type: false
+        }
+        {
+          name: rstdet
+          desc: Control and status interface of the Target Reset Detector to the primary partition.
+          struct: i3c_rstdet
+          package: i3c_pkg
+          type: req_rsp
+          act: rsp
+          width: 1
+          partition: secondary
+          inst_name: i3c0
+          default: ""
+          domain: Aon
+          top_signame: i3c0_rstdet
+          index: -1
+          external: true
+          conn_type: false
+        }
+        {
+          name: rstdet_wkup_req
+          desc: Wake-up request on detection of the Target Reset Pattern.
+          struct: logic
+          type: uni
+          act: req
+          width: 1
+          partition: secondary
+          inst_name: i3c0
+          default: ""
+          package: ""
+          domain: Aon
+          top_signame: pwrmgr_wakeups
+          index: 0
+        }
+        {
+          name: rstdet_target_rst
+          desc: Reset request for the I3C peripheral on detection of the Target Reset Pattern.
+          struct: logic
+          type: uni
+          act: req
+          width: 1
+          partition: secondary
+          inst_name: i3c0
           index: -1
         }
         {
           name: mbist_en
+          desc: Memory built-in self-test enable (unused).
           struct: logic
           type: uni
           act: rcv
@@ -1894,6 +2116,7 @@
         }
         {
           name: ram_cfg
+          desc: RAM configuration of the message buffer memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -1906,6 +2129,7 @@
         }
         {
           name: dat_cfg
+          desc: RAM configuration of the Device Address Table (DAT) memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -1918,6 +2142,7 @@
         }
         {
           name: dct_cfg
+          desc: RAM configuration of the Device Characteristics Table (DCT) memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -2001,19 +2226,38 @@
           domain: Main
         }
       }
+      domain: Main
+      domain_secondary: Main
       param_decl:
       {
         ClkFreq: "96000000"
         HalfCycleScl: "1"
         NumTargets: "2"
       }
-      domain: Main
+      clock_srcs_secondary:
+      {
+        clk_aon_i: aon
+      }
+      clock_group_secondary: peri
+      reset_connections_secondary:
+      {
+        rst_aon_ni:
+        {
+          name: lc_aon
+          domain: Main
+        }
+      }
       clock_connections:
       {
         clk_i: clkmgr_clocks_i.clk_io_peri
         clk_aon_i: clkmgr_clocks_i.clk_aon_peri
         scan_clk_i: clkmgr_clocks_i.clk_io_div2_peri
       }
+      clock_connections_secondary:
+      {
+        clk_aon_i: clkmgr_clocks_i.clk_aon_peri
+      }
+      is_split_ip: true
       memory: {}
       param_list:
       [
@@ -2140,25 +2384,95 @@
       [
         {
           name: rstdet_enable
+          desc: Enables the SCL/SDA inputs of the Target Reset Detector in the secondary partition; deasserted while the Target is disconnected from the bus.
           struct: logic
           type: uni
           act: req
           width: 1
           inst_name: i3c1
+          default: ""
+          package: ""
+          end_idx: -1
+          top_type: broadcast
+          top_signame: i3c1_rstdet_enable
+          index: -1
+        }
+        {
+          name: rstdet_enable
+          desc: Enables the SCL/SDA inputs of the Target Reset Detector; deasserted while the Target is disconnected from the bus.
+          struct: logic
+          type: uni
+          act: rcv
+          width: 1
+          partition: secondary
+          inst_name: i3c1
+          default: ""
+          package: ""
+          domain: Main
+          top_signame: i3c1_rstdet_enable
           index: -1
         }
         {
           name: rstdet
+          desc: Control and status interface to the Target Reset Detector in the secondary partition.
           struct: i3c_rstdet
           package: i3c_pkg
           type: req_rsp
           act: req
           width: 1
           inst_name: i3c1
+          default: ""
+          end_idx: -1
+          top_type: one-to-one
+          top_signame: i3c1_rstdet
+          index: -1
+        }
+        {
+          name: rstdet
+          desc: Control and status interface of the Target Reset Detector to the primary partition.
+          struct: i3c_rstdet
+          package: i3c_pkg
+          type: req_rsp
+          act: rsp
+          width: 1
+          partition: secondary
+          inst_name: i3c1
+          default: ""
+          domain: Main
+          top_signame: i3c1_rstdet
+          index: -1
+        }
+        {
+          name: rstdet_wkup_req
+          desc: Wake-up request on detection of the Target Reset Pattern.
+          struct: logic
+          type: uni
+          act: req
+          width: 1
+          partition: secondary
+          inst_name: i3c1
+          default: ""
+          package: ""
+          domain: Main
+          top_signame: pwrmgr_wakeups
+          index: -1
+          external: true
+          conn_type: false
+        }
+        {
+          name: rstdet_target_rst
+          desc: Reset request for the I3C peripheral on detection of the Target Reset Pattern.
+          struct: logic
+          type: uni
+          act: req
+          width: 1
+          partition: secondary
+          inst_name: i3c1
           index: -1
         }
         {
           name: mbist_en
+          desc: Memory built-in self-test enable (unused).
           struct: logic
           type: uni
           act: rcv
@@ -2198,6 +2512,7 @@
         }
         {
           name: ram_cfg
+          desc: RAM configuration of the message buffer memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -2210,6 +2525,7 @@
         }
         {
           name: dat_cfg
+          desc: RAM configuration of the Device Address Table (DAT) memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -2222,6 +2538,7 @@
         }
         {
           name: dct_cfg
+          desc: RAM configuration of the Device Characteristics Table (DCT) memory.
           struct: ram_1p_cfg
           package: prim_ram_1p_pkg
           type: req_rsp
@@ -3042,9 +3359,12 @@
           name: lc_hw_debug_clr
           desc:
             '''
-            Clear HW debug functionality.
-            This signal is On when `lc_hw_debug_en` turns Off outside a reset of `lc_ctrl`.
-            Flops storing the value of `lc_hw_debug_en` (see below) must be cleared when this signal is On.
+            Clear HW debug functionality; see `HW_DEBUG_CLR` in the Theory of Operation doc for details.
+
+            This signal is used to clear stored copies of `lc_hw_debug_en` when HW debug functionality gets disabled outside a reset of `lc_ctrl`.
+            This signal is On in the SCRAP, INVALID, POST_TRANSITION and ESCALATION states, in which `lc_hw_debug_en` is Off.
+            Once On, it remains On until lc_ctrl is reset.
+            Flops storing the value of `lc_hw_debug_en` (see below) must be cleared whenever this signal is not Off.
             '''
           struct: lc_tx
           package: lc_ctrl_pkg
@@ -3068,7 +3388,7 @@
 
             This signal is Off while lc_ctrl is in reset.
             In order to prevent a JTAG disconnect during non-debug-module (NDM) reset, this signal should be flopped outside the NDM reset domain.
-            Such a flop must be cleared when `lc_hw_debug_clr` is On; see above.
+            Such a flop must be cleared whenever `lc_hw_debug_clr` is not Off; see above.
             '''
           struct: lc_tx
           package: lc_ctrl_pkg
@@ -3949,8 +4269,6 @@
           top_type: broadcast
           top_signame: usbdev_usb_ref_val
           index: -1
-          external: true
-          conn_type: false
         }
         {
           name: usb_ref_pulse
@@ -3966,8 +4284,6 @@
           top_type: broadcast
           top_signame: usbdev_usb_ref_pulse
           index: -1
-          external: true
-          conn_type: false
         }
         {
           name: usb_aon_suspend_req
@@ -4328,14 +4644,16 @@
           struct: logic
           type: uni
           act: rcv
-          width: 6
+          width: 8
           inst_name: pwrmgr
           default: ""
           package: ""
           end_idx: -1
           top_type: one-to-N
           top_signame: pwrmgr_wakeups
-          index: -1
+          index: 1
+          external: true
+          conn_type: true
         }
         {
           name: rstreqs
@@ -4872,7 +5190,7 @@
           top_signame: clkmgr_io_clk_byp_req
           index: -1
           external: true
-          conn_type: true
+          conn_type: false
         }
         {
           name: io_clk_byp_ack
@@ -4904,7 +5222,7 @@
           top_signame: clkmgr_all_clk_byp_req
           index: -1
           external: true
-          conn_type: true
+          conn_type: false
         }
         {
           name: all_clk_byp_ack
@@ -4936,7 +5254,7 @@
           top_signame: clkmgr_hi_speed_sel
           index: -1
           external: true
-          conn_type: true
+          conn_type: false
         }
         {
           name: div_step_down_req
@@ -5114,7 +5432,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 0
+          index: 2
         }
         {
           name: rst_req
@@ -5212,7 +5530,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 1
+          index: 3
         }
         {
           name: tl
@@ -5562,7 +5880,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 2
+          index: 4
         }
         {
           name: usbdev_dppullup_en
@@ -5638,7 +5956,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 3
+          index: 5
         }
         {
           name: usbdev_suspend_req
@@ -5823,7 +6141,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 4
+          index: 6
         }
         {
           name: aon_timer_rst_req
@@ -5933,6 +6251,11 @@
           clock: main
           group: secure
         }
+        clk_ast_rng_i:
+        {
+          clock: main
+          group: secure
+        }
         clk_ast_usb_i:
         {
           clock: usb
@@ -5949,6 +6272,11 @@
           domain: Main
         }
         rst_ast_es_ni:
+        {
+          name: lc
+          domain: Main
+        }
+        rst_ast_rng_ni:
         {
           name: lc
           domain: Main
@@ -5974,26 +6302,6 @@
           clock: io_div4
           group: secure
         }
-        clk_ast_es_i:
-        {
-          clock: main
-          group: secure
-        }
-        clk_ast_rng_i:
-        {
-          clock: main
-          group: secure
-        }
-        clk_ast_tlul_i:
-        {
-          clock: io_div4
-          group: infra
-        }
-        clk_ast_usb_i:
-        {
-          clock: usb
-          group: peri
-        }
         clk_ast_ext_i: ast_ext
       }
       clock_group_secondary: secure
@@ -6009,31 +6317,12 @@
           name: lc_io_div4
           domain: Main
         }
-        rst_ast_es_ni:
-        {
-          name: lc
-          domain: Main
-        }
-        rst_ast_rng_ni:
-        {
-          name: lc
-          domain: Main
-        }
-        rst_ast_tlul_ni:
-        {
-          name: lc_io_div4
-          domain: Main
-        }
-        rst_ast_usb_ni:
-        {
-          name: usb
-          domain: Main
-        }
       }
       clock_connections:
       {
         clk_ast_tlul_i: clkmgr_clocks_i.clk_io_div4_infra
         clk_ast_es_i: clkmgr_clocks_i.clk_main_secure
+        clk_ast_rng_i: clkmgr_clocks_i.clk_main_secure
         clk_ast_usb_i: clkmgr_clocks_i.clk_usb_peri
         clk_ast_ext_i: clk_ast_ext_i
       }
@@ -6041,10 +6330,6 @@
       {
         clk_ast_adc_i: clkmgr_clocks.clk_aon_peri
         clk_ast_alert_i: clkmgr_clocks.clk_io_div4_secure
-        clk_ast_es_i: clkmgr_clocks.clk_main_secure
-        clk_ast_rng_i: clkmgr_clocks.clk_main_secure
-        clk_ast_tlul_i: clkmgr_clocks.clk_io_div4_infra
-        clk_ast_usb_i: clkmgr_clocks.clk_usb_peri
         clk_ast_ext_i: clk_ast_ext_i
       }
       param_decl: {}
@@ -6513,23 +6798,6 @@
           index: -1
         }
         {
-          name: sns_spi_ext_clk
-          desc: Sensed SPI external clock
-          struct: logic
-          type: uni
-          act: rcv
-          width: 1
-          partition: secondary
-          inst_name: ast
-          default: ""
-          package: ""
-          domain: Aon
-          top_signame: spi_device_sck_monitor
-          index: -1
-          external: true
-          conn_type: false
-        }
-        {
           name: vx_supp
           desc: Supply voltage tests for OS FPGA
           struct: ast_vx_supp
@@ -6544,18 +6812,6 @@
           conn_type: false
           index: -1
           top_signame: ast_vx_supp
-        }
-        {
-          name: ast_pwst
-          desc: AON, MAIN, IO-0 rail, IO-1 rail power OK @1.1V
-          struct: ast_pwst
-          package: ast_pkg
-          type: uni
-          act: req
-          width: 1
-          partition: secondary
-          inst_name: ast
-          index: -1
         }
         {
           name: ast_pwst_h
@@ -6684,15 +6940,12 @@
           type: uni
           act: rcv
           width: 1
-          partition: secondary
           inst_name: ast
           default: ""
           package: ""
-          domain: Aon
+          domain: Main
           top_signame: usbdev_usb_ref_pulse
           index: -1
-          external: true
-          conn_type: false
         }
         {
           name: usb_ref_val
@@ -6701,15 +6954,12 @@
           type: uni
           act: rcv
           width: 1
-          partition: secondary
           inst_name: ast
           default: ""
           package: ""
-          domain: Aon
+          domain: Main
           top_signame: usbdev_usb_ref_val
           index: -1
-          external: true
-          conn_type: false
         }
         {
           name: alert
@@ -6911,22 +7161,6 @@
           conn_type: true
         }
         {
-          name: clk_osc_byp
-          desc: Clocks' oscillator bypass for OS FPGA/Verilator (AST_BYPASS_CLK only)
-          struct: clks_osc_byp
-          package: ast_pkg
-          type: uni
-          act: rcv
-          width: 1
-          partition: secondary
-          inst_name: ast
-          default: ""
-          top_signame: ast_clk_osc_byp
-          index: -1
-          external: true
-          conn_type: true
-        }
-        {
           name: ext_freq_is_96m
           desc: External clock frequency is 96MHz
           struct: mubi4
@@ -6941,21 +7175,6 @@
           index: -1
           external: true
           conn_type: false
-        }
-        {
-          name: ext_freq_is_96m
-          desc: External clock frequency is 96MHz
-          struct: mubi4
-          package: prim_mubi_pkg
-          type: uni
-          act: rcv
-          width: 1
-          partition: secondary
-          inst_name: ast
-          default: ""
-          domain: Aon
-          top_signame: clkmgr_hi_speed_sel
-          index: -1
         }
         {
           name: all_clk_byp_req
@@ -6974,21 +7193,6 @@
           conn_type: false
         }
         {
-          name: all_clk_byp_req
-          desc: All clocks bypass request
-          struct: mubi4
-          package: prim_mubi_pkg
-          type: uni
-          act: rcv
-          width: 1
-          partition: secondary
-          inst_name: ast
-          default: ""
-          domain: Aon
-          top_signame: clkmgr_all_clk_byp_req
-          index: -1
-        }
-        {
           name: io_clk_byp_req
           desc: IO clock bypass request (for OTP bootstrap)
           struct: mubi4
@@ -7003,21 +7207,6 @@
           index: -1
           external: true
           conn_type: false
-        }
-        {
-          name: io_clk_byp_req
-          desc: IO clock bypass request (for OTP bootstrap)
-          struct: mubi4
-          package: prim_mubi_pkg
-          type: uni
-          act: rcv
-          width: 1
-          partition: secondary
-          inst_name: ast
-          default: ""
-          domain: Aon
-          top_signame: clkmgr_io_clk_byp_req
-          index: -1
         }
         {
           name: intraip_s2p
@@ -7211,7 +7400,7 @@
           package: ""
           domain: Aon
           top_signame: pwrmgr_wakeups
-          index: 5
+          index: 7
         }
         {
           name: manual_pad_attr
@@ -8062,6 +8251,7 @@
       param_decl:
       {
         IdcodeValue: jtag_id_pkg::RV_DM_JTAG_IDCODE
+        CheriotSupport: "1"
       }
       base_addrs:
       {
@@ -8101,6 +8291,15 @@
           local: "false"
           expose: "true"
           name_top: RvDmUseDmiInterface
+        }
+        {
+          name: CheriotSupport
+          desc: When 1, cheriot_ena can select CHERIoT mode. When 0, the CHERIoT logic is removed.
+          type: bit
+          default: "1"
+          local: "false"
+          expose: "true"
+          name_top: RvDmCheriotSupport
         }
         {
           name: SecVolatileRawUnlockEn
@@ -8161,6 +8360,25 @@
           index: -1
           external: true
           conn_type: false
+        }
+        {
+          name: cheriot_ena
+          desc:
+            '''
+            CHERIoT mode enable.
+            Selects which ROM and which abstract command encodings the debug module uses.
+            Ignored unless CheriotSupport is set.
+            '''
+          struct: mubi4
+          package: prim_mubi_pkg
+          type: uni
+          act: rcv
+          width: 1
+          default: prim_mubi_pkg::MuBi4False
+          inst_name: rv_dm
+          domain: Main
+          top_signame: rv_core_ibex_cheriot_ena
+          index: -1
         }
         {
           name: lc_init_done
@@ -9357,7 +9575,7 @@
           index: -1
         }
         {
-          name: kmac_data
+          name: kmac_app
           struct: app
           package: kmac_pkg
           type: req_rsp
@@ -9368,6 +9586,34 @@
           domain: Main
           top_signame: kmac_app
           index: 3
+        }
+        {
+          name: keymgr_app
+          struct: app
+          package: kmac_pkg
+          type: req_rsp
+          act: rsp
+          width: 1
+          inst_name: otbn
+          default: ""
+          end_idx: -1
+          top_type: one-to-one
+          top_signame: otbn_keymgr_app
+          index: -1
+        }
+        {
+          name: keymgr_sensitive_key
+          struct: mubi4
+          package: prim_mubi_pkg
+          type: uni
+          act: rcv
+          width: 1
+          default: prim_mubi_pkg::MuBi4False
+          inst_name: otbn
+          end_idx: -1
+          top_type: broadcast
+          top_signame: otbn_keymgr_sensitive_key
+          index: -1
         }
         {
           name: tl
@@ -9418,7 +9664,7 @@
       param_decl:
       {
         NumInstHwSlot: "4"
-        NumBootStages: "3"
+        NumBootStages: "4"
         NumRomDigestInputs: "1"
       }
       domain: Main
@@ -9450,9 +9696,9 @@
         }
         {
           name: NumBootStages
-          desc: Number of available boot stage
+          desc: Number of available boot stages. Supported values are 2 and 4.
           type: int
-          default: "3"
+          default: "4"
           local: "true"
           expose: "true"
           name_top: KeymgrDpeNumBootStages
@@ -9539,7 +9785,7 @@
           index: -1
         }
         {
-          name: kmac_data
+          name: kmac_app
           struct: app
           package: kmac_pkg
           type: req_rsp
@@ -9552,6 +9798,32 @@
           index: 0
         }
         {
+          name: otbn_app
+          struct: app
+          package: kmac_pkg
+          type: req_rsp
+          act: req
+          width: 1
+          inst_name: keymgr_dpe
+          default: ""
+          domain: Main
+          top_signame: otbn_keymgr_app
+          index: -1
+        }
+        {
+          name: sensitive_key
+          struct: mubi4
+          package: prim_mubi_pkg
+          type: uni
+          act: req
+          width: 1
+          default: prim_mubi_pkg::MuBi4False
+          inst_name: keymgr_dpe
+          domain: Main
+          top_signame: otbn_keymgr_sensitive_key
+          index: -1
+        }
+        {
           name: creator_root_key
           struct: keymgr_dpe_creator_root_key
           package: keymgr_dpe_pkg
@@ -9562,6 +9834,17 @@
           default: ""
           domain: Main
           top_signame: otp_ctrl_keymgr_creator_root_key
+          index: -1
+        }
+        {
+          name: secondary_root_key
+          struct: keymgr_dpe_creator_root_key
+          package: keymgr_dpe_pkg
+          type: uni
+          act: rcv
+          width: 1
+          default: keymgr_dpe_pkg::KEYMGR_DPE_SECONDARY_ROOT_KEY_DEFAULT
+          inst_name: keymgr_dpe
           index: -1
         }
         {
@@ -9600,6 +9883,16 @@
           inst_name: keymgr_dpe
           default: ""
           top_signame: keymgr_dpe_device_id
+          index: -1
+        }
+        {
+          name: field_entropy
+          struct: keymgr_dpe_field_entropy
+          package: keymgr_dpe_pkg
+          type: uni
+          act: rcv
+          width: 1
+          inst_name: keymgr_dpe
           index: -1
         }
         {
@@ -12486,10 +12779,6 @@
       [
         sensor_ctrl.ast_status
       ]
-      spi_device.sck_monitor:
-      [
-        ast.sns_spi_ext_clk
-      ]
       usbdev.usb_ref_pulse:
       [
         ast.usb_ref_pulse
@@ -12504,8 +12793,7 @@
       ]
       clkmgr.all_clk_byp_req:
       [
-        ast.all_clk_byp_req.primary
-        ast.all_clk_byp_req.secondary
+        ast.all_clk_byp_req
       ]
       clkmgr.all_clk_byp_ack:
       [
@@ -12513,8 +12801,7 @@
       ]
       clkmgr.io_clk_byp_req:
       [
-        ast.io_clk_byp_req.primary
-        ast.io_clk_byp_req.secondary
+        ast.io_clk_byp_req
       ]
       clkmgr.io_clk_byp_ack:
       [
@@ -12522,8 +12809,7 @@
       ]
       clkmgr.hi_speed_sel:
       [
-        ast.ext_freq_is_96m.primary
-        ast.ext_freq_is_96m.secondary
+        ast.ext_freq_is_96m
       ]
       clkmgr.div_step_down_req:
       [
@@ -12716,14 +13002,22 @@
       ]
       kmac.app:
       [
-        keymgr_dpe.kmac_data
+        keymgr_dpe.kmac_app
         lc_ctrl.kmac_data
         rom_ctrl.kmac_data
-        otbn.kmac_data
+        otbn.kmac_app
       ]
       kmac.en_masking:
       [
         keymgr_dpe.kmac_en_masking
+      ]
+      otbn.keymgr_app:
+      [
+        keymgr_dpe.otbn_app
+      ]
+      otbn.keymgr_sensitive_key:
+      [
+        keymgr_dpe.sensitive_key
       ]
       clkmgr.idle:
       [
@@ -12919,9 +13213,12 @@
       rv_core_ibex.cheriot_ena:
       [
         cheriot_mem_sys.cheriot_ena
+        rv_dm.cheriot_ena
       ]
       pwrmgr.wakeups:
       [
+        i3c0.rstdet_wkup_req.secondary
+        i3c1.rstdet_wkup_req.secondary
         sysrst_ctrl.wkup_req
         adc_ctrl.wkup_req
         pinmux.pin_wkup_req
@@ -12933,6 +13230,22 @@
       [
         sysrst_ctrl.rst_req
         aon_timer.aon_timer_rst_req
+      ]
+      i3c0.rstdet_enable.primary:
+      [
+        i3c0.rstdet_enable.secondary
+      ]
+      i3c0.rstdet.primary:
+      [
+        i3c0.rstdet.secondary
+      ]
+      i3c1.rstdet_enable.primary:
+      [
+        i3c1.rstdet_enable.secondary
+      ]
+      i3c1.rstdet.primary:
+      [
+        i3c1.rstdet.secondary
       ]
       ast.intraip_s2p.secondary:
       [
@@ -13110,9 +13423,13 @@
       [
         peri.tl_i2c2
       ]
-      gpio.tl:
+      gpio0.tl:
       [
-        peri.tl_gpio
+        peri.tl_gpio0
+      ]
+      gpio1.tl:
+      [
+        peri.tl_gpio1
       ]
       spi_device.tl:
       [
@@ -13184,7 +13501,6 @@
       clkmgr.clocks
       ast.clk_src_aon
       ast.clk_osc_byp.primary
-      ast.clk_osc_byp.secondary
       ast.mem_cfg.primary
       otbn.ram_cfg_imem
       otbn.ram_cfg_dmem
@@ -13238,8 +13554,7 @@
       ast.adc_a1_a: ""
       ast.ast2pad_t0_a: ast2pad_t0_a
       ast.ast2pad_t1_a: ast2pad_t1_a
-      ast.clk_osc_byp.primary: clk_osc_byp_pd_main
-      ast.clk_osc_byp.secondary: clk_osc_byp_pd_aon
+      ast.clk_osc_byp.primary: clks_osc_byp
       ast.ast_pwst_h: ast_pwst_h
       pinmux.dft_hold_tap_sel: dft_hold_tap_sel
       pinmux.usb_dppullup_en: usb_dp_pullup_en
@@ -13832,7 +14147,7 @@
               {
                 hart: 0x41150000
               }
-              size_byte: 0x80
+              size_byte: 0x100
             }
           ]
           xbar: false
@@ -14626,7 +14941,8 @@
           i2c0
           i2c1
           i2c2
-          gpio
+          gpio0
+          gpio1
           spi_device
           rv_timer
           pwrmgr
@@ -14808,7 +15124,7 @@
           req_fifo_pass: true
         }
         {
-          name: gpio
+          name: gpio0
           type: device
           clock: clk_peri_i
           reset: rst_peri_ni
@@ -14829,6 +15145,27 @@
           req_fifo_pass: true
         }
         {
+          name: gpio1
+          type: device
+          clock: clk_peri_i
+          reset: rst_peri_ni
+          pipeline: false
+          inst_type: gpio
+          addr_range:
+          [
+            {
+              base_addrs:
+              {
+                hart: 0x40050000
+              }
+              size_byte: 0x400
+            }
+          ]
+          xbar: false
+          stub: false
+          req_fifo_pass: true
+        }
+        {
           name: spi_device
           type: device
           clock: clk_peri_i
@@ -14840,7 +15177,7 @@
             {
               base_addrs:
               {
-                hart: 0x40050000
+                hart: 0x40060000
               }
               size_byte: 0x2000
             }
@@ -15278,7 +15615,7 @@
           index: -1
         }
         {
-          name: tl_gpio
+          name: tl_gpio0
           struct: tl
           package: tlul_pkg
           type: req_rsp
@@ -15287,7 +15624,20 @@
           width: 1
           default: ""
           domain: Main
-          top_signame: gpio_tl
+          top_signame: gpio0_tl
+          index: -1
+        }
+        {
+          name: tl_gpio1
+          struct: tl
+          package: tlul_pkg
+          type: req_rsp
+          act: req
+          inst_name: peri
+          width: 1
+          default: ""
+          domain: Main
+          top_signame: gpio1_tl
           index: -1
         }
         {
@@ -16254,7 +16604,15 @@
         attr: BidirStd
       }
       {
-        instance: gpio
+        instance: gpio0
+        port: ""
+        connection: muxed
+        pad: ""
+        desc: ""
+        attr: ""
+      }
+      {
+        instance: gpio1
         port: ""
         connection: muxed
         pad: ""
@@ -16613,7 +16971,7 @@
         glob_idx: 9
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 0
@@ -16625,7 +16983,7 @@
         glob_idx: 0
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 1
@@ -16637,7 +16995,7 @@
         glob_idx: 1
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 2
@@ -16649,7 +17007,7 @@
         glob_idx: 2
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 3
@@ -16661,7 +17019,7 @@
         glob_idx: 3
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 4
@@ -16673,7 +17031,7 @@
         glob_idx: 4
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 5
@@ -16685,7 +17043,7 @@
         glob_idx: 5
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 6
@@ -16697,7 +17055,7 @@
         glob_idx: 6
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 7
@@ -16709,7 +17067,7 @@
         glob_idx: 7
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 8
@@ -16721,7 +17079,7 @@
         glob_idx: 8
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 9
@@ -16733,7 +17091,7 @@
         glob_idx: 9
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 10
@@ -16745,7 +17103,7 @@
         glob_idx: 10
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 11
@@ -16757,7 +17115,7 @@
         glob_idx: 11
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 12
@@ -16769,7 +17127,7 @@
         glob_idx: 12
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 13
@@ -16781,7 +17139,7 @@
         glob_idx: 13
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 14
@@ -16793,7 +17151,7 @@
         glob_idx: 14
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 15
@@ -16805,7 +17163,7 @@
         glob_idx: 15
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 16
@@ -16817,7 +17175,7 @@
         glob_idx: 16
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 17
@@ -16829,7 +17187,7 @@
         glob_idx: 17
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 18
@@ -16841,7 +17199,7 @@
         glob_idx: 18
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 19
@@ -16853,7 +17211,7 @@
         glob_idx: 19
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 20
@@ -16865,7 +17223,7 @@
         glob_idx: 20
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 21
@@ -16877,7 +17235,7 @@
         glob_idx: 21
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 22
@@ -16889,7 +17247,7 @@
         glob_idx: 22
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 23
@@ -16901,7 +17259,7 @@
         glob_idx: 23
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 24
@@ -16913,7 +17271,7 @@
         glob_idx: 24
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 25
@@ -16925,7 +17283,7 @@
         glob_idx: 25
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 26
@@ -16937,7 +17295,7 @@
         glob_idx: 26
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 27
@@ -16949,7 +17307,7 @@
         glob_idx: 27
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 28
@@ -16961,7 +17319,7 @@
         glob_idx: 28
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 29
@@ -16973,7 +17331,7 @@
         glob_idx: 29
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 30
@@ -16985,7 +17343,7 @@
         glob_idx: 30
       }
       {
-        name: gpio_gpio
+        name: gpio0_gpio
         width: 32
         type: inout
         idx: 31
@@ -16997,6 +17355,390 @@
         glob_idx: 31
       }
       {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 0
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 32
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 1
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 33
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 2
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 34
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 3
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 35
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 4
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 36
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 5
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 37
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 6
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 38
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 7
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 39
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 8
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 40
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 9
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 41
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 10
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 42
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 11
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 43
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 12
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 44
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 13
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 45
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 14
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 46
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 15
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 47
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 16
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 48
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 17
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 49
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 18
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 50
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 19
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 51
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 20
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 52
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 21
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 53
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 22
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 54
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 23
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 55
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 24
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 56
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 25
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 57
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 26
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 58
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 27
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 59
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 28
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 60
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 29
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 61
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 30
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 62
+      }
+      {
+        name: gpio1_gpio
+        width: 32
+        type: inout
+        idx: 31
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 63
+      }
+      {
         name: i2c0_sda
         width: 1
         type: inout
@@ -17006,7 +17748,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 32
+        glob_idx: 64
       }
       {
         name: i2c0_scl
@@ -17018,7 +17760,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 33
+        glob_idx: 65
       }
       {
         name: i2c1_sda
@@ -17030,7 +17772,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 34
+        glob_idx: 66
       }
       {
         name: i2c1_scl
@@ -17042,7 +17784,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 35
+        glob_idx: 67
       }
       {
         name: i2c2_sda
@@ -17054,7 +17796,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 36
+        glob_idx: 68
       }
       {
         name: i2c2_scl
@@ -17066,7 +17808,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 37
+        glob_idx: 69
       }
       {
         name: i3c0_scl
@@ -17078,7 +17820,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 38
+        glob_idx: 70
       }
       {
         name: i3c0_sda
@@ -17090,7 +17832,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 39
+        glob_idx: 71
       }
       {
         name: i3c1_scl
@@ -17102,7 +17844,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 40
+        glob_idx: 72
       }
       {
         name: i3c1_sda
@@ -17114,7 +17856,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 41
+        glob_idx: 73
       }
       {
         name: spi_host1_sd
@@ -17126,7 +17868,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 42
+        glob_idx: 74
       }
       {
         name: spi_host1_sd
@@ -17138,7 +17880,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 43
+        glob_idx: 75
       }
       {
         name: spi_host1_sd
@@ -17150,7 +17892,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 44
+        glob_idx: 76
       }
       {
         name: spi_host1_sd
@@ -17162,7 +17904,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 45
+        glob_idx: 77
       }
       {
         name: sysrst_ctrl_ec_rst_l
@@ -17222,7 +17964,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 46
+        glob_idx: 78
       }
       {
         name: uart1_rx
@@ -17234,7 +17976,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 47
+        glob_idx: 79
       }
       {
         name: uart2_rx
@@ -17246,7 +17988,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 48
+        glob_idx: 80
       }
       {
         name: uart3_rx
@@ -17258,7 +18000,59 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 49
+        glob_idx: 81
+      }
+      {
+        name: i3c0_rstdet_scl
+        width: 1
+        type: input
+        partition: secondary
+        idx: -1
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Aon
+        glob_idx: 82
+      }
+      {
+        name: i3c0_rstdet_sda
+        width: 1
+        type: input
+        partition: secondary
+        idx: -1
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Aon
+        glob_idx: 83
+      }
+      {
+        name: i3c1_rstdet_scl
+        width: 1
+        type: input
+        partition: secondary
+        idx: -1
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 84
+      }
+      {
+        name: i3c1_rstdet_sda
+        width: 1
+        type: input
+        partition: secondary
+        idx: -1
+        pad: ""
+        attr: ""
+        connection: muxed
+        desc: ""
+        domain: Main
+        glob_idx: 85
       }
       {
         name: spi_device_tpm_csb
@@ -17270,7 +18064,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 50
+        glob_idx: 86
       }
       {
         name: rram_macro_tck
@@ -17282,7 +18076,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 51
+        glob_idx: 87
       }
       {
         name: rram_macro_tms
@@ -17294,7 +18088,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 52
+        glob_idx: 88
       }
       {
         name: rram_macro_tdi
@@ -17306,7 +18100,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 53
+        glob_idx: 89
       }
       {
         name: sysrst_ctrl_ac_present
@@ -17318,7 +18112,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 54
+        glob_idx: 90
       }
       {
         name: sysrst_ctrl_key0_in
@@ -17330,7 +18124,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 55
+        glob_idx: 91
       }
       {
         name: sysrst_ctrl_key1_in
@@ -17342,7 +18136,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 56
+        glob_idx: 92
       }
       {
         name: sysrst_ctrl_key2_in
@@ -17354,7 +18148,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 57
+        glob_idx: 93
       }
       {
         name: sysrst_ctrl_pwrb_in
@@ -17366,7 +18160,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 58
+        glob_idx: 94
       }
       {
         name: sysrst_ctrl_lid_open
@@ -17378,7 +18172,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 59
+        glob_idx: 95
       }
       {
         name: usbdev_sense
@@ -17390,7 +18184,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 60
+        glob_idx: 96
       }
       {
         name: spi_host0_sck
@@ -17426,7 +18220,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 46
+        glob_idx: 78
       }
       {
         name: uart1_tx
@@ -17438,7 +18232,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 47
+        glob_idx: 79
       }
       {
         name: uart2_tx
@@ -17450,7 +18244,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 48
+        glob_idx: 80
       }
       {
         name: uart3_tx
@@ -17462,7 +18256,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 49
+        glob_idx: 81
       }
       {
         name: i3c0_ctrl_sda_pu
@@ -17474,7 +18268,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 50
+        glob_idx: 82
       }
       {
         name: i3c1_ctrl_sda_pu
@@ -17486,7 +18280,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 51
+        glob_idx: 83
       }
       {
         name: spi_host1_sck
@@ -17498,7 +18292,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 52
+        glob_idx: 84
       }
       {
         name: spi_host1_csb
@@ -17510,7 +18304,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 53
+        glob_idx: 85
       }
       {
         name: rram_macro_tdo
@@ -17522,7 +18316,7 @@
         connection: muxed
         desc: ""
         domain: Main
-        glob_idx: 54
+        glob_idx: 86
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17534,7 +18328,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 55
+        glob_idx: 87
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17546,7 +18340,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 56
+        glob_idx: 88
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17558,7 +18352,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 57
+        glob_idx: 89
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17570,7 +18364,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 58
+        glob_idx: 90
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17582,7 +18376,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 59
+        glob_idx: 91
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17594,7 +18388,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 60
+        glob_idx: 92
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17606,7 +18400,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 61
+        glob_idx: 93
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17618,7 +18412,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 62
+        glob_idx: 94
       }
       {
         name: sensor_ctrl_ast_debug_out
@@ -17630,7 +18424,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 63
+        glob_idx: 95
       }
       {
         name: sysrst_ctrl_bat_disable
@@ -17642,7 +18436,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 64
+        glob_idx: 96
       }
       {
         name: sysrst_ctrl_key0_out
@@ -17654,7 +18448,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 65
+        glob_idx: 97
       }
       {
         name: sysrst_ctrl_key1_out
@@ -17666,7 +18460,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 66
+        glob_idx: 98
       }
       {
         name: sysrst_ctrl_key2_out
@@ -17678,7 +18472,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 67
+        glob_idx: 99
       }
       {
         name: sysrst_ctrl_pwrb_out
@@ -17690,7 +18484,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 68
+        glob_idx: 100
       }
       {
         name: sysrst_ctrl_z3_wakeup
@@ -17702,7 +18496,7 @@
         connection: muxed
         desc: ""
         domain: Aon
-        glob_idx: 69
+        glob_idx: 101
       }
     ]
     io_counts:
@@ -17716,8 +18510,8 @@
       }
       muxed:
       {
-        inouts: 46
-        inputs: 15
+        inouts: 78
+        inputs: 19
         outputs: 24
         pads: 47
       }
@@ -18223,6 +19017,16 @@
   wakeups:
   [
     {
+      name: rstdet_wkup_req
+      width: "1"
+      module: i3c0
+    }
+    {
+      name: rstdet_wkup_req
+      width: "1"
+      module: i3c1
+    }
+    {
       name: wkup_req
       width: "1"
       module: sysrst_ctrl
@@ -18302,13 +19106,24 @@
       lpg_idx: 0
     }
     {
-      name: gpio_fatal_fault
+      name: gpio0_fatal_fault
       width: 1
       type: alert
       async: "1"
       handler: alert_handler
-      module_name: gpio
-      desc: gpio fatal_fault alert
+      module_name: gpio0
+      desc: gpio0 fatal_fault alert
+      lpg_name: peri_lc_io_div4_Main
+      lpg_idx: 0
+    }
+    {
+      name: gpio1_fatal_fault
+      width: 1
+      type: alert
+      async: "1"
+      handler: alert_handler
+      module_name: gpio1
+      desc: gpio1 fatal_fault alert
       lpg_name: peri_lc_io_div4_Main
       lpg_idx: 0
     }
@@ -18376,7 +19191,7 @@
       module_name: i3c1
       desc: i3c1 fatal_fault alert
       lpg_name: peri_i3c1_Main
-      lpg_idx: 6
+      lpg_idx: 7
     }
     {
       name: rv_timer_fatal_fault
@@ -18387,7 +19202,7 @@
       module_name: rv_timer
       desc: rv_timer fatal_fault alert
       lpg_name: timers_lc_io_div4_Main
-      lpg_idx: 7
+      lpg_idx: 9
     }
     {
       name: otp_ctrl_fatal_macro_error
@@ -18398,7 +19213,7 @@
       module_name: otp_ctrl
       desc: otp_ctrl fatal_macro_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: otp_ctrl_fatal_check_error
@@ -18409,7 +19224,7 @@
       module_name: otp_ctrl
       desc: otp_ctrl fatal_check_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: otp_ctrl_fatal_bus_integ_error
@@ -18420,7 +19235,7 @@
       module_name: otp_ctrl
       desc: otp_ctrl fatal_bus_integ_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: otp_ctrl_fatal_prim_otp_alert
@@ -18431,7 +19246,7 @@
       module_name: otp_ctrl
       desc: otp_ctrl fatal_prim_otp_alert alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: otp_ctrl_recov_prim_otp_alert
@@ -18442,7 +19257,7 @@
       module_name: otp_ctrl
       desc: otp_ctrl recov_prim_otp_alert alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: lc_ctrl_fatal_prog_error
@@ -18453,7 +19268,7 @@
       module_name: lc_ctrl
       desc: lc_ctrl fatal_prog_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: lc_ctrl_fatal_state_error
@@ -18464,7 +19279,7 @@
       module_name: lc_ctrl
       desc: lc_ctrl fatal_state_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: lc_ctrl_fatal_bus_integ_error
@@ -18475,7 +19290,7 @@
       module_name: lc_ctrl
       desc: lc_ctrl fatal_bus_integ_error alert
       lpg_name: secure_lc_io_div4_Main
-      lpg_idx: 8
+      lpg_idx: 10
     }
     {
       name: spi_host0_fatal_fault
@@ -18486,7 +19301,7 @@
       module_name: spi_host0
       desc: spi_host0 fatal_fault alert
       lpg_name: peri_spi_host0_Main
-      lpg_idx: 9
+      lpg_idx: 11
     }
     {
       name: spi_host1_fatal_fault
@@ -18497,7 +19312,7 @@
       module_name: spi_host1
       desc: spi_host1 fatal_fault alert
       lpg_name: spi_host1_spi_host1_Main
-      lpg_idx: 10
+      lpg_idx: 12
     }
     {
       name: usbdev_fatal_fault
@@ -18508,7 +19323,7 @@
       module_name: usbdev
       desc: usbdev fatal_fault alert
       lpg_name: peri_usb_Main
-      lpg_idx: 11
+      lpg_idx: 13
     }
     {
       name: pwrmgr_fatal_fault
@@ -18519,7 +19334,7 @@
       module_name: pwrmgr
       desc: pwrmgr fatal_fault alert
       lpg_name: powerup_por_io_div4_Aon
-      lpg_idx: 12
+      lpg_idx: 14
     }
     {
       name: rstmgr_fatal_fault
@@ -18530,7 +19345,7 @@
       module_name: rstmgr
       desc: rstmgr fatal_fault alert
       lpg_name: powerup_lc_io_div4_Aon
-      lpg_idx: 13
+      lpg_idx: 15
     }
     {
       name: rstmgr_fatal_cnsty_fault
@@ -18541,7 +19356,7 @@
       module_name: rstmgr
       desc: rstmgr fatal_cnsty_fault alert
       lpg_name: powerup_lc_io_div4_Aon
-      lpg_idx: 13
+      lpg_idx: 15
     }
     {
       name: clkmgr_recov_fault
@@ -18552,7 +19367,7 @@
       module_name: clkmgr
       desc: clkmgr recov_fault alert
       lpg_name: powerup_lc_io_div4_Aon
-      lpg_idx: 13
+      lpg_idx: 15
     }
     {
       name: clkmgr_fatal_fault
@@ -18563,7 +19378,7 @@
       module_name: clkmgr
       desc: clkmgr fatal_fault alert
       lpg_name: powerup_lc_io_div4_Aon
-      lpg_idx: 13
+      lpg_idx: 15
     }
     {
       name: sysrst_ctrl_fatal_fault
@@ -18574,7 +19389,7 @@
       module_name: sysrst_ctrl
       desc: sysrst_ctrl fatal_fault alert
       lpg_name: secure_lc_io_div4_Aon
-      lpg_idx: 14
+      lpg_idx: 16
     }
     {
       name: adc_ctrl_fatal_fault
@@ -18585,7 +19400,7 @@
       module_name: adc_ctrl
       desc: adc_ctrl fatal_fault alert
       lpg_name: peri_lc_io_div4_Aon
-      lpg_idx: 15
+      lpg_idx: 17
     }
     {
       name: pinmux_fatal_fault
@@ -18596,7 +19411,7 @@
       module_name: pinmux
       desc: pinmux fatal_fault alert
       lpg_name: powerup_lc_io_div4_Aon
-      lpg_idx: 13
+      lpg_idx: 15
     }
     {
       name: aon_timer_fatal_fault
@@ -18607,7 +19422,7 @@
       module_name: aon_timer
       desc: aon_timer fatal_fault alert
       lpg_name: timers_lc_io_div4_Aon
-      lpg_idx: 16
+      lpg_idx: 18
     }
     {
       name: sensor_ctrl_recov_alert
@@ -18618,7 +19433,7 @@
       module_name: sensor_ctrl
       desc: sensor_ctrl recov_alert alert
       lpg_name: secure_lc_io_div4_Aon
-      lpg_idx: 14
+      lpg_idx: 16
     }
     {
       name: sensor_ctrl_fatal_alert
@@ -18629,7 +19444,7 @@
       module_name: sensor_ctrl
       desc: sensor_ctrl fatal_alert alert
       lpg_name: secure_lc_io_div4_Aon
-      lpg_idx: 14
+      lpg_idx: 16
     }
     {
       name: sram_ctrl_ret_fatal_error
@@ -18640,7 +19455,7 @@
       module_name: sram_ctrl_ret
       desc: sram_ctrl_ret fatal_error alert
       lpg_name: infra_lc_io_div4_Aon
-      lpg_idx: 18
+      lpg_idx: 20
     }
     {
       name: rram_ctrl_recov_err
@@ -18651,7 +19466,7 @@
       module_name: rram_ctrl
       desc: rram_ctrl recov_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rram_ctrl_fatal_std_err
@@ -18662,7 +19477,7 @@
       module_name: rram_ctrl
       desc: rram_ctrl fatal_std_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rram_ctrl_fatal_err
@@ -18673,7 +19488,7 @@
       module_name: rram_ctrl
       desc: rram_ctrl fatal_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rram_ctrl_fatal_macro_err
@@ -18684,7 +19499,7 @@
       module_name: rram_ctrl
       desc: rram_ctrl fatal_macro_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rram_ctrl_recov_macro_err
@@ -18695,7 +19510,7 @@
       module_name: rram_ctrl
       desc: rram_ctrl recov_macro_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rv_dm_fatal_fault
@@ -18706,7 +19521,7 @@
       module_name: rv_dm
       desc: rv_dm fatal_fault alert
       lpg_name: infra_sys_Main
-      lpg_idx: 20
+      lpg_idx: 22
     }
     {
       name: rv_plic_fatal_fault
@@ -18717,7 +19532,7 @@
       module_name: rv_plic
       desc: rv_plic fatal_fault alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: aes_recov_ctrl_update_err
@@ -18728,7 +19543,7 @@
       module_name: aes
       desc: aes recov_ctrl_update_err alert
       lpg_name: aes_trans_lc_Main
-      lpg_idx: 22
+      lpg_idx: 24
     }
     {
       name: aes_fatal_fault
@@ -18739,7 +19554,7 @@
       module_name: aes
       desc: aes fatal_fault alert
       lpg_name: aes_trans_lc_Main
-      lpg_idx: 22
+      lpg_idx: 24
     }
     {
       name: hmac_fatal_fault
@@ -18750,7 +19565,7 @@
       module_name: hmac
       desc: hmac fatal_fault alert
       lpg_name: hmac_trans_lc_Main
-      lpg_idx: 23
+      lpg_idx: 25
     }
     {
       name: kmac_recov_operation_err
@@ -18761,7 +19576,7 @@
       module_name: kmac
       desc: kmac recov_operation_err alert
       lpg_name: kmac_trans_lc_Main
-      lpg_idx: 24
+      lpg_idx: 26
     }
     {
       name: kmac_fatal_fault_err
@@ -18772,7 +19587,7 @@
       module_name: kmac
       desc: kmac fatal_fault_err alert
       lpg_name: kmac_trans_lc_Main
-      lpg_idx: 24
+      lpg_idx: 26
     }
     {
       name: otbn_fatal
@@ -18783,7 +19598,7 @@
       module_name: otbn
       desc: otbn fatal alert
       lpg_name: otbn_trans_lc_Main
-      lpg_idx: 25
+      lpg_idx: 27
     }
     {
       name: otbn_recov
@@ -18794,7 +19609,7 @@
       module_name: otbn
       desc: otbn recov alert
       lpg_name: otbn_trans_lc_Main
-      lpg_idx: 25
+      lpg_idx: 27
     }
     {
       name: keymgr_dpe_recov_operation_err
@@ -18805,7 +19620,7 @@
       module_name: keymgr_dpe
       desc: keymgr_dpe recov_operation_err alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: keymgr_dpe_fatal_fault_err
@@ -18816,7 +19631,7 @@
       module_name: keymgr_dpe
       desc: keymgr_dpe fatal_fault_err alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: csrng_recov_alert
@@ -18827,7 +19642,7 @@
       module_name: csrng
       desc: csrng recov_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: csrng_fatal_alert
@@ -18838,7 +19653,7 @@
       module_name: csrng
       desc: csrng fatal_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: entropy_src_recov_alert
@@ -18849,7 +19664,7 @@
       module_name: entropy_src
       desc: entropy_src recov_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: entropy_src_fatal_alert
@@ -18860,7 +19675,7 @@
       module_name: entropy_src
       desc: entropy_src fatal_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: edn0_recov_alert
@@ -18871,7 +19686,7 @@
       module_name: edn0
       desc: edn0 recov_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: edn0_fatal_alert
@@ -18882,7 +19697,7 @@
       module_name: edn0
       desc: edn0 fatal_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: edn1_recov_alert
@@ -18893,7 +19708,7 @@
       module_name: edn1
       desc: edn1 recov_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: edn1_fatal_alert
@@ -18904,7 +19719,7 @@
       module_name: edn1
       desc: edn1 fatal_alert alert
       lpg_name: secure_lc_Main
-      lpg_idx: 21
+      lpg_idx: 23
     }
     {
       name: sram_ctrl_main_fatal_error
@@ -18915,7 +19730,7 @@
       module_name: sram_ctrl_main
       desc: sram_ctrl_main fatal_error alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: sram_ctrl_sec_fatal_error
@@ -18926,7 +19741,7 @@
       module_name: sram_ctrl_sec
       desc: sram_ctrl_sec fatal_error alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rom_ctrl_fatal
@@ -18937,7 +19752,7 @@
       module_name: rom_ctrl
       desc: rom_ctrl fatal alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rv_core_ibex_fatal_sw_err
@@ -18948,7 +19763,7 @@
       module_name: rv_core_ibex
       desc: rv_core_ibex fatal_sw_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rv_core_ibex_recov_sw_err
@@ -18959,7 +19774,7 @@
       module_name: rv_core_ibex
       desc: rv_core_ibex recov_sw_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rv_core_ibex_fatal_hw_err
@@ -18970,7 +19785,7 @@
       module_name: rv_core_ibex
       desc: rv_core_ibex fatal_hw_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: rv_core_ibex_recov_hw_err
@@ -18981,7 +19796,7 @@
       module_name: rv_core_ibex
       desc: rv_core_ibex recov_hw_err alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: cheriot_mem_sys_fatal_fault
@@ -18992,7 +19807,7 @@
       module_name: cheriot_mem_sys
       desc: cheriot_mem_sys fatal_fault alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
     {
       name: sram_ctrl_meta_fatal_error
@@ -19003,7 +19818,7 @@
       module_name: sram_ctrl_meta
       desc: sram_ctrl_meta fatal_error alert
       lpg_name: infra_lc_Main
-      lpg_idx: 19
+      lpg_idx: 21
     }
   ]
   outgoing_alert: {}
@@ -19478,11 +20293,24 @@
       outgoing: false
     }
     {
-      name: gpio_gpio
+      name: gpio0_gpio
       width: 32
       type: interrupt
-      module_name: gpio
-      desc: gpio gpio interrupt
+      module_name: gpio0
+      desc: gpio0 gpio interrupt
+      intr_type: IntrType.Event
+      default_val: false
+      incoming: false
+      domain: Main
+      plic: rv_plic
+      outgoing: false
+    }
+    {
+      name: gpio1_gpio
+      width: 32
+      type: interrupt
+      module_name: gpio1
+      desc: gpio1 gpio interrupt
       intr_type: IntrType.Event
       default_val: false
       incoming: false
@@ -21070,11 +21898,11 @@
     rv_plic:
     {
       domain: Main
-      count_tot: 190
+      count_tot: 222
       count_pd:
       {
         Aon: 7
-        Main: 182
+        Main: 214
       }
     }
   }
@@ -21156,42 +21984,6 @@
         act: req
         suffix: ""
         default: prim_mubi_pkg::MUBI4_DEFAULT
-      }
-      {
-        package: ""
-        struct: logic
-        domain: chip
-        signame: spi_device_sck_monitor
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: 1'b0
-      }
-      {
-        package: ""
-        struct: logic
-        domain: chip
-        signame: usbdev_usb_ref_pulse
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: 1'b0
-      }
-      {
-        package: ""
-        struct: logic
-        domain: chip
-        signame: usbdev_usb_ref_val
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: 1'b0
       }
       {
         package: prim_mubi_pkg
@@ -21722,6 +22514,54 @@
         default: 1'b0
       }
       {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: pwrmgr_wakeups
+        width: 1
+        type: uni
+        end_idx: -1
+        act: rcv
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: i3c0_rstdet_enable
+        width: 1
+        type: uni
+        end_idx: -1
+        act: req
+        suffix: ""
+        default: 1'b0
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_req
+        domain: chip
+        signame: i3c0_rstdet_req
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: req
+        suffix: req
+        default: i3c_pkg::I3C_RSTDET_REQ_DEFAULT
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_rsp
+        domain: chip
+        signame: i3c0_rstdet_rsp
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: req
+        suffix: rsp
+        default: i3c_pkg::I3C_RSTDET_RSP_DEFAULT
+      }
+      {
         package: ast_intraip_pkg
         struct: s2p
         domain: chip
@@ -22133,7 +22973,7 @@
         package: ""
         struct: logic
         domain: chip
-        signame: cio_gpio_gpio_d2p
+        signame: cio_gpio0_gpio_d2p
         width: 32
         type: uni
         end_idx: -1
@@ -22145,7 +22985,7 @@
         package: ""
         struct: logic
         domain: chip
-        signame: cio_gpio_gpio_en_d2p
+        signame: cio_gpio0_gpio_en_d2p
         width: 32
         type: uni
         end_idx: -1
@@ -22157,7 +22997,43 @@
         package: ""
         struct: logic
         domain: chip
-        signame: cio_gpio_gpio_p2d
+        signame: cio_gpio0_gpio_p2d
+        width: 32
+        type: uni
+        end_idx: -1
+        act: ""
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: cio_gpio1_gpio_d2p
+        width: 32
+        type: uni
+        end_idx: -1
+        act: ""
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: cio_gpio1_gpio_en_d2p
+        width: 32
+        type: uni
+        end_idx: -1
+        act: ""
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: cio_gpio1_gpio_p2d
         width: 32
         type: uni
         end_idx: -1
@@ -22625,6 +23501,30 @@
         package: ""
         struct: logic
         domain: chip
+        signame: cio_i3c1_rstdet_scl_p2d
+        width: 1
+        type: uni
+        end_idx: -1
+        act: ""
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
+        signame: cio_i3c1_rstdet_sda_p2d
+        width: 1
+        type: uni
+        end_idx: -1
+        act: ""
+        suffix: ""
+        default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: chip
         signame: cio_i3c1_ctrl_sda_pu_d2p
         width: 1
         type: uni
@@ -22995,7 +23895,8 @@
     uart1
     uart2
     uart3
-    gpio
+    gpio0
+    gpio1
     spi_device
     i2c0
     i2c1
@@ -23078,7 +23979,7 @@
         alert_handler[3]: fatal_fault
       ]
     }
-    module_gpio:
+    module_gpio0:
     {
       tx_expr: alert_tx[4]
       rx_expr: alert_rx[4]
@@ -23088,7 +23989,7 @@
         alert_handler[4]: fatal_fault
       ]
     }
-    module_spi_device:
+    module_gpio1:
     {
       tx_expr: alert_tx[5]
       rx_expr: alert_rx[5]
@@ -23098,7 +23999,7 @@
         alert_handler[5]: fatal_fault
       ]
     }
-    module_i2c0:
+    module_spi_device:
     {
       tx_expr: alert_tx[6]
       rx_expr: alert_rx[6]
@@ -23108,7 +24009,7 @@
         alert_handler[6]: fatal_fault
       ]
     }
-    module_i2c1:
+    module_i2c0:
     {
       tx_expr: alert_tx[7]
       rx_expr: alert_rx[7]
@@ -23118,7 +24019,7 @@
         alert_handler[7]: fatal_fault
       ]
     }
-    module_i2c2:
+    module_i2c1:
     {
       tx_expr: alert_tx[8]
       rx_expr: alert_rx[8]
@@ -23128,7 +24029,7 @@
         alert_handler[8]: fatal_fault
       ]
     }
-    module_i3c0:
+    module_i2c2:
     {
       tx_expr: alert_tx[9]
       rx_expr: alert_rx[9]
@@ -23138,7 +24039,7 @@
         alert_handler[9]: fatal_fault
       ]
     }
-    module_i3c1:
+    module_i3c0:
     {
       tx_expr: alert_tx[10]
       rx_expr: alert_rx[10]
@@ -23148,7 +24049,7 @@
         alert_handler[10]: fatal_fault
       ]
     }
-    module_rv_timer:
+    module_i3c1:
     {
       tx_expr: alert_tx[11]
       rx_expr: alert_rx[11]
@@ -23158,43 +24059,43 @@
         alert_handler[11]: fatal_fault
       ]
     }
-    module_otp_ctrl:
+    module_rv_timer:
     {
-      tx_expr: alert_tx[16:12]
-      rx_expr: alert_rx[16:12]
-      async_expr: alert_handler_reg_pkg::AsyncOn[16:12]
+      tx_expr: alert_tx[12]
+      rx_expr: alert_rx[12]
+      async_expr: alert_handler_reg_pkg::AsyncOn[12]
       comments:
       [
-        alert_handler[12]: fatal_macro_error
-        alert_handler[13]: fatal_check_error
-        alert_handler[14]: fatal_bus_integ_error
-        alert_handler[15]: fatal_prim_otp_alert
-        alert_handler[16]: recov_prim_otp_alert
+        alert_handler[12]: fatal_fault
+      ]
+    }
+    module_otp_ctrl:
+    {
+      tx_expr: alert_tx[17:13]
+      rx_expr: alert_rx[17:13]
+      async_expr: alert_handler_reg_pkg::AsyncOn[17:13]
+      comments:
+      [
+        alert_handler[13]: fatal_macro_error
+        alert_handler[14]: fatal_check_error
+        alert_handler[15]: fatal_bus_integ_error
+        alert_handler[16]: fatal_prim_otp_alert
+        alert_handler[17]: recov_prim_otp_alert
       ]
     }
     module_lc_ctrl:
     {
-      tx_expr: alert_tx[19:17]
-      rx_expr: alert_rx[19:17]
-      async_expr: alert_handler_reg_pkg::AsyncOn[19:17]
+      tx_expr: alert_tx[20:18]
+      rx_expr: alert_rx[20:18]
+      async_expr: alert_handler_reg_pkg::AsyncOn[20:18]
       comments:
       [
-        alert_handler[17]: fatal_prog_error
-        alert_handler[18]: fatal_state_error
-        alert_handler[19]: fatal_bus_integ_error
+        alert_handler[18]: fatal_prog_error
+        alert_handler[19]: fatal_state_error
+        alert_handler[20]: fatal_bus_integ_error
       ]
     }
     module_spi_host0:
-    {
-      tx_expr: alert_tx[20]
-      rx_expr: alert_rx[20]
-      async_expr: alert_handler_reg_pkg::AsyncOn[20]
-      comments:
-      [
-        alert_handler[20]: fatal_fault
-      ]
-    }
-    module_spi_host1:
     {
       tx_expr: alert_tx[21]
       rx_expr: alert_rx[21]
@@ -23204,7 +24105,7 @@
         alert_handler[21]: fatal_fault
       ]
     }
-    module_usbdev:
+    module_spi_host1:
     {
       tx_expr: alert_tx[22]
       rx_expr: alert_rx[22]
@@ -23214,124 +24115,124 @@
         alert_handler[22]: fatal_fault
       ]
     }
-    module_pwrmgr:
+    module_usbdev:
     {
-      tx_expr: alert_tx_o[0]
-      rx_expr: alert_rx_i[0]
+      tx_expr: alert_tx[23]
+      rx_expr: alert_rx[23]
       async_expr: alert_handler_reg_pkg::AsyncOn[23]
       comments:
       [
         alert_handler[23]: fatal_fault
       ]
     }
+    module_pwrmgr:
+    {
+      tx_expr: alert_tx_o[0]
+      rx_expr: alert_rx_i[0]
+      async_expr: alert_handler_reg_pkg::AsyncOn[24]
+      comments:
+      [
+        alert_handler[24]: fatal_fault
+      ]
+    }
     module_rstmgr:
     {
       tx_expr: alert_tx_o[2:1]
       rx_expr: alert_rx_i[2:1]
-      async_expr: alert_handler_reg_pkg::AsyncOn[25:24]
+      async_expr: alert_handler_reg_pkg::AsyncOn[26:25]
       comments:
       [
-        alert_handler[24]: fatal_fault
-        alert_handler[25]: fatal_cnsty_fault
+        alert_handler[25]: fatal_fault
+        alert_handler[26]: fatal_cnsty_fault
       ]
     }
     module_clkmgr:
     {
       tx_expr: alert_tx_o[4:3]
       rx_expr: alert_rx_i[4:3]
-      async_expr: alert_handler_reg_pkg::AsyncOn[27:26]
+      async_expr: alert_handler_reg_pkg::AsyncOn[28:27]
       comments:
       [
-        alert_handler[26]: recov_fault
-        alert_handler[27]: fatal_fault
+        alert_handler[27]: recov_fault
+        alert_handler[28]: fatal_fault
       ]
     }
     module_sysrst_ctrl:
     {
       tx_expr: alert_tx_o[5]
       rx_expr: alert_rx_i[5]
-      async_expr: alert_handler_reg_pkg::AsyncOn[28]
-      comments:
-      [
-        alert_handler[28]: fatal_fault
-      ]
-    }
-    module_adc_ctrl:
-    {
-      tx_expr: alert_tx_o[6]
-      rx_expr: alert_rx_i[6]
       async_expr: alert_handler_reg_pkg::AsyncOn[29]
       comments:
       [
         alert_handler[29]: fatal_fault
       ]
     }
-    module_pinmux:
+    module_adc_ctrl:
     {
-      tx_expr: alert_tx_o[7]
-      rx_expr: alert_rx_i[7]
+      tx_expr: alert_tx_o[6]
+      rx_expr: alert_rx_i[6]
       async_expr: alert_handler_reg_pkg::AsyncOn[30]
       comments:
       [
         alert_handler[30]: fatal_fault
       ]
     }
-    module_aon_timer:
+    module_pinmux:
     {
-      tx_expr: alert_tx_o[8]
-      rx_expr: alert_rx_i[8]
+      tx_expr: alert_tx_o[7]
+      rx_expr: alert_rx_i[7]
       async_expr: alert_handler_reg_pkg::AsyncOn[31]
       comments:
       [
         alert_handler[31]: fatal_fault
       ]
     }
+    module_aon_timer:
+    {
+      tx_expr: alert_tx_o[8]
+      rx_expr: alert_rx_i[8]
+      async_expr: alert_handler_reg_pkg::AsyncOn[32]
+      comments:
+      [
+        alert_handler[32]: fatal_fault
+      ]
+    }
     module_sensor_ctrl:
     {
       tx_expr: alert_tx_o[10:9]
       rx_expr: alert_rx_i[10:9]
-      async_expr: alert_handler_reg_pkg::AsyncOn[33:32]
+      async_expr: alert_handler_reg_pkg::AsyncOn[34:33]
       comments:
       [
-        alert_handler[32]: recov_alert
-        alert_handler[33]: fatal_alert
+        alert_handler[33]: recov_alert
+        alert_handler[34]: fatal_alert
       ]
     }
     module_sram_ctrl_ret:
     {
       tx_expr: alert_tx_o[11]
       rx_expr: alert_rx_i[11]
-      async_expr: alert_handler_reg_pkg::AsyncOn[34]
+      async_expr: alert_handler_reg_pkg::AsyncOn[35]
       comments:
       [
-        alert_handler[34]: fatal_error
+        alert_handler[35]: fatal_error
       ]
     }
     module_rram_ctrl:
     {
-      tx_expr: alert_tx[39:35]
-      rx_expr: alert_rx[39:35]
-      async_expr: alert_handler_reg_pkg::AsyncOn[39:35]
+      tx_expr: alert_tx[40:36]
+      rx_expr: alert_rx[40:36]
+      async_expr: alert_handler_reg_pkg::AsyncOn[40:36]
       comments:
       [
-        alert_handler[35]: recov_err
-        alert_handler[36]: fatal_std_err
-        alert_handler[37]: fatal_err
-        alert_handler[38]: fatal_macro_err
-        alert_handler[39]: recov_macro_err
+        alert_handler[36]: recov_err
+        alert_handler[37]: fatal_std_err
+        alert_handler[38]: fatal_err
+        alert_handler[39]: fatal_macro_err
+        alert_handler[40]: recov_macro_err
       ]
     }
     module_rv_dm:
-    {
-      tx_expr: alert_tx[40]
-      rx_expr: alert_rx[40]
-      async_expr: alert_handler_reg_pkg::AsyncOn[40]
-      comments:
-      [
-        alert_handler[40]: fatal_fault
-      ]
-    }
-    module_rv_plic:
     {
       tx_expr: alert_tx[41]
       rx_expr: alert_rx[41]
@@ -23341,115 +24242,115 @@
         alert_handler[41]: fatal_fault
       ]
     }
-    module_aes:
+    module_rv_plic:
     {
-      tx_expr: alert_tx[43:42]
-      rx_expr: alert_rx[43:42]
-      async_expr: alert_handler_reg_pkg::AsyncOn[43:42]
+      tx_expr: alert_tx[42]
+      rx_expr: alert_rx[42]
+      async_expr: alert_handler_reg_pkg::AsyncOn[42]
       comments:
       [
-        alert_handler[42]: recov_ctrl_update_err
-        alert_handler[43]: fatal_fault
+        alert_handler[42]: fatal_fault
+      ]
+    }
+    module_aes:
+    {
+      tx_expr: alert_tx[44:43]
+      rx_expr: alert_rx[44:43]
+      async_expr: alert_handler_reg_pkg::AsyncOn[44:43]
+      comments:
+      [
+        alert_handler[43]: recov_ctrl_update_err
+        alert_handler[44]: fatal_fault
       ]
     }
     module_hmac:
     {
-      tx_expr: alert_tx[44]
-      rx_expr: alert_rx[44]
-      async_expr: alert_handler_reg_pkg::AsyncOn[44]
+      tx_expr: alert_tx[45]
+      rx_expr: alert_rx[45]
+      async_expr: alert_handler_reg_pkg::AsyncOn[45]
       comments:
       [
-        alert_handler[44]: fatal_fault
+        alert_handler[45]: fatal_fault
       ]
     }
     module_kmac:
     {
-      tx_expr: alert_tx[46:45]
-      rx_expr: alert_rx[46:45]
-      async_expr: alert_handler_reg_pkg::AsyncOn[46:45]
+      tx_expr: alert_tx[47:46]
+      rx_expr: alert_rx[47:46]
+      async_expr: alert_handler_reg_pkg::AsyncOn[47:46]
       comments:
       [
-        alert_handler[45]: recov_operation_err
-        alert_handler[46]: fatal_fault_err
+        alert_handler[46]: recov_operation_err
+        alert_handler[47]: fatal_fault_err
       ]
     }
     module_otbn:
     {
-      tx_expr: alert_tx[48:47]
-      rx_expr: alert_rx[48:47]
-      async_expr: alert_handler_reg_pkg::AsyncOn[48:47]
+      tx_expr: alert_tx[49:48]
+      rx_expr: alert_rx[49:48]
+      async_expr: alert_handler_reg_pkg::AsyncOn[49:48]
       comments:
       [
-        alert_handler[47]: fatal
-        alert_handler[48]: recov
+        alert_handler[48]: fatal
+        alert_handler[49]: recov
       ]
     }
     module_keymgr_dpe:
     {
-      tx_expr: alert_tx[50:49]
-      rx_expr: alert_rx[50:49]
-      async_expr: alert_handler_reg_pkg::AsyncOn[50:49]
+      tx_expr: alert_tx[51:50]
+      rx_expr: alert_rx[51:50]
+      async_expr: alert_handler_reg_pkg::AsyncOn[51:50]
       comments:
       [
-        alert_handler[49]: recov_operation_err
-        alert_handler[50]: fatal_fault_err
+        alert_handler[50]: recov_operation_err
+        alert_handler[51]: fatal_fault_err
       ]
     }
     module_csrng:
     {
-      tx_expr: alert_tx[52:51]
-      rx_expr: alert_rx[52:51]
-      async_expr: alert_handler_reg_pkg::AsyncOn[52:51]
+      tx_expr: alert_tx[53:52]
+      rx_expr: alert_rx[53:52]
+      async_expr: alert_handler_reg_pkg::AsyncOn[53:52]
       comments:
       [
-        alert_handler[51]: recov_alert
-        alert_handler[52]: fatal_alert
+        alert_handler[52]: recov_alert
+        alert_handler[53]: fatal_alert
       ]
     }
     module_entropy_src:
     {
-      tx_expr: alert_tx[54:53]
-      rx_expr: alert_rx[54:53]
-      async_expr: alert_handler_reg_pkg::AsyncOn[54:53]
+      tx_expr: alert_tx[55:54]
+      rx_expr: alert_rx[55:54]
+      async_expr: alert_handler_reg_pkg::AsyncOn[55:54]
       comments:
       [
-        alert_handler[53]: recov_alert
-        alert_handler[54]: fatal_alert
+        alert_handler[54]: recov_alert
+        alert_handler[55]: fatal_alert
       ]
     }
     module_edn0:
     {
-      tx_expr: alert_tx[56:55]
-      rx_expr: alert_rx[56:55]
-      async_expr: alert_handler_reg_pkg::AsyncOn[56:55]
+      tx_expr: alert_tx[57:56]
+      rx_expr: alert_rx[57:56]
+      async_expr: alert_handler_reg_pkg::AsyncOn[57:56]
       comments:
       [
-        alert_handler[55]: recov_alert
-        alert_handler[56]: fatal_alert
+        alert_handler[56]: recov_alert
+        alert_handler[57]: fatal_alert
       ]
     }
     module_edn1:
     {
-      tx_expr: alert_tx[58:57]
-      rx_expr: alert_rx[58:57]
-      async_expr: alert_handler_reg_pkg::AsyncOn[58:57]
+      tx_expr: alert_tx[59:58]
+      rx_expr: alert_rx[59:58]
+      async_expr: alert_handler_reg_pkg::AsyncOn[59:58]
       comments:
       [
-        alert_handler[57]: recov_alert
-        alert_handler[58]: fatal_alert
+        alert_handler[58]: recov_alert
+        alert_handler[59]: fatal_alert
       ]
     }
     module_sram_ctrl_main:
-    {
-      tx_expr: alert_tx[59]
-      rx_expr: alert_rx[59]
-      async_expr: alert_handler_reg_pkg::AsyncOn[59]
-      comments:
-      [
-        alert_handler[59]: fatal_error
-      ]
-    }
-    module_sram_ctrl_sec:
     {
       tx_expr: alert_tx[60]
       rx_expr: alert_rx[60]
@@ -23459,47 +24360,57 @@
         alert_handler[60]: fatal_error
       ]
     }
-    module_rom_ctrl:
+    module_sram_ctrl_sec:
     {
       tx_expr: alert_tx[61]
       rx_expr: alert_rx[61]
       async_expr: alert_handler_reg_pkg::AsyncOn[61]
       comments:
       [
-        alert_handler[61]: fatal
+        alert_handler[61]: fatal_error
+      ]
+    }
+    module_rom_ctrl:
+    {
+      tx_expr: alert_tx[62]
+      rx_expr: alert_rx[62]
+      async_expr: alert_handler_reg_pkg::AsyncOn[62]
+      comments:
+      [
+        alert_handler[62]: fatal
       ]
     }
     module_rv_core_ibex:
     {
-      tx_expr: alert_tx[65:62]
-      rx_expr: alert_rx[65:62]
-      async_expr: alert_handler_reg_pkg::AsyncOn[65:62]
+      tx_expr: alert_tx[66:63]
+      rx_expr: alert_rx[66:63]
+      async_expr: alert_handler_reg_pkg::AsyncOn[66:63]
       comments:
       [
-        alert_handler[62]: fatal_sw_err
-        alert_handler[63]: recov_sw_err
-        alert_handler[64]: fatal_hw_err
-        alert_handler[65]: recov_hw_err
+        alert_handler[63]: fatal_sw_err
+        alert_handler[64]: recov_sw_err
+        alert_handler[65]: fatal_hw_err
+        alert_handler[66]: recov_hw_err
       ]
     }
     module_cheriot_mem_sys:
-    {
-      tx_expr: alert_tx[66]
-      rx_expr: alert_rx[66]
-      async_expr: alert_handler_reg_pkg::AsyncOn[66]
-      comments:
-      [
-        alert_handler[66]: fatal_fault
-      ]
-    }
-    module_sram_ctrl_meta:
     {
       tx_expr: alert_tx[67]
       rx_expr: alert_rx[67]
       async_expr: alert_handler_reg_pkg::AsyncOn[67]
       comments:
       [
-        alert_handler[67]: fatal_error
+        alert_handler[67]: fatal_fault
+      ]
+    }
+    module_sram_ctrl_meta:
+    {
+      tx_expr: alert_tx[68]
+      rx_expr: alert_rx[68]
+      async_expr: alert_handler_reg_pkg::AsyncOn[68]
+      comments:
+      [
+        alert_handler[68]: fatal_error
       ]
     }
   }
@@ -23508,70 +24419,70 @@
     alert_handler:
     {
       domain: Main
-      count_tot: 68
+      count_tot: 69
       count_pd:
       {
         Aon: 12
-        Main: 56
+        Main: 57
       }
       connect_pd:
       {
-        23:
+        24:
         {
           src_pd: Aon
           idx: 0
         }
-        24:
+        25:
         {
           src_pd: Aon
           idx: 1
         }
-        25:
+        26:
         {
           src_pd: Aon
           idx: 2
         }
-        26:
+        27:
         {
           src_pd: Aon
           idx: 3
         }
-        27:
+        28:
         {
           src_pd: Aon
           idx: 4
         }
-        28:
+        29:
         {
           src_pd: Aon
           idx: 5
         }
-        29:
+        30:
         {
           src_pd: Aon
           idx: 6
         }
-        30:
+        31:
         {
           src_pd: Aon
           idx: 7
         }
-        31:
+        32:
         {
           src_pd: Aon
           idx: 8
         }
-        32:
+        33:
         {
           src_pd: Aon
           idx: 9
         }
-        33:
+        34:
         {
           src_pd: Aon
           idx: 10
         }
-        34:
+        35:
         {
           src_pd: Aon
           idx: 11
@@ -23585,7 +24496,8 @@
     uart1
     uart2
     uart3
-    gpio
+    gpio0
+    gpio1
     spi_device
     i2c0
     i2c1
@@ -23775,6 +24687,32 @@
       }
     }
     {
+      name: peri_lc_aon_Aon
+      clock_group:
+      {
+        name: peri
+        src: top
+        sw_cg: yes
+        unique: no
+        clocks:
+        {
+          clk_io_div4_peri: io_div4
+          clk_io_div2_peri: io_div2
+          clk_io_peri: io
+          clk_aon_peri: aon
+          clk_usb_peri: usb
+        }
+      }
+      clock_connection: clkmgr_clocks.clk_aon_peri
+      unmanaged_clock: false
+      unmanaged_reset: false
+      reset_connection:
+      {
+        name: lc_aon
+        domain: Aon
+      }
+    }
+    {
       name: peri_i3c1_Main
       clock_group:
       {
@@ -23797,6 +24735,32 @@
       reset_connection:
       {
         name: i3c1
+        domain: Main
+      }
+    }
+    {
+      name: peri_lc_aon_Main
+      clock_group:
+      {
+        name: peri
+        src: top
+        sw_cg: yes
+        unique: no
+        clocks:
+        {
+          clk_io_div4_peri: io_div4
+          clk_io_div2_peri: io_div2
+          clk_io_peri: io
+          clk_aon_peri: aon
+          clk_usb_peri: usb
+        }
+      }
+      clock_connection: clkmgr_clocks_i.clk_aon_peri
+      unmanaged_clock: false
+      unmanaged_reset: false
+      reset_connection:
+      {
+        name: lc_aon
         domain: Main
       }
     }
@@ -24506,7 +25470,7 @@
         act: rcv
         width: 1
         default: 1'b0
-        inst_name: gpio
+        inst_name: gpio0
         index: -1
       }
       {
@@ -24518,7 +25482,7 @@
         act: req
         width: 1
         default: "'0"
-        inst_name: gpio
+        inst_name: gpio0
         index: -1
       }
       {
@@ -24533,7 +25497,7 @@
         type: uni
         act: rcv
         width: 1
-        inst_name: gpio
+        inst_name: gpio0
         index: -1
       }
       {
@@ -24544,7 +25508,7 @@
         type: uni
         act: req
         width: 1
-        inst_name: gpio
+        inst_name: gpio0
         index: -1
       }
       {
@@ -24554,11 +25518,78 @@
         type: req_rsp
         act: rsp
         width: 1
-        inst_name: gpio
+        inst_name: gpio0
         default: ""
         end_idx: -1
         top_type: one-to-one
-        top_signame: gpio_tl
+        top_signame: gpio0_tl
+        index: -1
+      }
+      {
+        name: strap_en
+        desc:
+          '''
+          The strap enable signal tells gpio to take a snapshot of the input pins.
+          The behaviour of this signal after that event will have no effect.
+          '''
+        struct: logic
+        type: uni
+        act: rcv
+        width: 1
+        default: 1'b0
+        inst_name: gpio1
+        index: -1
+      }
+      {
+        name: sampled_straps
+        desc: This vector contains the sampled strap values.
+        struct: gpio_straps
+        package: gpio_pkg
+        type: uni
+        act: req
+        width: 1
+        default: "'0"
+        inst_name: gpio1
+        index: -1
+      }
+      {
+        name: racl_policies
+        desc:
+          '''
+          Incoming RACL policy vector from a racl_ctrl instance.
+          The policy selection vector (parameter) selects the policy for each register.
+          '''
+        struct: racl_policy_vec
+        package: top_racl_pkg
+        type: uni
+        act: rcv
+        width: 1
+        inst_name: gpio1
+        index: -1
+      }
+      {
+        name: racl_error
+        desc: RACL error log information of this module.
+        struct: racl_error_log
+        package: top_racl_pkg
+        type: uni
+        act: req
+        width: 1
+        inst_name: gpio1
+        index: -1
+      }
+      {
+        name: tl
+        struct: tl
+        package: tlul_pkg
+        type: req_rsp
+        act: rsp
+        width: 1
+        inst_name: gpio1
+        default: ""
+        end_idx: -1
+        top_type: one-to-one
+        top_signame: gpio1_tl
         index: -1
       }
       {
@@ -24615,14 +25646,7 @@
         act: req
         width: 1
         inst_name: spi_device
-        default: ""
-        package: ""
-        end_idx: -1
-        top_type: broadcast
-        top_signame: spi_device_sck_monitor
         index: -1
-        external: true
-        conn_type: false
       }
       {
         name: racl_policies
@@ -24864,25 +25888,101 @@
       }
       {
         name: rstdet_enable
+        desc: Enables the SCL/SDA inputs of the Target Reset Detector in the secondary partition; deasserted while the Target is disconnected from the bus.
         struct: logic
         type: uni
         act: req
         width: 1
         inst_name: i3c0
+        default: ""
+        package: ""
+        end_idx: -1
+        top_type: broadcast
+        top_signame: i3c0_rstdet_enable
         index: -1
+        external: true
+        conn_type: false
+      }
+      {
+        name: rstdet_enable
+        desc: Enables the SCL/SDA inputs of the Target Reset Detector; deasserted while the Target is disconnected from the bus.
+        struct: logic
+        type: uni
+        act: rcv
+        width: 1
+        partition: secondary
+        inst_name: i3c0
+        default: ""
+        package: ""
+        domain: Aon
+        top_signame: i3c0_rstdet_enable
+        index: -1
+        external: true
+        conn_type: false
       }
       {
         name: rstdet
+        desc: Control and status interface to the Target Reset Detector in the secondary partition.
         struct: i3c_rstdet
         package: i3c_pkg
         type: req_rsp
         act: req
         width: 1
         inst_name: i3c0
+        default: ""
+        end_idx: -1
+        top_type: one-to-one
+        top_signame: i3c0_rstdet
+        index: -1
+        external: true
+        conn_type: false
+      }
+      {
+        name: rstdet
+        desc: Control and status interface of the Target Reset Detector to the primary partition.
+        struct: i3c_rstdet
+        package: i3c_pkg
+        type: req_rsp
+        act: rsp
+        width: 1
+        partition: secondary
+        inst_name: i3c0
+        default: ""
+        domain: Aon
+        top_signame: i3c0_rstdet
+        index: -1
+        external: true
+        conn_type: false
+      }
+      {
+        name: rstdet_wkup_req
+        desc: Wake-up request on detection of the Target Reset Pattern.
+        struct: logic
+        type: uni
+        act: req
+        width: 1
+        partition: secondary
+        inst_name: i3c0
+        default: ""
+        package: ""
+        domain: Aon
+        top_signame: pwrmgr_wakeups
+        index: 0
+      }
+      {
+        name: rstdet_target_rst
+        desc: Reset request for the I3C peripheral on detection of the Target Reset Pattern.
+        struct: logic
+        type: uni
+        act: req
+        width: 1
+        partition: secondary
+        inst_name: i3c0
         index: -1
       }
       {
         name: mbist_en
+        desc: Memory built-in self-test enable (unused).
         struct: logic
         type: uni
         act: rcv
@@ -24922,6 +26022,7 @@
       }
       {
         name: ram_cfg
+        desc: RAM configuration of the message buffer memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -24934,6 +26035,7 @@
       }
       {
         name: dat_cfg
+        desc: RAM configuration of the Device Address Table (DAT) memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -24946,6 +26048,7 @@
       }
       {
         name: dct_cfg
+        desc: RAM configuration of the Device Characteristics Table (DCT) memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -24998,25 +26101,95 @@
       }
       {
         name: rstdet_enable
+        desc: Enables the SCL/SDA inputs of the Target Reset Detector in the secondary partition; deasserted while the Target is disconnected from the bus.
         struct: logic
         type: uni
         act: req
         width: 1
         inst_name: i3c1
+        default: ""
+        package: ""
+        end_idx: -1
+        top_type: broadcast
+        top_signame: i3c1_rstdet_enable
+        index: -1
+      }
+      {
+        name: rstdet_enable
+        desc: Enables the SCL/SDA inputs of the Target Reset Detector; deasserted while the Target is disconnected from the bus.
+        struct: logic
+        type: uni
+        act: rcv
+        width: 1
+        partition: secondary
+        inst_name: i3c1
+        default: ""
+        package: ""
+        domain: Main
+        top_signame: i3c1_rstdet_enable
         index: -1
       }
       {
         name: rstdet
+        desc: Control and status interface to the Target Reset Detector in the secondary partition.
         struct: i3c_rstdet
         package: i3c_pkg
         type: req_rsp
         act: req
         width: 1
         inst_name: i3c1
+        default: ""
+        end_idx: -1
+        top_type: one-to-one
+        top_signame: i3c1_rstdet
+        index: -1
+      }
+      {
+        name: rstdet
+        desc: Control and status interface of the Target Reset Detector to the primary partition.
+        struct: i3c_rstdet
+        package: i3c_pkg
+        type: req_rsp
+        act: rsp
+        width: 1
+        partition: secondary
+        inst_name: i3c1
+        default: ""
+        domain: Main
+        top_signame: i3c1_rstdet
+        index: -1
+      }
+      {
+        name: rstdet_wkup_req
+        desc: Wake-up request on detection of the Target Reset Pattern.
+        struct: logic
+        type: uni
+        act: req
+        width: 1
+        partition: secondary
+        inst_name: i3c1
+        default: ""
+        package: ""
+        domain: Main
+        top_signame: pwrmgr_wakeups
+        index: -1
+        external: true
+        conn_type: false
+      }
+      {
+        name: rstdet_target_rst
+        desc: Reset request for the I3C peripheral on detection of the Target Reset Pattern.
+        struct: logic
+        type: uni
+        act: req
+        width: 1
+        partition: secondary
+        inst_name: i3c1
         index: -1
       }
       {
         name: mbist_en
+        desc: Memory built-in self-test enable (unused).
         struct: logic
         type: uni
         act: rcv
@@ -25056,6 +26229,7 @@
       }
       {
         name: ram_cfg
+        desc: RAM configuration of the message buffer memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -25068,6 +26242,7 @@
       }
       {
         name: dat_cfg
+        desc: RAM configuration of the Device Address Table (DAT) memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -25080,6 +26255,7 @@
       }
       {
         name: dct_cfg
+        desc: RAM configuration of the Device Characteristics Table (DCT) memory.
         struct: ram_1p_cfg
         package: prim_ram_1p_pkg
         type: req_rsp
@@ -25663,9 +26839,12 @@
         name: lc_hw_debug_clr
         desc:
           '''
-          Clear HW debug functionality.
-          This signal is On when `lc_hw_debug_en` turns Off outside a reset of `lc_ctrl`.
-          Flops storing the value of `lc_hw_debug_en` (see below) must be cleared when this signal is On.
+          Clear HW debug functionality; see `HW_DEBUG_CLR` in the Theory of Operation doc for details.
+
+          This signal is used to clear stored copies of `lc_hw_debug_en` when HW debug functionality gets disabled outside a reset of `lc_ctrl`.
+          This signal is On in the SCRAP, INVALID, POST_TRANSITION and ESCALATION states, in which `lc_hw_debug_en` is Off.
+          Once On, it remains On until lc_ctrl is reset.
+          Flops storing the value of `lc_hw_debug_en` (see below) must be cleared whenever this signal is not Off.
           '''
         struct: lc_tx
         package: lc_ctrl_pkg
@@ -25689,7 +26868,7 @@
 
           This signal is Off while lc_ctrl is in reset.
           In order to prevent a JTAG disconnect during non-debug-module (NDM) reset, this signal should be flopped outside the NDM reset domain.
-          Such a flop must be cleared when `lc_hw_debug_clr` is On; see above.
+          Such a flop must be cleared whenever `lc_hw_debug_clr` is not Off; see above.
           '''
         struct: lc_tx
         package: lc_ctrl_pkg
@@ -26348,8 +27527,6 @@
         top_type: broadcast
         top_signame: usbdev_usb_ref_val
         index: -1
-        external: true
-        conn_type: false
       }
       {
         name: usb_ref_pulse
@@ -26365,8 +27542,6 @@
         top_type: broadcast
         top_signame: usbdev_usb_ref_pulse
         index: -1
-        external: true
-        conn_type: false
       }
       {
         name: usb_aon_suspend_req
@@ -26635,14 +27810,16 @@
         struct: logic
         type: uni
         act: rcv
-        width: 6
+        width: 8
         inst_name: pwrmgr
         default: ""
         package: ""
         end_idx: -1
         top_type: one-to-N
         top_signame: pwrmgr_wakeups
-        index: -1
+        index: 1
+        external: true
+        conn_type: true
       }
       {
         name: rstreqs
@@ -26972,7 +28149,7 @@
         top_signame: clkmgr_io_clk_byp_req
         index: -1
         external: true
-        conn_type: true
+        conn_type: false
       }
       {
         name: io_clk_byp_ack
@@ -27004,7 +28181,7 @@
         top_signame: clkmgr_all_clk_byp_req
         index: -1
         external: true
-        conn_type: true
+        conn_type: false
       }
       {
         name: all_clk_byp_ack
@@ -27036,7 +28213,7 @@
         top_signame: clkmgr_hi_speed_sel
         index: -1
         external: true
-        conn_type: true
+        conn_type: false
       }
       {
         name: div_step_down_req
@@ -27171,7 +28348,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 0
+        index: 2
       }
       {
         name: rst_req
@@ -27226,7 +28403,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 1
+        index: 3
       }
       {
         name: tl
@@ -27495,7 +28672,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 2
+        index: 4
       }
       {
         name: usbdev_dppullup_en
@@ -27571,7 +28748,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 3
+        index: 5
       }
       {
         name: usbdev_suspend_req
@@ -27713,7 +28890,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 4
+        index: 6
       }
       {
         name: aon_timer_rst_req
@@ -28217,23 +29394,6 @@
         index: -1
       }
       {
-        name: sns_spi_ext_clk
-        desc: Sensed SPI external clock
-        struct: logic
-        type: uni
-        act: rcv
-        width: 1
-        partition: secondary
-        inst_name: ast
-        default: ""
-        package: ""
-        domain: Aon
-        top_signame: spi_device_sck_monitor
-        index: -1
-        external: true
-        conn_type: false
-      }
-      {
         name: vx_supp
         desc: Supply voltage tests for OS FPGA
         struct: ast_vx_supp
@@ -28248,18 +29408,6 @@
         conn_type: false
         index: -1
         top_signame: ast_vx_supp
-      }
-      {
-        name: ast_pwst
-        desc: AON, MAIN, IO-0 rail, IO-1 rail power OK @1.1V
-        struct: ast_pwst
-        package: ast_pkg
-        type: uni
-        act: req
-        width: 1
-        partition: secondary
-        inst_name: ast
-        index: -1
       }
       {
         name: ast_pwst_h
@@ -28388,15 +29536,12 @@
         type: uni
         act: rcv
         width: 1
-        partition: secondary
         inst_name: ast
         default: ""
         package: ""
-        domain: Aon
+        domain: Main
         top_signame: usbdev_usb_ref_pulse
         index: -1
-        external: true
-        conn_type: false
       }
       {
         name: usb_ref_val
@@ -28405,15 +29550,12 @@
         type: uni
         act: rcv
         width: 1
-        partition: secondary
         inst_name: ast
         default: ""
         package: ""
-        domain: Aon
+        domain: Main
         top_signame: usbdev_usb_ref_val
         index: -1
-        external: true
-        conn_type: false
       }
       {
         name: alert
@@ -28615,22 +29757,6 @@
         conn_type: true
       }
       {
-        name: clk_osc_byp
-        desc: Clocks' oscillator bypass for OS FPGA/Verilator (AST_BYPASS_CLK only)
-        struct: clks_osc_byp
-        package: ast_pkg
-        type: uni
-        act: rcv
-        width: 1
-        partition: secondary
-        inst_name: ast
-        default: ""
-        top_signame: ast_clk_osc_byp
-        index: -1
-        external: true
-        conn_type: true
-      }
-      {
         name: ext_freq_is_96m
         desc: External clock frequency is 96MHz
         struct: mubi4
@@ -28645,21 +29771,6 @@
         index: -1
         external: true
         conn_type: false
-      }
-      {
-        name: ext_freq_is_96m
-        desc: External clock frequency is 96MHz
-        struct: mubi4
-        package: prim_mubi_pkg
-        type: uni
-        act: rcv
-        width: 1
-        partition: secondary
-        inst_name: ast
-        default: ""
-        domain: Aon
-        top_signame: clkmgr_hi_speed_sel
-        index: -1
       }
       {
         name: all_clk_byp_req
@@ -28678,21 +29789,6 @@
         conn_type: false
       }
       {
-        name: all_clk_byp_req
-        desc: All clocks bypass request
-        struct: mubi4
-        package: prim_mubi_pkg
-        type: uni
-        act: rcv
-        width: 1
-        partition: secondary
-        inst_name: ast
-        default: ""
-        domain: Aon
-        top_signame: clkmgr_all_clk_byp_req
-        index: -1
-      }
-      {
         name: io_clk_byp_req
         desc: IO clock bypass request (for OTP bootstrap)
         struct: mubi4
@@ -28707,21 +29803,6 @@
         index: -1
         external: true
         conn_type: false
-      }
-      {
-        name: io_clk_byp_req
-        desc: IO clock bypass request (for OTP bootstrap)
-        struct: mubi4
-        package: prim_mubi_pkg
-        type: uni
-        act: rcv
-        width: 1
-        partition: secondary
-        inst_name: ast
-        default: ""
-        domain: Aon
-        top_signame: clkmgr_io_clk_byp_req
-        index: -1
       }
       {
         name: intraip_s2p
@@ -28871,7 +29952,7 @@
         package: ""
         domain: Aon
         top_signame: pwrmgr_wakeups
-        index: 5
+        index: 7
       }
       {
         name: manual_pad_attr
@@ -29389,6 +30470,25 @@
         index: -1
         external: true
         conn_type: false
+      }
+      {
+        name: cheriot_ena
+        desc:
+          '''
+          CHERIoT mode enable.
+          Selects which ROM and which abstract command encodings the debug module uses.
+          Ignored unless CheriotSupport is set.
+          '''
+        struct: mubi4
+        package: prim_mubi_pkg
+        type: uni
+        act: rcv
+        width: 1
+        default: prim_mubi_pkg::MuBi4False
+        inst_name: rv_dm
+        domain: Main
+        top_signame: rv_core_ibex_cheriot_ena
+        index: -1
       }
       {
         name: lc_init_done
@@ -30109,7 +31209,7 @@
         index: -1
       }
       {
-        name: kmac_data
+        name: kmac_app
         struct: app
         package: kmac_pkg
         type: req_rsp
@@ -30120,6 +31220,34 @@
         domain: Main
         top_signame: kmac_app
         index: 3
+      }
+      {
+        name: keymgr_app
+        struct: app
+        package: kmac_pkg
+        type: req_rsp
+        act: rsp
+        width: 1
+        inst_name: otbn
+        default: ""
+        end_idx: -1
+        top_type: one-to-one
+        top_signame: otbn_keymgr_app
+        index: -1
+      }
+      {
+        name: keymgr_sensitive_key
+        struct: mubi4
+        package: prim_mubi_pkg
+        type: uni
+        act: rcv
+        width: 1
+        default: prim_mubi_pkg::MuBi4False
+        inst_name: otbn
+        end_idx: -1
+        top_type: broadcast
+        top_signame: otbn_keymgr_sensitive_key
+        index: -1
       }
       {
         name: tl
@@ -30205,7 +31333,7 @@
         index: -1
       }
       {
-        name: kmac_data
+        name: kmac_app
         struct: app
         package: kmac_pkg
         type: req_rsp
@@ -30218,6 +31346,32 @@
         index: 0
       }
       {
+        name: otbn_app
+        struct: app
+        package: kmac_pkg
+        type: req_rsp
+        act: req
+        width: 1
+        inst_name: keymgr_dpe
+        default: ""
+        domain: Main
+        top_signame: otbn_keymgr_app
+        index: -1
+      }
+      {
+        name: sensitive_key
+        struct: mubi4
+        package: prim_mubi_pkg
+        type: uni
+        act: req
+        width: 1
+        default: prim_mubi_pkg::MuBi4False
+        inst_name: keymgr_dpe
+        domain: Main
+        top_signame: otbn_keymgr_sensitive_key
+        index: -1
+      }
+      {
         name: creator_root_key
         struct: keymgr_dpe_creator_root_key
         package: keymgr_dpe_pkg
@@ -30228,6 +31382,17 @@
         default: ""
         domain: Main
         top_signame: otp_ctrl_keymgr_creator_root_key
+        index: -1
+      }
+      {
+        name: secondary_root_key
+        struct: keymgr_dpe_creator_root_key
+        package: keymgr_dpe_pkg
+        type: uni
+        act: rcv
+        width: 1
+        default: keymgr_dpe_pkg::KEYMGR_DPE_SECONDARY_ROOT_KEY_DEFAULT
+        inst_name: keymgr_dpe
         index: -1
       }
       {
@@ -30266,6 +31431,16 @@
         inst_name: keymgr_dpe
         default: ""
         top_signame: keymgr_dpe_device_id
+        index: -1
+      }
+      {
+        name: field_entropy
+        struct: keymgr_dpe_field_entropy
+        package: keymgr_dpe_pkg
+        type: uni
+        act: rcv
+        width: 1
+        inst_name: keymgr_dpe
         index: -1
       }
       {
@@ -32273,7 +33448,7 @@
         index: -1
       }
       {
-        name: tl_gpio
+        name: tl_gpio0
         struct: tl
         package: tlul_pkg
         type: req_rsp
@@ -32282,7 +33457,20 @@
         width: 1
         default: ""
         domain: Main
-        top_signame: gpio_tl
+        top_signame: gpio0_tl
+        index: -1
+      }
+      {
+        name: tl_gpio1
+        struct: tl
+        package: tlul_pkg
+        type: req_rsp
+        act: req
+        inst_name: peri
+        width: 1
+        default: ""
+        domain: Main
+        top_signame: gpio1_tl
         index: -1
       }
       {
@@ -32637,126 +33825,6 @@
         netname: ast_init_done
       }
       {
-        package: ""
-        struct: logic
-        domain: Main
-        inter_pd: true
-        signame: spi_device_sck_monitor_o
-        signame_chip:
-        {
-          asic: spi_device_sck_monitor
-          verilator: spi_device_sck_monitor
-          cw340: spi_device_sck_monitor
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: out
-        conn_type: false
-        index: -1
-        netname: spi_device_sck_monitor
-      }
-      {
-        package: ""
-        struct: logic
-        domain: Aon
-        inter_pd: true
-        signame: spi_device_sck_monitor_i
-        signame_chip:
-        {
-          asic: spi_device_sck_monitor
-          verilator: spi_device_sck_monitor
-          cw340: spi_device_sck_monitor
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: in
-        conn_type: false
-        index: -1
-        netname: spi_device_sck_monitor
-      }
-      {
-        package: ""
-        struct: logic
-        domain: Main
-        inter_pd: true
-        signame: usbdev_usb_ref_pulse_o
-        signame_chip:
-        {
-          asic: usbdev_usb_ref_pulse
-          verilator: usbdev_usb_ref_pulse
-          cw340: usbdev_usb_ref_pulse
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: out
-        conn_type: false
-        index: -1
-        netname: usbdev_usb_ref_pulse
-      }
-      {
-        package: ""
-        struct: logic
-        domain: Aon
-        inter_pd: true
-        signame: usbdev_usb_ref_pulse_i
-        signame_chip:
-        {
-          asic: usbdev_usb_ref_pulse
-          verilator: usbdev_usb_ref_pulse
-          cw340: usbdev_usb_ref_pulse
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: in
-        conn_type: false
-        index: -1
-        netname: usbdev_usb_ref_pulse
-      }
-      {
-        package: ""
-        struct: logic
-        domain: Main
-        inter_pd: true
-        signame: usbdev_usb_ref_val_o
-        signame_chip:
-        {
-          asic: usbdev_usb_ref_val
-          verilator: usbdev_usb_ref_val
-          cw340: usbdev_usb_ref_val
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: out
-        conn_type: false
-        index: -1
-        netname: usbdev_usb_ref_val
-      }
-      {
-        package: ""
-        struct: logic
-        domain: Aon
-        inter_pd: true
-        signame: usbdev_usb_ref_val_i
-        signame_chip:
-        {
-          asic: usbdev_usb_ref_val
-          verilator: usbdev_usb_ref_val
-          cw340: usbdev_usb_ref_val
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: in
-        conn_type: false
-        index: -1
-        netname: usbdev_usb_ref_val
-      }
-      {
         package: prim_mubi_pkg
         struct: mubi4
         domain: Aon
@@ -32772,7 +33840,7 @@
         type: uni
         default: ""
         direction: out
-        conn_type: true
+        conn_type: false
         index: -1
         netname: clkmgr_all_clk_byp_req
       }
@@ -32852,7 +33920,7 @@
         type: uni
         default: ""
         direction: out
-        conn_type: true
+        conn_type: false
         index: -1
         netname: clkmgr_io_clk_byp_req
       }
@@ -32932,7 +34000,7 @@
         type: uni
         default: ""
         direction: out
-        conn_type: true
+        conn_type: false
         index: -1
         netname: clkmgr_hi_speed_sel
       }
@@ -34517,6 +35585,166 @@
         netname: rv_dm_ndmreset_req
       }
       {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: pwrmgr_wakeups_i
+        signame_chip:
+        {
+          asic: pwrmgr_wakeups
+          verilator: pwrmgr_wakeups
+          cw340: pwrmgr_wakeups
+        }
+        width: 1
+        type: uni
+        default: ""
+        direction: in
+        conn_type: true
+        index: 1
+        netname: pwrmgr_wakeups
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: pwrmgr_wakeups_o
+        signame_chip:
+        {
+          asic: pwrmgr_wakeups
+          verilator: pwrmgr_wakeups
+          cw340: pwrmgr_wakeups
+        }
+        width: 1
+        type: uni
+        default: ""
+        direction: out
+        conn_type: false
+        index: 1
+        netname: pwrmgr_wakeups
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: i3c0_rstdet_enable_o
+        signame_chip:
+        {
+          asic: i3c0_rstdet_enable
+          verilator: i3c0_rstdet_enable
+          cw340: i3c0_rstdet_enable
+        }
+        width: 1
+        type: uni
+        default: ""
+        direction: out
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_enable
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: i3c0_rstdet_enable_i
+        signame_chip:
+        {
+          asic: i3c0_rstdet_enable
+          verilator: i3c0_rstdet_enable
+          cw340: i3c0_rstdet_enable
+        }
+        width: 1
+        type: uni
+        default: ""
+        direction: in
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_enable
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_req
+        domain: Main
+        inter_pd: true
+        signame: i3c0_rstdet_req_o
+        signame_chip:
+        {
+          asic: i3c0_rstdet_req
+          verilator: i3c0_rstdet_req
+          cw340: i3c0_rstdet_req
+        }
+        width: 1
+        type: req_rsp
+        default: ""
+        direction: out
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_req
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_rsp
+        domain: Main
+        inter_pd: true
+        signame: i3c0_rstdet_rsp_i
+        signame_chip:
+        {
+          asic: i3c0_rstdet_rsp
+          verilator: i3c0_rstdet_rsp
+          cw340: i3c0_rstdet_rsp
+        }
+        width: 1
+        type: req_rsp
+        default: ""
+        direction: in
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_rsp
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_req
+        domain: Aon
+        inter_pd: true
+        signame: i3c0_rstdet_req_i
+        signame_chip:
+        {
+          asic: i3c0_rstdet_req
+          verilator: i3c0_rstdet_req
+          cw340: i3c0_rstdet_req
+        }
+        width: 1
+        type: req_rsp
+        default: ""
+        direction: in
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_req
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_rsp
+        domain: Aon
+        inter_pd: true
+        signame: i3c0_rstdet_rsp_o
+        signame_chip:
+        {
+          asic: i3c0_rstdet_rsp
+          verilator: i3c0_rstdet_rsp
+          cw340: i3c0_rstdet_rsp
+        }
+        width: 1
+        type: req_rsp
+        default: ""
+        direction: out
+        conn_type: false
+        index: -1
+        netname: i3c0_rstdet_rsp
+      }
+      {
         package: ast_intraip_pkg
         struct: s2p
         domain: Aon
@@ -35683,32 +36911,12 @@
         struct: clks_osc_byp
         domain: Main
         inter_pd: false
-        signame: clk_osc_byp_pd_main_i
+        signame: clks_osc_byp_i
         signame_chip:
         {
-          asic: clk_osc_byp_pd_main
-          verilator: clk_osc_byp_pd_main
-          cw340: clk_osc_byp_pd_main
-        }
-        width: 1
-        type: uni
-        default: ""
-        direction: in
-        conn_type: true
-        index: -1
-        netname: ast_clk_osc_byp
-      }
-      {
-        package: ast_pkg
-        struct: clks_osc_byp
-        domain: Aon
-        inter_pd: false
-        signame: clk_osc_byp_pd_aon_i
-        signame_chip:
-        {
-          asic: clk_osc_byp_pd_aon
-          verilator: clk_osc_byp_pd_aon
-          cw340: clk_osc_byp_pd_aon
+          asic: clks_osc_byp
+          verilator: clks_osc_byp
+          cw340: clks_osc_byp
         }
         width: 1
         type: uni
@@ -36423,12 +37631,12 @@
         struct: logic
         domain: Main
         inter_pd: true
-        signame: cio_gpio_gpio_d2p_o
+        signame: cio_gpio0_gpio_d2p_o
         signame_chip:
         {
-          asic: cio_gpio_gpio_d2p
-          verilator: cio_gpio_gpio_d2p
-          cw340: cio_gpio_gpio_d2p
+          asic: cio_gpio0_gpio_d2p
+          verilator: cio_gpio0_gpio_d2p
+          cw340: cio_gpio0_gpio_d2p
         }
         width: 32
         type: uni
@@ -36436,19 +37644,19 @@
         direction: out
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_d2p
+        netname: cio_gpio0_gpio_d2p
       }
       {
         package: ""
         struct: logic
         domain: Aon
         inter_pd: true
-        signame: cio_gpio_gpio_d2p_i
+        signame: cio_gpio0_gpio_d2p_i
         signame_chip:
         {
-          asic: cio_gpio_gpio_d2p
-          verilator: cio_gpio_gpio_d2p
-          cw340: cio_gpio_gpio_d2p
+          asic: cio_gpio0_gpio_d2p
+          verilator: cio_gpio0_gpio_d2p
+          cw340: cio_gpio0_gpio_d2p
         }
         width: 32
         type: uni
@@ -36456,19 +37664,19 @@
         direction: in
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_d2p
+        netname: cio_gpio0_gpio_d2p
       }
       {
         package: ""
         struct: logic
         domain: Main
         inter_pd: true
-        signame: cio_gpio_gpio_en_d2p_o
+        signame: cio_gpio0_gpio_en_d2p_o
         signame_chip:
         {
-          asic: cio_gpio_gpio_en_d2p
-          verilator: cio_gpio_gpio_en_d2p
-          cw340: cio_gpio_gpio_en_d2p
+          asic: cio_gpio0_gpio_en_d2p
+          verilator: cio_gpio0_gpio_en_d2p
+          cw340: cio_gpio0_gpio_en_d2p
         }
         width: 32
         type: uni
@@ -36476,19 +37684,19 @@
         direction: out
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_en_d2p
+        netname: cio_gpio0_gpio_en_d2p
       }
       {
         package: ""
         struct: logic
         domain: Aon
         inter_pd: true
-        signame: cio_gpio_gpio_en_d2p_i
+        signame: cio_gpio0_gpio_en_d2p_i
         signame_chip:
         {
-          asic: cio_gpio_gpio_en_d2p
-          verilator: cio_gpio_gpio_en_d2p
-          cw340: cio_gpio_gpio_en_d2p
+          asic: cio_gpio0_gpio_en_d2p
+          verilator: cio_gpio0_gpio_en_d2p
+          cw340: cio_gpio0_gpio_en_d2p
         }
         width: 32
         type: uni
@@ -36496,19 +37704,19 @@
         direction: in
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_en_d2p
+        netname: cio_gpio0_gpio_en_d2p
       }
       {
         package: ""
         struct: logic
         domain: Main
         inter_pd: true
-        signame: cio_gpio_gpio_p2d_i
+        signame: cio_gpio0_gpio_p2d_i
         signame_chip:
         {
-          asic: cio_gpio_gpio_p2d
-          verilator: cio_gpio_gpio_p2d
-          cw340: cio_gpio_gpio_p2d
+          asic: cio_gpio0_gpio_p2d
+          verilator: cio_gpio0_gpio_p2d
+          cw340: cio_gpio0_gpio_p2d
         }
         width: 32
         type: uni
@@ -36516,19 +37724,19 @@
         direction: in
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_p2d
+        netname: cio_gpio0_gpio_p2d
       }
       {
         package: ""
         struct: logic
         domain: Aon
         inter_pd: true
-        signame: cio_gpio_gpio_p2d_o
+        signame: cio_gpio0_gpio_p2d_o
         signame_chip:
         {
-          asic: cio_gpio_gpio_p2d
-          verilator: cio_gpio_gpio_p2d
-          cw340: cio_gpio_gpio_p2d
+          asic: cio_gpio0_gpio_p2d
+          verilator: cio_gpio0_gpio_p2d
+          cw340: cio_gpio0_gpio_p2d
         }
         width: 32
         type: uni
@@ -36536,7 +37744,127 @@
         direction: out
         conn_type: false
         index: -1
-        netname: cio_gpio_gpio_p2d
+        netname: cio_gpio0_gpio_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: cio_gpio1_gpio_d2p_o
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_d2p
+          verilator: cio_gpio1_gpio_d2p
+          cw340: cio_gpio1_gpio_d2p
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: out
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_d2p
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: cio_gpio1_gpio_d2p_i
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_d2p
+          verilator: cio_gpio1_gpio_d2p
+          cw340: cio_gpio1_gpio_d2p
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: in
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_d2p
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: cio_gpio1_gpio_en_d2p_o
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_en_d2p
+          verilator: cio_gpio1_gpio_en_d2p
+          cw340: cio_gpio1_gpio_en_d2p
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: out
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_en_d2p
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: cio_gpio1_gpio_en_d2p_i
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_en_d2p
+          verilator: cio_gpio1_gpio_en_d2p
+          cw340: cio_gpio1_gpio_en_d2p
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: in
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_en_d2p
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: cio_gpio1_gpio_p2d_i
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_p2d
+          verilator: cio_gpio1_gpio_p2d
+          cw340: cio_gpio1_gpio_p2d
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: in
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: cio_gpio1_gpio_p2d_o
+        signame_chip:
+        {
+          asic: cio_gpio1_gpio_p2d
+          verilator: cio_gpio1_gpio_p2d
+          cw340: cio_gpio1_gpio_p2d
+        }
+        width: 32
+        type: uni
+        default: "'0"
+        direction: out
+        conn_type: false
+        index: -1
+        netname: cio_gpio1_gpio_p2d
       }
       {
         package: ""
@@ -38063,6 +39391,86 @@
         struct: logic
         domain: Main
         inter_pd: true
+        signame: cio_i3c1_rstdet_scl_p2d_i
+        signame_chip:
+        {
+          asic: cio_i3c1_rstdet_scl_p2d
+          verilator: cio_i3c1_rstdet_scl_p2d
+          cw340: cio_i3c1_rstdet_scl_p2d
+        }
+        width: 1
+        type: uni
+        default: "'0"
+        direction: in
+        conn_type: false
+        index: -1
+        netname: cio_i3c1_rstdet_scl_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: cio_i3c1_rstdet_scl_p2d_o
+        signame_chip:
+        {
+          asic: cio_i3c1_rstdet_scl_p2d
+          verilator: cio_i3c1_rstdet_scl_p2d
+          cw340: cio_i3c1_rstdet_scl_p2d
+        }
+        width: 1
+        type: uni
+        default: "'0"
+        direction: out
+        conn_type: false
+        index: -1
+        netname: cio_i3c1_rstdet_scl_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
+        signame: cio_i3c1_rstdet_sda_p2d_i
+        signame_chip:
+        {
+          asic: cio_i3c1_rstdet_sda_p2d
+          verilator: cio_i3c1_rstdet_sda_p2d
+          cw340: cio_i3c1_rstdet_sda_p2d
+        }
+        width: 1
+        type: uni
+        default: "'0"
+        direction: in
+        conn_type: false
+        index: -1
+        netname: cio_i3c1_rstdet_sda_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Aon
+        inter_pd: true
+        signame: cio_i3c1_rstdet_sda_p2d_o
+        signame_chip:
+        {
+          asic: cio_i3c1_rstdet_sda_p2d
+          verilator: cio_i3c1_rstdet_sda_p2d
+          cw340: cio_i3c1_rstdet_sda_p2d
+        }
+        width: 1
+        type: uni
+        default: "'0"
+        direction: out
+        conn_type: false
+        index: -1
+        netname: cio_i3c1_rstdet_sda_p2d
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        inter_pd: true
         signame: cio_i3c1_ctrl_sda_pu_d2p_o
         signame_chip:
         {
@@ -39443,6 +40851,30 @@
         default: ast_pkg::AST_STATUS_DEFAULT
       }
       {
+        package: ""
+        struct: logic
+        domain: Main
+        signame: usbdev_usb_ref_pulse
+        width: 1
+        type: uni
+        end_idx: -1
+        act: req
+        suffix: ""
+        default: 1'b0
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        signame: usbdev_usb_ref_val
+        width: 1
+        type: uni
+        end_idx: -1
+        act: req
+        suffix: ""
+        default: 1'b0
+      }
+      {
         package: pinmux_pkg
         struct: dft_strap_test_req
         domain: Aon
@@ -39453,42 +40885,6 @@
         act: req
         suffix: ""
         default: "'0"
-      }
-      {
-        package: prim_mubi_pkg
-        struct: mubi4
-        domain: Aon
-        signame: clkmgr_all_clk_byp_req
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: prim_mubi_pkg::MUBI4_DEFAULT
-      }
-      {
-        package: prim_mubi_pkg
-        struct: mubi4
-        domain: Aon
-        signame: clkmgr_io_clk_byp_req
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: prim_mubi_pkg::MUBI4_DEFAULT
-      }
-      {
-        package: prim_mubi_pkg
-        struct: mubi4
-        domain: Aon
-        signame: clkmgr_hi_speed_sel
-        width: 1
-        type: uni
-        end_idx: -1
-        act: req
-        suffix: ""
-        default: prim_mubi_pkg::MUBI4_DEFAULT
       }
       {
         package: ast_pkg
@@ -40031,6 +41427,42 @@
         default: 1'b0
       }
       {
+        package: kmac_pkg
+        struct: app_req
+        domain: Main
+        signame: otbn_keymgr_app_req
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: rsp
+        suffix: req
+        default: kmac_pkg::APP_REQ_DEFAULT
+      }
+      {
+        package: kmac_pkg
+        struct: app_rsp
+        domain: Main
+        signame: otbn_keymgr_app_rsp
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: rsp
+        suffix: rsp
+        default: ""
+      }
+      {
+        package: prim_mubi_pkg
+        struct: mubi4
+        domain: Main
+        signame: otbn_keymgr_sensitive_key
+        width: 1
+        type: uni
+        end_idx: -1
+        act: rcv
+        suffix: ""
+        default: prim_mubi_pkg::MuBi4False
+      }
+      {
         package: otp_ctrl_pkg
         struct: otp_lc_data
         domain: Main
@@ -40503,7 +41935,7 @@
         struct: logic
         domain: Aon
         signame: pwrmgr_wakeups
-        width: 6
+        width: 8
         type: uni
         end_idx: -1
         act: rcv
@@ -40521,6 +41953,42 @@
         act: rcv
         suffix: ""
         default: "'0"
+      }
+      {
+        package: ""
+        struct: logic
+        domain: Main
+        signame: i3c1_rstdet_enable
+        width: 1
+        type: uni
+        end_idx: -1
+        act: req
+        suffix: ""
+        default: 1'b0
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_req
+        domain: Main
+        signame: i3c1_rstdet_req
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: req
+        suffix: req
+        default: ""
+      }
+      {
+        package: i3c_pkg
+        struct: i3c_rstdet_rsp
+        domain: Main
+        signame: i3c1_rstdet_rsp
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: req
+        suffix: rsp
+        default: i3c_pkg::I3C_RSTDET_RSP_DEFAULT
       }
       {
         package: tlul_pkg
@@ -41534,7 +43002,7 @@
         package: tlul_pkg
         struct: tl_h2d
         domain: Main
-        signame: gpio_tl_req
+        signame: gpio0_tl_req
         width: 1
         type: req_rsp
         end_idx: -1
@@ -41546,7 +43014,31 @@
         package: tlul_pkg
         struct: tl_d2h
         domain: Main
-        signame: gpio_tl_rsp
+        signame: gpio0_tl_rsp
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: rsp
+        suffix: rsp
+        default: ""
+      }
+      {
+        package: tlul_pkg
+        struct: tl_h2d
+        domain: Main
+        signame: gpio1_tl_req
+        width: 1
+        type: req_rsp
+        end_idx: -1
+        act: rsp
+        suffix: req
+        default: tlul_pkg::TL_H2D_DEFAULT
+      }
+      {
+        package: tlul_pkg
+        struct: tl_d2h
+        domain: Main
+        signame: gpio1_tl_rsp
         width: 1
         type: req_rsp
         end_idx: -1
@@ -41723,16 +43215,6 @@
         struct: clks_osc_byp
         signame: ast_clk_osc_byp
         domain: Main
-        width: 1
-        type: uni
-        end_idx: -1
-        default: ""
-      }
-      {
-        package: ast_pkg
-        struct: clks_osc_byp
-        signame: ast_clk_osc_byp
-        domain: Aon
         width: 1
         type: uni
         end_idx: -1

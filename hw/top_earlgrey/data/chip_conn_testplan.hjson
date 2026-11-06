@@ -47,8 +47,8 @@
               "ast_clk_usb_in",
               "ast_clk_sns_in",
               "ast_clk_jen_in",
-              "ast_all_byp_ack_in",
-              "ast_io_byp_ack_in",
+              "ast_all_byp_req_in",
+              "ast_io_byp_req_in",
               "ast_hispeed_sel_in"]
       si_stage: NA
       tags: ["conn"]
@@ -62,11 +62,7 @@
       desc: '''Verify the connectivity of power-related signals between AST and power manager.
             '''
       stage: V2
-      tests: ["ast_clk_sys_val_out",
-              "ast_clk_aon_val_out",
-              "ast_clk_usb_val_out",
-              "ast_clk_io_val_out",
-              "ast_main_pok_out",
+      tests: ["ast_clk_val_main_pok_out",
               "ast_clk_sys_en_in",
               "ast_clk_usb_en_in",
               "ast_clk_io_en_in"]
@@ -129,7 +125,7 @@
                excluding clkmgr connections.
             '''
       stage: V2
-      tests: ["ast_clk_ext_in", "ast_clk_spi_sns_in"]
+      tests: ["ast_clk_ext_in_1st", "ast_clk_ext_in_2nd"]
       si_stage: NA
       tags: ["conn"]
     }
@@ -151,10 +147,8 @@
       stage: V2
       tests: ["ast_usb_ref_in",
               "ast_usb_ref_val_in",
-              "ast_otp_pwr_seq_in",
               "ast_main_pd_in",
-              "ast_main_iso_en_in",
-              "ast_otp_pwr_seq_out",]
+              "ast_main_iso_en_in"]
       si_stage: NA
       tags: ["conn"]
     }
@@ -162,17 +156,6 @@
     /////////////////////////
     // ast_mem_cfg.csv     //
     /////////////////////////
-    {
-      name: ast_dft_ram_2p_cfg
-      desc: '''Verify ast model's dual port configuration bits are connected to the dual port RAMs
-            in the following blocks:
-            - spi_device
-            '''
-      stage: V2
-      tests: ["ast_spi_device_ram_2p_cfg"]
-      si_stage: NA
-      tags: ["conn"]
-    }
     {
       name: ast_dft_ram_1p_cfg
       desc: '''Verify ast model's single port configuration bits are connected to the single port
@@ -187,6 +170,8 @@
             - sram_retention
             - rom
             - usbdev
+            - spi_device (sys2spi, spi2sys)
+            - sram_meta
             '''
       stage: V2
       tests: ["ast_otbn_imem_ram_1p_cfg",
@@ -198,7 +183,10 @@
               "ast_sram_main_ram_1p_cfg",
               "ast_sram_ret_ram_1p_cfg",
               "ast_rom_cfg",
-              "ast_usbdev_ram_1p_cfg"]
+              "ast_usbdev_ram_1p_cfg",
+              "ast_spi_device_sys2spi_ram_1p_cfg",
+              "ast_spi_device_spi2sys_ram_1p_cfg",
+              "ast_sram_meta_ram_1p_cfg"]
       si_stage: NA
       tags: ["conn"]
     }
@@ -223,7 +211,7 @@
             '''
       stage: V2
       tests: ["ast_scanmode_padring", "ast_scanmode_clkmgr",
-              "ast_scanmode_lc_ctrl", "ast_scanmode_otp_ctrl", "ast_scanmode_pinmux",
+              "ast_scanmode_lc_ctrl", "ast_scanmode_pinmux",
               "ast_scanmode_rstmgr", "ast_scanmode_rv_core_ibex", "ast_scanmode_rv_dm",
               "ast_scanmode_spi_device", "ast_scanmode_xbar_main", "ast_scanmode_xbar_peri"]
       si_stage: NA
@@ -451,7 +439,8 @@
       desc: '''Verify clkmgr's `clk_io_div4_peri` is connected to the following blocks' clock
             input:
             - adc_ctrl clk_i
-            - gpio clk_i
+            - gpio0 clk_i
+            - gpio1 clk_i
             - spi_device clk_i
             - i2c0 clk_i
             - i2c1 clk_i
@@ -463,7 +452,8 @@
             '''
       stage: V2
       tests: ["clkmgr_peri_clk_adc_ctrl_clk",
-              "clkmgr_peri_clk_gpio_clk",
+              "clkmgr_peri_clk_gpio0_clk",
+              "clkmgr_peri_clk_gpio1_clk",
               "clkmgr_peri_clk_spi_device_clk",
               "clkmgr_peri_clk_i2c0_clk",
               "clkmgr_peri_clk_i2c1_clk",
@@ -1204,7 +1194,8 @@
     {
       name: rst_sys_io_div4_d0
       desc: '''Verify rstmgr's rst_sys_io_div4_n[1] is connected to the following:
-            - gpio's rst_ni
+            - gpio0's rst_ni
+            - gpio1's rst_ni
             - rv_timer's rst_ni
             - uart0's rst_ni
             - uart1's rst_ni
@@ -1214,7 +1205,8 @@
             - xbar_peri's rst_peri_ni
             '''
       stage: V2
-      tests: ["rstmgr_sys_io_div4_d0_gpio_rst_ni",
+      tests: ["rstmgr_sys_io_div4_d0_gpio0_rst_ni",
+              "rstmgr_sys_io_div4_d0_gpio1_rst_ni",
               "rstmgr_sys_io_div4_d0_rv_timer_rst_ni",
               "rstmgr_sys_io_div4_d0_uart0_rst_ni",
               "rstmgr_sys_io_div4_d0_uart1_rst_ni",

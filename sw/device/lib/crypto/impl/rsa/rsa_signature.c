@@ -8,6 +8,7 @@
 #include "sw/device/lib/base/hardened_memory.h"
 #include "sw/device/lib/base/math.h"
 #include "sw/device/lib/crypto/drivers/entropy.h"
+#include "sw/device/lib/crypto/drivers/rv_core_ibex.h"
 #include "sw/device/lib/crypto/impl/hash.h"
 #include "sw/device/lib/crypto/impl/rsa/rsa_padding.h"
 #include "sw/device/lib/crypto/impl/rsa/run_rsa.h"
@@ -26,10 +27,30 @@
  * @return Result of the operation (OK or BAD_ARGS).
  */
 OT_WARN_UNUSED_RESULT
-static status_t digest_check(const otcrypto_hash_digest_t digest) {
+static status_t digest_check(const otcrypto_hash_digest_t digest,
+                             const rsa_signature_padding_t padding_mode,
+                             size_t encoded_message_len) {
+  if (launder32(padding_mode) == kRsaSignaturePaddingNull) {
+    HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingNull);
+    if (launder32(digest.mode) != kOtcryptoHashModeNull ||
+        launder32(digest.len) != encoded_message_len) {
+      return OTCRYPTO_BAD_ARGS;
+    }
+    HARDENED_CHECK_EQ(digest.mode, kOtcryptoHashModeNull);
+    HARDENED_CHECK_EQ(digest.len, encoded_message_len);
+    return OTCRYPTO_OK;
+  }
   hash_info_t info;
   HARDENED_TRY(hash_info_get(digest.mode, &info));
-  if (info.der_oid == NULL || launder32(digest.len) != info.digest_wordlen) {
+  if (info.der_oid == NULL || digest.len == 0) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+  if (info.digest_wordlen == 0) {
+    return (launder32(padding_mode) == kRsaSignaturePaddingPkcs1v15)
+               ? OTCRYPTO_OK
+               : OTCRYPTO_BAD_ARGS;
+  }
+  if (launder32(digest.len) != info.digest_wordlen) {
     return OTCRYPTO_BAD_ARGS;
   }
   HARDENED_CHECK_EQ(digest.len, info.digest_wordlen);
@@ -98,7 +119,7 @@ static status_t message_encode(const otcrypto_hash_digest_t message_digest,
                                size_t encoded_message_len,
                                uint32_t *encoded_message) {
   // Check that the digest length is OK.
-  HARDENED_TRY(digest_check(message_digest));
+  HARDENED_TRY(digest_check(message_digest, padding_mode, encoded_message_len));
 #ifdef FIPS_MODE
   HARDENED_TRY(
       rsa_digest_check_fips(message_digest, padding_mode, encoded_message_len));
@@ -121,6 +142,10 @@ static status_t message_encode(const otcrypto_hash_digest_t message_digest,
       return rsa_padding_pss_encode(message_digest, salt, ARRAYSIZE(salt),
                                     encoded_message_len, encoded_message);
     }
+    case kRsaSignaturePaddingNull:
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingNull);
+      return hardened_memcpy(encoded_message, message_digest.data,
+                             encoded_message_len);
     default:
       // Unrecognized padding mode.
       return OTCRYPTO_BAD_ARGS;
@@ -153,7 +178,7 @@ static status_t encoded_message_verify(
     const rsa_signature_padding_t padding_mode, uint32_t *encoded_message,
     const size_t encoded_message_len, hardened_bool_t *result) {
   // Check that the digest length is OK.
-  HARDENED_TRY(digest_check(message_digest));
+  HARDENED_TRY(digest_check(message_digest, padding_mode, encoded_message_len));
 #ifdef FIPS_MODE
   HARDENED_TRY(
       rsa_digest_check_fips(message_digest, padding_mode, encoded_message_len));
@@ -168,6 +193,12 @@ static status_t encoded_message_verify(
       HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingPss);
       return rsa_padding_pss_verify(message_digest, encoded_message,
                                     encoded_message_len, result);
+    case kRsaSignaturePaddingNull:
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingNull);
+      *result = hardened_memeq(message_digest.data, encoded_message,
+                               encoded_message_len);
+      ibex_clear_rf();
+      return OTCRYPTO_OK;
     default:
       // Unrecognized padding mode.
       return OTCRYPTO_BAD_ARGS;
@@ -184,23 +215,8 @@ status_t rsa_signature_generate_start(
     const otcrypto_hash_digest_t message_digest,
     const rsa_signature_padding_t padding_mode) {
   size_t num_words = 0;
-  switch (launder32(size)) {
-    case kRsaSize2048:
-      HARDENED_CHECK_EQ(size, kRsaSize2048);
-      num_words = kRsa2048NumWords;
-      break;
-    case kRsaSize3072:
-      HARDENED_CHECK_EQ(size, kRsaSize3072);
-      num_words = kRsa3072NumWords;
-      break;
-    case kRsaSize4096:
-      HARDENED_CHECK_EQ(size, kRsaSize4096);
-      num_words = kRsa4096NumWords;
-      break;
-    default:
-      HARDENED_TRAP();
-      return OTCRYPTO_FATAL_ERR;
-  }
+  HARDENED_TRY(rsa_size_to_num_words(size, &num_words));
+  HARDENED_CHECK_NE(num_words, 0);
 
   // Allocate maximum possible size to avoid VLAs. We allocate enough for
   // 4096, but will only utilize `num_words`.
@@ -235,42 +251,10 @@ status_t rsa_signature_verify_finalize(
   size_t num_words;
   HARDENED_TRY(rsa_modexp_wait(&num_words));
 
-  // Call the appropriate `finalize()` operation to get the recovered encoded
-  // message.
-  switch (launder32(num_words)) {
-    case kRsa2048NumWords: {
-      HARDENED_CHECK_EQ(num_words, kRsa2048NumWords);
-      rsa_2048_int_t recovered_message;
-      HARDENED_TRY(
-          rsa_modexp_finalize_size(kRsaSize2048, recovered_message.data));
-      return encoded_message_verify(
-          message_digest, padding_mode, recovered_message.data,
-          ARRAYSIZE(recovered_message.data), verification_result);
-    }
-    case kRsa3072NumWords: {
-      HARDENED_CHECK_EQ(num_words, kRsa3072NumWords);
-      rsa_3072_int_t recovered_message;
-      HARDENED_TRY(
-          rsa_modexp_finalize_size(kRsaSize3072, recovered_message.data));
-      return encoded_message_verify(
-          message_digest, padding_mode, recovered_message.data,
-          ARRAYSIZE(recovered_message.data), verification_result);
-    }
-    case kRsa4096NumWords: {
-      HARDENED_CHECK_EQ(num_words, kRsa4096NumWords);
-      rsa_4096_int_t recovered_message;
-      HARDENED_TRY(
-          rsa_modexp_finalize_size(kRsaSize4096, recovered_message.data));
-      return encoded_message_verify(
-          message_digest, padding_mode, recovered_message.data,
-          ARRAYSIZE(recovered_message.data), verification_result);
-    }
-    default:
-      // Unexpected number of words; should never get here.
-      return OTCRYPTO_FATAL_ERR;
-  }
-
-  // Should be unreachable.
-  HARDENED_TRAP();
-  return OTCRYPTO_FATAL_ERR;
+  // Finalize the modexp operation to get the recovered encoded message.
+  HARDENED_CHECK_LE(num_words, kRsa4096NumWords);
+  uint32_t recovered_message[kRsa4096NumWords];
+  HARDENED_TRY(rsa_modexp_finalize(num_words, recovered_message));
+  return encoded_message_verify(message_digest, padding_mode, recovered_message,
+                                num_words, verification_result);
 }

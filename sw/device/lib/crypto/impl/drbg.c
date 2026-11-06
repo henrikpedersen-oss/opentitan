@@ -87,11 +87,11 @@ static status_t seed_material_construct(
 static otcrypto_status_t seed_material_xor(
     const otcrypto_const_byte_buf_t *value,
     entropy_seed_material_t *seed_material) {
+  if (value == NULL || value->len == 0) {
+    return OTCRYPTO_OK;
+  }
   if (value->len > kEntropySeedBytes) {
     return OTCRYPTO_BAD_ARGS;
-  }
-  if (value->len == 0) {
-    return OTCRYPTO_OK;
   }
 
   // Copy into a word-aligned buffer. This allows us to use a XOR that is more
@@ -161,10 +161,11 @@ otcrypto_status_t otcrypto_drbg_manual_instantiate(
   OTCRYPTO_LOCKED_STATE_CHECK();
 #ifndef OTCRYPTO_DISABLE_NULL_CHECKS
   // Check for NULL pointers or bad length.
-  if (perso_string->len != 0 && perso_string->data == NULL) {
+  if (perso_string == NULL ||
+      (perso_string->len != 0 && perso_string->data == NULL)) {
     return OTCRYPTO_BAD_ARGS;
   }
-  if (entropy->data == NULL) {
+  if (entropy == NULL || entropy->data == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
 #endif
@@ -247,7 +248,8 @@ otcrypto_status_t otcrypto_drbg_generate(
     return OTCRYPTO_BAD_ARGS;
   }
 #endif
-  if (drbg_output->len == 0) {
+  if (launder32(drbg_output->len) == 0) {
+    HARDENED_CHECK_EQ(drbg_output->len, 0);
     // Nothing to do.
     return otcrypto_eval_exit(OTCRYPTO_OK);
   }
@@ -271,7 +273,8 @@ otcrypto_status_t otcrypto_drbg_manual_generate(
     return OTCRYPTO_BAD_ARGS;
   }
 #endif
-  if (drbg_output->len == 0) {
+  if (launder32(drbg_output->len) == 0) {
+    HARDENED_CHECK_EQ(drbg_output->len, 0);
     // Nothing to do.
     return otcrypto_eval_exit(OTCRYPTO_OK);
   }
@@ -281,6 +284,7 @@ otcrypto_status_t otcrypto_drbg_manual_generate(
 }
 
 otcrypto_status_t otcrypto_drbg_uninstantiate(void) {
+  OTCRYPTO_SET_CMVP_INDICATOR(OTCRYPTO_FUNCTION_DRBG_UNINSTANTIATE);
   OTCRYPTO_LOCKED_STATE_CHECK();
   return otcrypto_eval_exit(entropy_csrng_uninstantiate());
 }

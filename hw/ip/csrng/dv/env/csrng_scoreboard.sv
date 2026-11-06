@@ -209,7 +209,7 @@ class csrng_scoreboard extends cip_base_scoreboard #(
         // FIXME
       end
       "intr_test": begin
-        if (addr_phase_write && cov_vif.en_full_cov) begin
+        if (addr_phase_write && cfg.en_cov && cov_vif.en_full_cov) begin
           bit [3:0] intr_en  = `gmv(ral.intr_enable);
           bit [3:0] intr_exp = `gmv(ral.intr_state) | item.a_data;
           foreach (intr_exp[i]) begin
@@ -358,6 +358,26 @@ class csrng_scoreboard extends cip_base_scoreboard #(
         end
       end
       "fips_force": begin
+      end
+      // TODO(#31972): Model the Generate abort feature.
+      "gen_abort_regwen": begin
+      end
+      "gen_abort_0", "gen_abort_1", "gen_abort_2": begin
+        // The DUT clears the abort request in the cycle after it got written.
+        if (addr_phase_write) begin
+          void'(csr.predict(.value(MuBi4False), .kind(UVM_PREDICT_DIRECT)));
+        end
+      end
+      "gen_abort_status_0", "gen_abort_status_1", "gen_abort_status_2": begin
+      end
+      "int_state_halt_enable_regwen": begin
+      end
+      "int_state_halt_enable": begin
+      end
+      "int_state_halt": begin
+      end
+      "int_state_sts": begin
+        do_read_check = 1'b0;
       end
       "hw_exc_sts": begin
       end
@@ -523,6 +543,10 @@ class csrng_scoreboard extends cip_base_scoreboard #(
     // Only already instantiated instances can generate random bits.
     if (!cfg.status[app]) begin
       cmd_sts[app] = CMD_STS_INVALID_CMD_SEQ;
+    end else if (glen == 0) begin
+      // A Generate command with glen of zero is ignored.
+      cmd_sts[app] = CMD_STS_INVALID_GEN_CMD;
+      return;
     end else if (cfg.reseed_counter[app] == `gmv(ral.reseed_interval)) begin
       cmd_sts[app] = CMD_STS_RESEED_CNT_EXCEEDED;
     end

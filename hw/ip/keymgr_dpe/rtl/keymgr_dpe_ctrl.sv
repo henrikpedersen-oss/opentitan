@@ -16,7 +16,7 @@ module keymgr_dpe_ctrl
   parameter int unsigned NumInstHwSlot = 4,
   parameter int unsigned NumInstHwSlotWidth = 2,
   // Number of available boot stages
-  parameter int unsigned NumBootStages = 3
+  parameter int unsigned NumBootStages = 4
 ) (
   input clk_i,
   input rst_ni,
@@ -32,11 +32,13 @@ module keymgr_dpe_ctrl
   input reseed_cnt_err_i,
   input sideload_sel_err_i,
   input sideload_fsm_err_i,
+  input kdf_engine_mubi_err_i,
 
   // Software interface
   input op_start_i,
   input keymgr_dpe_ops_e op_i,
   input load_root_key_lock_i,
+  input load_secondary_root_key_lock_i,
   input [NumInstHwSlotWidth-1:0] slot_src_sel_i,
   input [NumInstHwSlotWidth-1:0] slot_dst_sel_i,
   input keymgr_dpe_policy_t slot_policy_i,
@@ -65,6 +67,7 @@ module keymgr_dpe_ctrl
 
   // Data input
   input hw_key_req_t root_key_i,
+  input hw_key_req_t secondary_root_key_i,
   // `hw_sel_o == 1` indicates whether the generated key output
   // goes to sideload port. The safe default here is software CSR key.
   output prim_mubi_pkg::mubi4_t hw_sel_o,
@@ -92,7 +95,9 @@ module keymgr_dpe_ctrl
   output logic prng_en_o,
 
   // Out-of-bound checks
-  input logic dest_sel_oob_i
+  input logic dest_sel_oob_i,
+  input logic slot_src_sel_oob_i,
+  input logic slot_dst_sel_oob_i
 );
 
   localparam int EntropyWidth = LfsrWidth / 2;
@@ -162,12 +167,13 @@ module keymgr_dpe_ctrl
   logic fsm_at_disabled;
   logic fsm_at_invalid;
 
-  logic adv_req, gen_req, erase_req, dis_req, load_req;
-  assign adv_req   = op_req & (op_i == OpDpeAdvance);
-  assign gen_req   = op_req & gen_key_op;
-  assign erase_req = op_req & (op_i == OpDpeErase);
-  assign dis_req   = op_req & (op_i == OpDpeDisable);
-  assign load_req  = op_req & (op_i == OpDpeLoadRootKey);
+  logic adv_req, gen_req, erase_req, dis_req, load_req, load_secondary_req;
+  assign adv_req            = op_req & (op_i == OpDpeAdvance);
+  assign gen_req            = op_req & gen_key_op;
+  assign erase_req          = op_req & (op_i == OpDpeErase);
+  assign dis_req            = op_req & (op_i == OpDpeDisable);
+  assign load_req           = op_req & (op_i == OpDpeLoadRootKey);
+  assign load_secondary_req = op_req & (op_i == OpDpeLoadSecondaryRootKey);
 
   ///////////////////////////
   //  interaction between operation fsm and software
@@ -217,12 +223,13 @@ module keymgr_dpe_ctrl
   // when in invalid state, always update.
   // when in disabled state, always update unless a fault is encountered.
   // op_update marks the clock cycle where KMAC returns the digest. It is the time to latch the key.
-  assign op_update_sel = op_update & op_fault_err               ? SlotWipeAll          :
-                         op_update & dis_req                    ? SlotWipeInternalOnly :
-                         op_update & (op_err | fsm_at_disabled) ? SlotUpdateIdle       :
-                         op_update & adv_req                    ? SlotLoadFromKmac     :
-                         op_update & load_req                   ? SlotLoadRoot         :
-                         op_update & erase_req                  ? SlotErase            :
+  assign op_update_sel = op_update & op_fault_err               ? SlotWipeAll           :
+                         op_update & dis_req                    ? SlotWipeInternalOnly  :
+                         op_update & (op_err | fsm_at_disabled) ? SlotUpdateIdle        :
+                         op_update & adv_req                    ? SlotLoadFromKmac      :
+                         op_update & load_req                   ? SlotLoadRoot          :
+                         op_update & load_secondary_req         ? SlotLoadSecondaryRoot :
+                         op_update & erase_req                  ? SlotErase             :
                          SlotUpdateIdle;
 
   ///////////////////////////
@@ -298,15 +305,16 @@ module keymgr_dpe_ctrl
   assign destination_slot_valid = key_slots_q[slot_dst_sel_i].valid;
 
   // Determine the boot stage for the next DPE context derivation.
-  // If there are only two boot stages, BootStageOwnerInt will be omitted
+  // If there are only two boot stages, BootStageCreatorInt and BootStageOwnerInt will be omitted
   keymgr_dpe_boot_stage_e next_boot_stage;
   if (NumBootStages == 2) begin : gen_two_boot_stage
     assign next_boot_stage =
         (active_key_slot_o.boot_stage == BootStageCreator) ? BootStageOwner :
         BootStageRuntime;
-  end else begin : gen_three_boot_stage
+  end else begin : gen_four_boot_stage
     assign next_boot_stage =
-        (active_key_slot_o.boot_stage == BootStageCreator) ? BootStageOwnerInt :
+        (active_key_slot_o.boot_stage == BootStageCreator) ? BootStageCreatorInt :
+        (active_key_slot_o.boot_stage == BootStageCreatorInt) ? BootStageOwnerInt :
         (active_key_slot_o.boot_stage == BootStageOwnerInt) ? BootStageOwner :
         BootStageRuntime;
   end
@@ -339,7 +347,19 @@ module keymgr_dpe_ctrl
         key_slots_d[slot_dst_sel_i].boot_stage = BootStageCreator;
         key_slots_d[slot_dst_sel_i].key[0] ^= root_key_i.key[0];
         key_slots_d[slot_dst_sel_i].key[1] ^= root_key_i.key[1];
-        key_slots_d[slot_dst_sel_i].max_key_version = max_key_version_i;
+        key_slots_d[slot_dst_sel_i].max_key_version = DEFAULT_UDS_MAX_KEY_VERSION;
+        key_slots_d[slot_dst_sel_i].key_policy = DEFAULT_UDS_POLICY;
+      end
+
+      // `SlotLoadSecondaryRoot` is only used by the SW-invoked `Load secondary root key` operation.
+      // It stores the secondary root key into the selected destination slot, allowing the
+      // keymgr_dpe to derive a second, independent DICE hierarchy.
+      SlotLoadSecondaryRoot: begin
+        key_slots_d[slot_dst_sel_i].valid = 1;
+        key_slots_d[slot_dst_sel_i].boot_stage = BootStageCreator;
+        key_slots_d[slot_dst_sel_i].key[0] ^= secondary_root_key_i.key[0];
+        key_slots_d[slot_dst_sel_i].key[1] ^= secondary_root_key_i.key[1];
+        key_slots_d[slot_dst_sel_i].max_key_version = DEFAULT_UDS_MAX_KEY_VERSION;
         key_slots_d[slot_dst_sel_i].key_policy = DEFAULT_UDS_POLICY;
       end
 
@@ -418,6 +438,12 @@ module keymgr_dpe_ctrl
   // op_ack: comes back from the inner FSM (op_state) to confirm that the current operation is acked
   assign op_done_o = op_req ? op_ack : (init_o | invalid_op);
 
+  // Check if the op is known to the keymgr_dpe
+  logic op_known;
+  assign op_known = op_i inside {OpDpeAdvance, OpDpeErase, OpDpeGenSwOut,
+                                 OpDpeGenHwOut, OpDpeDisable, OpDpeLoadRootKey,
+                                 OpDpeLoadSecondaryRootKey};
+
   // SEC_CM: CTRL.FSM.LOCAL_ESC
   // begin invalidation when faults are observed.
   // sync faults only invalidate on transaction boundaries
@@ -427,6 +453,8 @@ module keymgr_dpe_ctrl
   logic invalid_erase;
   logic invalid_gen;
   logic invalid_load;
+  logic invalid_secondary_load;
+  logic invalid_kdf_engine;
   // TODO(#384): Make sure that:
   // 1) inv_state is correctly computed
   // 2) inv_state is correctly consumed by FSM
@@ -476,15 +504,16 @@ module keymgr_dpe_ctrl
     unique case (state_q)
       // Only advance can be called from reset state
       StCtrlDpeReset: begin
-        // if ~en_i, then any operation request is invalid
-        // if en_i, then only advance operation is valid
-        invalid_op = op_start_i & (~en_i | en_i & (op_i != OpDpeAdvance));
+        // The only accepted operation in this state is the initial advance which latches the
+        // creator root key into the slot selected by `SLOT_DST_SEL`. A request is invalid if
+        // keymgr_dpe is disabled or if `SLOT_DST_SEL` selects a slot at or above `NumInstHwSlot`.
+        invalid_op = op_start_i & (~en_i | en_i & ((op_i != OpDpeAdvance) | slot_dst_sel_oob_i));
 
         // if there was a structural fault before anything then move to invalid directly
         if (inv_state) begin
           state_d = StCtrlDpeInvalid;
           prng_en_dis_inv_set = 1'b1;
-        end else if (advance_cmd) begin
+        end else if (advance_cmd && !slot_dst_sel_oob_i) begin
           state_d = StCtrlDpeEntropyReseed;
         end
       end
@@ -543,13 +572,15 @@ module keymgr_dpe_ctrl
       // In Available state, advance/generate/erase/disable operations are accepted.
       // Except for disable command or unexpected faults, FSM should linger on this state.
       StCtrlDpeAvailable: begin
-        op_req = op_start_i;
+        op_req = op_start_i & op_known;
 
         // This is the operational state, most operations are valid (modulo policy violations).
-        invalid_op = invalid_advance |
-                     invalid_erase   |
-                     invalid_gen     |
-                     invalid_load    |
+        invalid_op = invalid_advance          |
+                     invalid_erase            |
+                     invalid_gen              |
+                     invalid_load             |
+                     invalid_secondary_load   |
+                     (op_start_i & ~op_known) |
                      (~en_i & op_start_i);
 
         // Given that the root key was latched by an earlier FSM state, we need to take care of
@@ -644,6 +675,7 @@ module keymgr_dpe_ctrl
     .erase_req_i(erase_req),
     .dis_req_i(dis_req),
     .load_req_i(load_req),
+    .load_secondary_req_i(load_secondary_req),
     .op_ack_o(op_ack),
     .op_busy_o(op_busy),
     .op_update_o(op_update),
@@ -702,30 +734,48 @@ module keymgr_dpe_ctrl
                            (slot_src_sel_i == slot_dst_sel_i | destination_slot_valid) :
                            (slot_src_sel_i != slot_dst_sel_i);
 
-  assign invalid_advance = adv_req & (invalid_allow_child   |
-                                      invalid_src_slot      |
-                                      invalid_retain_parent |
-                                      enforce_sw_binding_err);
+  assign invalid_advance = adv_req & (invalid_allow_child    |
+                                      invalid_src_slot       |
+                                      invalid_retain_parent  |
+                                      invalid_kdf_engine     |
+                                      enforce_sw_binding_err |
+                                      slot_src_sel_oob_i     |
+                                      slot_dst_sel_oob_i);
 
-  assign invalid_erase = erase_req & ~destination_slot_valid;
+  assign invalid_erase = erase_req & (~destination_slot_valid |
+                                      slot_dst_sel_oob_i);
 
-  assign invalid_gen = gen_req & (~active_key_slot_o.valid         |
+  assign invalid_gen = gen_req & (invalid_src_slot                 |
+                                  invalid_kdf_engine               |
                                   ~active_slot_policy.allow_keygen |
                                   ~key_version_vld_o               |
-                                  dest_sel_oob_i);
+                                  dest_sel_oob_i                   |
+                                  slot_src_sel_oob_i);
 
   assign invalid_load = load_req & (~root_key_i.valid      |
                                     destination_slot_valid |
-                                    load_root_key_lock_i);
+                                    load_root_key_lock_i   |
+                                    slot_dst_sel_oob_i);
+
+  assign invalid_secondary_load = load_secondary_req & (~secondary_root_key_i.valid    |
+                                                        destination_slot_valid         |
+                                                        load_secondary_root_key_lock_i |
+                                                        slot_dst_sel_oob_i);
+
+  // Reject advance and generate if SW committed an invalid mubi value to KDF_ENGINE_SHADOWED.
+  assign invalid_kdf_engine = (adv_req | gen_req) & kdf_engine_mubi_err_i;
 
   // This is similar to `invalid_advance` except that it does not depend on a incoming request.
   // The outer module uses `invalid_advance_o` to invalidate KMAC msg payload, when the advance
   // operation is not valid. It is better be loose here and ask to invalidate even when there is no
   // advance request.
-  assign invalid_advance_o = invalid_allow_child   |
-                             invalid_src_slot      |
-                             invalid_retain_parent |
-                             enforce_sw_binding_err;
+  assign invalid_advance_o = invalid_allow_child    |
+                             invalid_src_slot       |
+                             invalid_retain_parent  |
+                             invalid_kdf_engine     |
+                             enforce_sw_binding_err |
+                             slot_src_sel_oob_i     |
+                             slot_dst_sel_oob_i;
 
   // Exportable DPE is not yet implemented, so mark it unused for lint.
   logic unused_exportable_bit;
@@ -777,6 +827,14 @@ module keymgr_dpe_ctrl
   // Assertions
   /////////////////////////////////
 
+  // Ensure no slot update (either read or write) occurs when the corresponding out-of-bound
+  // signal is asserted.
+  `ASSERT(DstOobNoSlotWrite_A,
+      update_sel inside {SlotDestRandomize, SlotLoadRoot, SlotLoadSecondaryRoot,
+                         SlotLoadFromKmac, SlotErase}
+      |-> !slot_dst_sel_oob_i)
+  `ASSERT(SrcOobNoKeyRelease_A, release_real_key || data_valid_o |-> !slot_src_sel_oob_i)
+
   // TODO(#384): Revisit assertions.
   // 1) Can these assertions be rewritten for keymgr_dpe context?
   // 2) Which of these should be removed because they are obsolete.
@@ -788,8 +846,17 @@ module keymgr_dpe_ctrl
                              (SyncFaultLastIdx + AsyncFaultLastIdx))
 
   // verify supported number of boot stage
-  `ASSERT_INIT(InvalidNumOfBootStage_A, NumBootStages inside {2, 3})
+  `ASSERT_INIT(InvalidNumOfBootStage_A, NumBootStages inside {2, 4})
 
+  // Verify no invalid values on the boot_stage counter
+  for (genvar i = 0; i < NumInstHwSlot; i++) begin : gen_boot_stage_asserts
+    `ASSERT(ValidBootStage_A, key_slots_q[i].boot_stage <= BootStageRuntime)
+    // BootStageCreatorInt and BootStageOwnerInt are omitted in the two-stage configuration
+    if (NumBootStages == 2) begin : gen_two_boot_stage_asserts
+      `ASSERT(ValidBootStageTwoStage_A,
+              !(key_slots_q[i].boot_stage inside {BootStageCreatorInt, BootStageOwnerInt}))
+    end
+  end
 
   // // stage select should always be Disable whenever it is not enabled
   // `ASSERT(StageDisableSel_A, !en_i |-> stage_sel_o == Disable)

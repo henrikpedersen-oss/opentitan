@@ -133,7 +133,7 @@ static status_t run_test(hkdf_test_vector_t *test) {
   // doesn't really matter, it just needs to be some symmetric key.
   otcrypto_key_config_t okm_config = {
       .version = otcrypto_lib_version(),
-      .key_mode = kOtcryptoKeyModeAesCtr,
+      .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_length = test->okm_bytelen,
       .hw_backed = kHardenedBoolFalse,
       .exportable = kHardenedBoolFalse,
@@ -414,7 +414,7 @@ static status_t test_otcrypto_hkdf(void) {
   // Setup OKM
   otcrypto_key_config_t okm_config = {
       .version = otcrypto_lib_version(),
-      .key_mode = kOtcryptoKeyModeAesCtr,
+      .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_length = 42,
       .hw_backed = kHardenedBoolFalse,
       .exportable = kHardenedBoolFalse,
@@ -489,7 +489,7 @@ static status_t run_negative_tests(void) {
   };
   otcrypto_key_config_t valid_okm_cfg = {
       .version = otcrypto_lib_version(),
-      .key_mode = kOtcryptoKeyModeAesCtr,
+      .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_length = 42,
       .hw_backed = kHardenedBoolFalse,
       .exportable = kHardenedBoolFalse,
@@ -615,7 +615,8 @@ static status_t run_negative_tests(void) {
   // Exceed 255 iterations
   otcrypto_key_config_t huge_okm_cfg = valid_okm_cfg;
   huge_okm_cfg.key_length = 8161;
-  uint32_t huge_blob[keyblob_num_words(huge_okm_cfg)];
+  static uint32_t
+      huge_blob[2 * ((8161 + sizeof(uint32_t) - 1) / sizeof(uint32_t))];
   otcrypto_blinded_key_t huge_okm = {.config = huge_okm_cfg,
                                      .keyblob_length = sizeof(huge_blob),
                                      .keyblob = huge_blob};

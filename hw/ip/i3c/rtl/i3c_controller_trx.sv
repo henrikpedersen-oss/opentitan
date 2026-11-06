@@ -27,11 +27,6 @@ module i3c_controller_trx
   input                         sw_reset_i,
   input                         hotjoin_ctrl_i,
 
-  // Blocked device addresses.
-  // TODO(#31307): Implement this debug/safety functionality.
-  input                   [6:0] addr_blocked_i[NumBlocked],
-  input                   [6:0] mask_blocked_i[NumBlocked],
-
   // Start request to the Controller core, on behalf of I3C Target(s).
   output                        trx_sreq_o,
 
@@ -1111,11 +1106,11 @@ module i3c_controller_trx
   // Signaling is simplified at present by not supporting HDR-BT mode.
   assign bus_drv_o.sda = sda_q;
   if (DrvSeparatedEn) begin : gen_sda_sep_en
-    // Driver Style 1 with two separate driver enables for SDA.
+    // Separated Enables output driver style with two separate driver enables for SDA.
     assign bus_drv_o.sda_pp_en = sda_drv_q.pp_en;
     assign bus_drv_o.sda_od_en = sda_drv_q.od_en;
   end else begin : gen_sda_vod_en
-    // Driver Style 2 with a single SDA driver enable and Virtual Open Drain.
+    // Virtual Open Drain output driver style with a single SDA driver enable.
     assign bus_drv_o.sda_en = sda_drv_q.en;
   end
 
@@ -1227,7 +1222,7 @@ module i3c_controller_trx
   assign raise_error = |{parity_error, crc5_error};  // TODO(#31305): sda_mismatch, at times.
 
   // Transfer completion signaling.
-  // - successful transfer completion (ErrStatus_OK).
+  // - successful transfer completion (ErrStatus_SUCCESS).
   // - error indication, which may occur at almost any point within the transfer, e.g. SDA mismatch.
   assign trx_rvalid_o = &{term_state, phase_end, last_req_bit} | req_ending_early;
   always_comb begin
@@ -1235,7 +1230,7 @@ module i3c_controller_trx
     // TODO(#31305): report SDA mismatch; `i3c_err_status_e` is too limited to carry everything that
     // we shall need to report to the Controller core.
     trx_rsp_o.err_status = parity_error ? ErrStatus_Parity :
-                             crc5_error ? ErrStatus_CRC    : ErrStatus_OK;
+                             crc5_error ? ErrStatus_CRC    : ErrStatus_SUCCESS;
     trx_rsp_o.wlen   = bytes_done;
     trx_rsp_o.wearly = req_ending_early;
     trx_rsp_o.werr   = req_err_early;
@@ -1267,14 +1262,6 @@ module i3c_controller_trx
   end
 
   // Signals that the logic does not use (yet).
-  // - TODO(#31304): blocked addresses are not checked yet.
-  logic unused_blocked;
-  always_comb begin
-    unused_blocked = 1'b0;
-    for (int unsigned b = 0; b < NumBlocked; b++) begin
-      unused_blocked ^= ^{addr_blocked_i[b], mask_blocked_i[b]};
-    end
-  end
   // - the MSB of the halved Start/stoP timing parameters is dropped when doubling them.
   logic unused_misc;
   assign unused_misc = ^{hotjoin_ctrl_i, trx_dreq_i.i3c_first, tcas_d2_i[TmCycW-1],

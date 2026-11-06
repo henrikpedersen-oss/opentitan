@@ -10,17 +10,20 @@ use std::io::{Read, Write};
 use std::mem::{align_of, offset_of, size_of};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
+use ml_dsa::{MlDsa87, VerifyingKey};
 use sphincsplus::{SphincsPlus, SpxDomain, SpxPublicKey};
 use thiserror::Error;
 use zerocopy::FromBytes;
 
 use crate::crypto::ecdsa::{EcdsaPublicKey, EcdsaRawPublicKey, EcdsaRawSignature};
+use crate::crypto::mldsa::mldsa_verify;
 use crate::crypto::sha256::Sha256Digest;
 use crate::image::manifest::{
     CHIP_MANIFEST_VERSION_MAJOR2, CHIP_ROM_EXT_IDENTIFIER, CHIP_ROM_EXT_SIZE_MAX,
-    MANIFEST_EXT_ID_SPX_KEY, MANIFEST_EXT_ID_SPX_SIGNATURE, Manifest, ManifestKind,
-    SigverifySpxSignature,
+    MANIFEST_EXT_ID_MLDSA87_KEY, MANIFEST_EXT_ID_MLDSA87_SIGNATURE, MANIFEST_EXT_ID_SPX_KEY,
+    MANIFEST_EXT_ID_SPX_SIGNATURE, MLDSA87_IMAGE_CONTEXT, MLDSA87_PUBLIC_KEY_BYTES,
+    MLDSA87_SIGNATURE_BYTES, Manifest, ManifestExtHeader, ManifestKind, SigverifySpxSignature,
 };
 use crate::image::manifest_def::{ManifestSigverifyBuffer, ManifestSpec};
 use crate::image::manifest_ext::{ManifestExtEntry, ManifestExtEntrySpec};
@@ -45,6 +48,8 @@ pub enum ImageError {
     MisplacedSignedExtension(u32),
     #[error("Invalid manifest major version: {0}. ECDSA support requires major version {1}.")]
     InvalidManifestVersionforEcdsa(u16, u16),
+    #[error("Invalid signed region end 0x{0:x}.")]
+    BadSignedRegionEnd(u32),
 }
 
 pub enum MainSignatureParams {
@@ -56,11 +61,18 @@ pub struct SpxSignatureParams {
     signature: [u8; 7856],
 }
 
-// Binary image is signed either RSA or ECDSA. SPX+ signature could be added as
-// an extension.
+/// The ML-DSA-87 key and signature extensions.
+pub struct Mldsa87SignatureParams {
+    key: VerifyingKey<MlDsa87>,
+    signature: [u8; MLDSA87_SIGNATURE_BYTES],
+}
+
+/// The manifest always holds an ECDSA-P256 public key and signature whereas the
+/// SPX+ and ML-DSA-87 keys and signatures are optional manifest extensions.
 pub struct SigverifyParams {
     pub main_sig_params: MainSignatureParams,
     pub spx_sig_params: Option<SpxSignatureParams>,
+    pub mldsa87_sig_params: Option<Mldsa87SignatureParams>,
     pub spx_hash_reversal_bug: bool,
 }
 
@@ -68,10 +80,12 @@ impl SigverifyParams {
     pub fn new(
         main_sig_params: MainSignatureParams,
         spx_sig_params: Option<SpxSignatureParams>,
+        mldsa87_sig_params: Option<Mldsa87SignatureParams>,
     ) -> Self {
         SigverifyParams {
             main_sig_params,
             spx_sig_params,
+            mldsa87_sig_params,
             spx_hash_reversal_bug: false,
         }
     }
@@ -108,6 +122,15 @@ impl SigverifyParams {
         }
 
         Ok(())
+    }
+
+    // Verify the optional ML-DSA-87 signature (pure mode).
+    pub fn mldsa87_verify(&self, b: &[u8]) -> Result<()> {
+        let mldsa = self
+            .mldsa87_sig_params
+            .as_ref()
+            .context("No ML-DSA-87 signature found")?;
+        mldsa_verify(&mldsa.key, MLDSA87_IMAGE_CONTEXT, &mldsa.signature, b)
     }
 }
 
@@ -238,11 +261,41 @@ impl Image {
         }
     }
 
+    // Retrieve the ML-DSA-87 signature from the image, if present.
+    fn get_mldsa87_signature(&self) -> Result<Option<Mldsa87SignatureParams>> {
+        let ext_tab = self.borrow_manifest()?.extensions.entries;
+        let ext_data = |id: u32, len: usize| {
+            ext_tab
+                .iter()
+                .find(|e| e.identifier == id)
+                .map(|e| {
+                    let ofs = e.offset as usize + size_of::<ManifestExtHeader>();
+                    self.data
+                        .bytes
+                        .get(ofs..ofs + len)
+                        .ok_or(ImageError::ExtensionOverflow)
+                })
+                .transpose()
+        };
+
+        match (
+            ext_data(MANIFEST_EXT_ID_MLDSA87_KEY, MLDSA87_PUBLIC_KEY_BYTES)?,
+            ext_data(MANIFEST_EXT_ID_MLDSA87_SIGNATURE, MLDSA87_SIGNATURE_BYTES)?,
+        ) {
+            (Some(key), Some(signature)) => Ok(Some(Mldsa87SignatureParams {
+                key: VerifyingKey::decode(&key.try_into()?),
+                signature: signature.try_into()?,
+            })),
+            (_, _) => Ok(None),
+        }
+    }
+
     pub fn get_sigverify_params_from_manifest(&self) -> Result<SigverifyParams> {
         let manifest = self.borrow_manifest()?;
         let manifest_def: ManifestSpec = manifest.try_into()?;
 
         let spx_sig_params = self.get_spx_signature()?;
+        let mldsa87_sig_params = self.get_mldsa87_signature()?;
 
         let pub_key = manifest_def
             .pub_key()
@@ -260,6 +313,7 @@ impl Image {
         Ok(SigverifyParams::new(
             MainSignatureParams::Ecdsa(ecdsa_pub_key, ecdsa_sig),
             spx_sig_params,
+            mldsa87_sig_params,
         ))
     }
 
@@ -529,8 +583,13 @@ impl Image {
     where
         F: FnOnce(&[u8]) -> R,
     {
-        Ok(f(&self.data.bytes[offset_of!(Manifest, usage_constraints)
-            ..self.borrow_manifest()?.signed_region_end as usize]))
+        let end = self.borrow_manifest()?.signed_region_end;
+        let region = self
+            .data
+            .bytes
+            .get(offset_of!(Manifest, usage_constraints)..end as usize)
+            .ok_or(ImageError::BadSignedRegionEnd(end))?;
+        Ok(f(region))
     }
 
     /// Compute the SHA256 digest for the signed portion of the `Image`.
@@ -545,8 +604,12 @@ impl SubImage<'_> {
     where
         F: FnOnce(&[u8]) -> R,
     {
-        Ok(f(&self.data[offset_of!(Manifest, usage_constraints)
-            ..self.manifest.signed_region_end as usize]))
+        let end = self.manifest.signed_region_end;
+        let region = self
+            .data
+            .get(offset_of!(Manifest, usage_constraints)..end as usize)
+            .ok_or(ImageError::BadSignedRegionEnd(end))?;
+        Ok(f(region))
     }
 
     /// Compute the SHA256 digest for the signed portion of the `Image`.

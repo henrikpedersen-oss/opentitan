@@ -37,9 +37,6 @@ module earlgrey_pd_aon #(
   output ast_pkg::ast_obs_ctrl_t       ast_obs_ctrl_o,
   output prim_mubi_pkg::mubi4_t       ast_clk_src_sys_jen_o,
   input  prim_mubi_pkg::mubi4_t       ast_init_done_i,
-  input  logic       spi_device_sck_monitor_i,
-  input  logic       usbdev_usb_ref_pulse_i,
-  input  logic       usbdev_usb_ref_val_i,
   output prim_mubi_pkg::mubi4_t       clkmgr_all_clk_byp_req_o,
   input  prim_mubi_pkg::mubi4_t       clkmgr_all_clk_byp_ack_i,
   output prim_mubi_pkg::mubi4_t       clkmgr_io_clk_byp_req_o,
@@ -84,6 +81,10 @@ module earlgrey_pd_aon #(
   input  rv_core_ibex_pkg::cpu_crash_dump_t       rv_core_ibex_crash_dump_i,
   input  rv_core_ibex_pkg::cpu_pwrmgr_t       rv_core_ibex_pwrmgr_i,
   input  logic       rv_dm_ndmreset_req_i,
+  input  logic       pwrmgr_wakeups_i,
+  input  logic       i3c0_rstdet_enable_i,
+  input  i3c_pkg::i3c_rstdet_req_t       i3c0_rstdet_req_i,
+  output i3c_pkg::i3c_rstdet_rsp_t       i3c0_rstdet_rsp_o,
   output ast_intraip_pkg::s2p_t       ast_intraip_s2p_o,
   input  ast_intraip_pkg::p2s_t       ast_intraip_p2s_i,
   input  tlul_pkg::tl_h2d_t       pwrmgr_tl_req_i,
@@ -119,7 +120,6 @@ module earlgrey_pd_aon #(
   input  ast_pkg::awire_t       ast_adc_a1_a_i,
   output ast_pkg::awire_t       ast2pad_t0_a_o,
   output ast_pkg::awire_t       ast2pad_t1_a_o,
-  input  ast_pkg::clks_osc_byp_t       clk_osc_byp_pd_aon_i,
   output ast_pkg::ast_pwst_t       ast_pwst_h_o,
   input  logic       dft_hold_tap_sel_i,
   output logic       usb_dp_pullup_en_o,
@@ -137,9 +137,12 @@ module earlgrey_pd_aon #(
   output logic       cio_uart3_rx_p2d_o,
   input  logic       cio_uart3_tx_d2p_i,
   input  logic       cio_uart3_tx_en_d2p_i,
-  input  logic [31:0] cio_gpio_gpio_d2p_i,
-  input  logic [31:0] cio_gpio_gpio_en_d2p_i,
-  output logic [31:0] cio_gpio_gpio_p2d_o,
+  input  logic [31:0] cio_gpio0_gpio_d2p_i,
+  input  logic [31:0] cio_gpio0_gpio_en_d2p_i,
+  output logic [31:0] cio_gpio0_gpio_p2d_o,
+  input  logic [31:0] cio_gpio1_gpio_d2p_i,
+  input  logic [31:0] cio_gpio1_gpio_en_d2p_i,
+  output logic [31:0] cio_gpio1_gpio_p2d_o,
   input  logic [3:0] cio_spi_device_sd_d2p_i,
   input  logic [3:0] cio_spi_device_sd_en_d2p_i,
   output logic [3:0] cio_spi_device_sd_p2d_o,
@@ -178,6 +181,8 @@ module earlgrey_pd_aon #(
   input  logic       cio_i3c1_sda_d2p_i,
   input  logic       cio_i3c1_sda_en_d2p_i,
   output logic       cio_i3c1_sda_p2d_o,
+  output logic       cio_i3c1_rstdet_scl_p2d_o,
+  output logic       cio_i3c1_rstdet_sda_p2d_o,
   input  logic       cio_i3c1_ctrl_sda_pu_d2p_i,
   input  logic       cio_i3c1_ctrl_sda_pu_en_d2p_i,
   input  logic [3:0] cio_spi_host0_sd_d2p_i,
@@ -256,12 +261,15 @@ module earlgrey_pd_aon #(
   localparam int SramCtrlRetOutstanding = 2;
 
   // Signals
-  logic [60:0] mio_p2d;
-  logic [69:0] mio_d2p;
-  logic [69:0] mio_en_d2p;
+  logic [96:0] mio_p2d;
+  logic [101:0] mio_d2p;
+  logic [101:0] mio_en_d2p;
   logic [15:0] dio_p2d;
   logic [15:0] dio_d2p;
   logic [15:0] dio_en_d2p;
+  // i3c0
+  logic        cio_i3c0_rstdet_scl_p2d;
+  logic        cio_i3c0_rstdet_sda_p2d;
   // pwrmgr
   // rstmgr
   // clkmgr
@@ -320,9 +328,6 @@ module earlgrey_pd_aon #(
   logic [AstAst2PadOutWidth-1:0] ast_ast2padmux;
   ast_pkg::ast_status_t       ast_io_pwr_st;
   pinmux_pkg::dft_strap_test_req_t       pinmux_dft_strap_test;
-  prim_mubi_pkg::mubi4_t       clkmgr_all_clk_byp_req;
-  prim_mubi_pkg::mubi4_t       clkmgr_io_clk_byp_req;
-  prim_mubi_pkg::mubi4_t       clkmgr_hi_speed_sel;
   ast_pkg::ast_alert_req_t       sensor_ctrl_ast_alert_req;
   ast_pkg::ast_alert_rsp_t       sensor_ctrl_ast_alert_rsp;
   pwrmgr_pkg::pwr_ast_req_t       pwrmgr_pwr_ast_req;
@@ -335,11 +340,10 @@ module earlgrey_pd_aon #(
   logic       pwrmgr_low_power;
   prim_mubi_pkg::mubi4_t       rstmgr_sw_rst_req;
   logic [1:0] rstmgr_por_n;
-  logic [5:0] pwrmgr_wakeups;
+  logic [7:0] pwrmgr_wakeups;
   logic [1:0] pwrmgr_rstreqs;
   clkmgr_pkg::clkmgr_out_t       clkmgr_clocks;
   logic       ast_clk_src_aon;
-  ast_pkg::clks_osc_byp_t       ast_clk_osc_byp;
   ast_pkg::ast_mem_cfg_secondary_req_t       ast_mem_cfg_req;
   ast_pkg::ast_mem_cfg_secondary_rsp_t       ast_mem_cfg_rsp;
   prim_ram_1p_pkg::ram_1p_cfg_req_t [SramCtrlRetNumRamInst-1:0] sram_ctrl_ret_ram_cfg_req;
@@ -351,17 +355,32 @@ module earlgrey_pd_aon #(
   jtag_pkg::jtag_rsp_t       pinmux_dft_jtag_rsp;
 
   // Create mixed connections to ports
-  assign clkmgr_all_clk_byp_req_o = clkmgr_all_clk_byp_req;
-  assign clkmgr_io_clk_byp_req_o = clkmgr_io_clk_byp_req;
-  assign clkmgr_hi_speed_sel_o = clkmgr_hi_speed_sel;
-  assign ast_clk_osc_byp = clk_osc_byp_pd_aon_i;
+  assign pwrmgr_wakeups[1] = pwrmgr_wakeups_i;
 
 
 
 
   // Instantiation of IPs
+  i3c_part_secondary u_i3c0_part_secondary (
+    // Clock and reset connections
+    .clk_aon_i(clkmgr_clocks.clk_aon_peri),
+    .rst_aon_ni(rstmgr_resets.rst_lc_aon_n[rstmgr_pkg::DomainAonSel]),
+
+
+    // CIO inputs
+    .cio_rstdet_scl_i   (cio_i3c0_rstdet_scl_p2d),
+    .cio_rstdet_sda_i   (cio_i3c0_rstdet_sda_p2d),
+
+    // Inter-module signals
+    .rstdet_enable_i(i3c0_rstdet_enable_i),
+    .rstdet_i(i3c0_rstdet_req_i),
+    .rstdet_o(i3c0_rstdet_rsp_o),
+    .rstdet_wkup_req_o(pwrmgr_wakeups[0]),
+    .rstdet_target_rst_o()
+  );
+
   pwrmgr #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[23]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[24]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles),
     .EscNumSeverities(AlertHandlerEscNumSeverities),
     .EscPingCountWidth(AlertHandlerEscPingCountWidth)
@@ -380,7 +399,7 @@ module earlgrey_pd_aon #(
     // Interrupts
     .intr_wakeup_o(intr_pwrmgr_wakeup),
 
-    // alert_handler[23]: fatal_fault
+    // alert_handler[24]: fatal_fault
     .alert_tx_o(alert_tx_o[0]),
     .alert_rx_i(alert_rx_i[0]),
 
@@ -414,7 +433,7 @@ module earlgrey_pd_aon #(
   );
 
   rstmgr #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[25:24]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[26:25]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles),
     .SecCheck(SecRstmgrCheck),
     .SecMaxSyncDelay(SecRstmgrMaxSyncDelay)
@@ -435,8 +454,8 @@ module earlgrey_pd_aon #(
     .scanmode_i(scanmode_o),
     .scan_rst_ni(scan_rst_n_o),
 
-    // alert_handler[24]: fatal_fault
-    // alert_handler[25]: fatal_cnsty_fault
+    // alert_handler[25]: fatal_fault
+    // alert_handler[26]: fatal_cnsty_fault
     .alert_tx_o(alert_tx_o[2:1]),
     .alert_rx_i(alert_rx_i[2:1]),
 
@@ -454,7 +473,7 @@ module earlgrey_pd_aon #(
   );
 
   clkmgr #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[27:26]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[28:27]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles)
   ) u_clkmgr (
     // Clock and reset connections
@@ -481,8 +500,8 @@ module earlgrey_pd_aon #(
     // DFT/scan connections
     .scanmode_i(scanmode_o),
 
-    // alert_handler[26]: recov_fault
-    // alert_handler[27]: fatal_fault
+    // alert_handler[27]: recov_fault
+    // alert_handler[28]: fatal_fault
     .alert_tx_o(alert_tx_o[4:3]),
     .alert_rx_i(alert_rx_i[4:3]),
 
@@ -490,11 +509,11 @@ module earlgrey_pd_aon #(
     .clocks_o(clkmgr_clocks),
     .cg_en_o(clkmgr_cg_en),
     .lc_hw_debug_en_i(lc_ctrl_lc_hw_debug_en_i),
-    .io_clk_byp_req_o(clkmgr_io_clk_byp_req),
+    .io_clk_byp_req_o(clkmgr_io_clk_byp_req_o),
     .io_clk_byp_ack_i(clkmgr_io_clk_byp_ack_i),
-    .all_clk_byp_req_o(clkmgr_all_clk_byp_req),
+    .all_clk_byp_req_o(clkmgr_all_clk_byp_req_o),
     .all_clk_byp_ack_i(clkmgr_all_clk_byp_ack_i),
-    .hi_speed_sel_o(clkmgr_hi_speed_sel),
+    .hi_speed_sel_o(clkmgr_hi_speed_sel_o),
     .div_step_down_req_i(clkmgr_div_step_down_req_i),
     .lc_clk_byp_req_i(lc_ctrl_lc_clk_byp_req_i),
     .lc_clk_byp_ack_o(lc_ctrl_lc_clk_byp_ack_o),
@@ -508,7 +527,7 @@ module earlgrey_pd_aon #(
   );
 
   sysrst_ctrl #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[28]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[29]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles)
   ) u_sysrst_ctrl (
     // Clock and reset connections
@@ -520,7 +539,7 @@ module earlgrey_pd_aon #(
     // Interrupts
     .intr_event_detected_o(intr_sysrst_ctrl_event_detected),
 
-    // alert_handler[28]: fatal_fault
+    // alert_handler[29]: fatal_fault
     .alert_tx_o(alert_tx_o[5]),
     .alert_rx_i(alert_rx_i[5]),
 
@@ -553,14 +572,14 @@ module earlgrey_pd_aon #(
     .cio_flash_wp_l_en_o (cio_sysrst_ctrl_flash_wp_l_en_d2p),
 
     // Inter-module signals
-    .wkup_req_o(pwrmgr_wakeups[0]),
+    .wkup_req_o(pwrmgr_wakeups[2]),
     .rst_req_o(pwrmgr_rstreqs[0]),
     .tl_i(sysrst_ctrl_tl_req_i),
     .tl_o(sysrst_ctrl_tl_rsp_o)
   );
 
   adc_ctrl #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[29]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[30]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles)
   ) u_adc_ctrl (
     // Clock and reset connections
@@ -572,20 +591,20 @@ module earlgrey_pd_aon #(
     // Interrupts
     .intr_match_pending_o(intr_adc_ctrl_match_pending),
 
-    // alert_handler[29]: fatal_fault
+    // alert_handler[30]: fatal_fault
     .alert_tx_o(alert_tx_o[6]),
     .alert_rx_i(alert_rx_i[6]),
 
     // Inter-module signals
     .adc_o(ast_adc_req),
     .adc_i(ast_adc_rsp),
-    .wkup_req_o(pwrmgr_wakeups[1]),
+    .wkup_req_o(pwrmgr_wakeups[3]),
     .tl_i(adc_ctrl_tl_req_i),
     .tl_o(adc_ctrl_tl_rsp_o)
   );
 
   pinmux #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[30]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[31]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles),
     .SecVolatileRawUnlockEn(SecPinmuxVolatileRawUnlockEn),
     .TargetCfg(PinmuxTargetCfg)
@@ -600,7 +619,7 @@ module earlgrey_pd_aon #(
     // DFT/scan connections
     .scanmode_i(scanmode_o),
 
-    // alert_handler[30]: fatal_fault
+    // alert_handler[31]: fatal_fault
     .alert_tx_o(alert_tx_o[7]),
     .alert_rx_i(alert_rx_i[7]),
 
@@ -622,12 +641,12 @@ module earlgrey_pd_aon #(
     .sleep_en_i(pwrmgr_low_power),
     .strap_en_i(pwrmgr_strap),
     .strap_en_override_i(lc_ctrl_strap_en_override_i),
-    .pin_wkup_req_o(pwrmgr_wakeups[2]),
+    .pin_wkup_req_o(pwrmgr_wakeups[4]),
     .usbdev_dppullup_en_i(usbdev_usb_dp_pullup_i),
     .usbdev_dnpullup_en_i(usbdev_usb_dn_pullup_i),
     .usb_dppullup_en_o(usb_dp_pullup_en_o),
     .usb_dnpullup_en_o(usb_dn_pullup_en_o),
-    .usb_wkup_req_o(pwrmgr_wakeups[3]),
+    .usb_wkup_req_o(pwrmgr_wakeups[5]),
     .usbdev_suspend_req_i(usbdev_usb_aon_suspend_req_i),
     .usbdev_wake_ack_i(usbdev_usb_aon_wake_ack_i),
     .usbdev_bus_not_idle_o(usbdev_usb_aon_bus_not_idle_o),
@@ -657,7 +676,7 @@ module earlgrey_pd_aon #(
   );
 
   aon_timer #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[31]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[32]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles)
   ) u_aon_timer (
     // Clock and reset connections
@@ -670,13 +689,13 @@ module earlgrey_pd_aon #(
     .intr_wkup_timer_expired_o(intr_aon_timer_wkup_timer_expired),
     .intr_wdog_timer_bark_o   (intr_aon_timer_wdog_timer_bark),
 
-    // alert_handler[31]: fatal_fault
+    // alert_handler[32]: fatal_fault
     .alert_tx_o(alert_tx_o[8]),
     .alert_rx_i(alert_rx_i[8]),
 
     // Inter-module signals
     .nmi_wdog_timer_bark_o(aon_timer_nmi_wdog_timer_bark_o),
-    .wkup_req_o(pwrmgr_wakeups[4]),
+    .wkup_req_o(pwrmgr_wakeups[6]),
     .aon_timer_rst_req_o(pwrmgr_rstreqs[1]),
     .lc_escalate_en_i(lc_ctrl_lc_escalate_en_i),
     .sleep_mode_i(pwrmgr_low_power),
@@ -694,17 +713,9 @@ module earlgrey_pd_aon #(
     // Clock and reset connections
     .clk_ast_adc_i(clkmgr_clocks.clk_aon_peri),
     .clk_ast_alert_i(clkmgr_clocks.clk_io_div4_secure),
-    .clk_ast_es_i(clkmgr_clocks.clk_main_secure),
-    .clk_ast_rng_i(clkmgr_clocks.clk_main_secure),
-    .clk_ast_tlul_i(clkmgr_clocks.clk_io_div4_infra),
-    .clk_ast_usb_i(clkmgr_clocks.clk_usb_peri),
     .clk_ast_ext_i(clk_ast_ext_i),
     .rst_ast_adc_ni(rstmgr_resets.rst_lc_aon_n[rstmgr_pkg::DomainAonSel]),
     .rst_ast_alert_ni(rstmgr_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainMainSel]),
-    .rst_ast_es_ni(rstmgr_resets.rst_lc_n[rstmgr_pkg::DomainMainSel]),
-    .rst_ast_rng_ni(rstmgr_resets.rst_lc_n[rstmgr_pkg::DomainMainSel]),
-    .rst_ast_tlul_ni(rstmgr_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainMainSel]),
-    .rst_ast_usb_ni(rstmgr_resets.rst_usb_n[rstmgr_pkg::DomainMainSel]),
 
 
     // Inter-module signals
@@ -720,9 +731,7 @@ module earlgrey_pd_aon #(
     .por_n_i(manual_in_por_n_i),
     .sns_clks_i(ast_sns_clks),
     .sns_rsts_i(ast_sns_rsts),
-    .sns_spi_ext_clk_i(spi_device_sck_monitor_i),
     .vx_supp_i(ast_vx_supp_i),
-    .ast_pwst_o(),
     .ast_pwst_h_o(ast_pwst_h_o),
     .rstmgr_por_n_o(rstmgr_por_n),
     .io_pwr_st_o(ast_io_pwr_st),
@@ -733,8 +742,6 @@ module earlgrey_pd_aon #(
     .otp_power_seq_i('0),
     .otp_power_seq_h_o(),
     .clk_src_aon_o(ast_clk_src_aon),
-    .usb_ref_pulse_i(usbdev_usb_ref_pulse_i),
-    .usb_ref_val_i(usbdev_usb_ref_val_i),
     .alert_o(sensor_ctrl_ast_alert_req),
     .alert_i(sensor_ctrl_ast_alert_rsp),
     .dft_strap_test_i(pinmux_dft_strap_test),
@@ -748,16 +755,12 @@ module earlgrey_pd_aon #(
     .scan_reset_n_o(scan_rst_n_o),
     .mem_cfg_o(ast_mem_cfg_req),
     .mem_cfg_i(ast_mem_cfg_rsp),
-    .clk_osc_byp_i(ast_clk_osc_byp),
-    .ext_freq_is_96m_i(clkmgr_hi_speed_sel),
-    .all_clk_byp_req_i(clkmgr_all_clk_byp_req),
-    .io_clk_byp_req_i(clkmgr_io_clk_byp_req),
     .intraip_s2p_o(ast_intraip_s2p_o),
     .intraip_p2s_i(ast_intraip_p2s_i)
   );
 
   sensor_ctrl #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[33:32]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[34:33]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles)
   ) u_sensor_ctrl (
     // Clock and reset connections
@@ -770,8 +773,8 @@ module earlgrey_pd_aon #(
     .intr_io_status_change_o  (intr_sensor_ctrl_io_status_change),
     .intr_init_status_change_o(intr_sensor_ctrl_init_status_change),
 
-    // alert_handler[32]: recov_alert
-    // alert_handler[33]: fatal_alert
+    // alert_handler[33]: recov_alert
+    // alert_handler[34]: fatal_alert
     .alert_tx_o(alert_tx_o[10:9]),
     .alert_rx_i(alert_rx_i[10:9]),
 
@@ -785,14 +788,14 @@ module earlgrey_pd_aon #(
     .ast_status_i(ast_io_pwr_st),
     .ast_init_done_i(ast_init_done_i),
     .ast2pinmux_i(ast_ast2padmux),
-    .wkup_req_o(pwrmgr_wakeups[5]),
+    .wkup_req_o(pwrmgr_wakeups[7]),
     .manual_pad_attr_o(sensor_ctrl_manual_pad_attr_o),
     .tl_i(sensor_ctrl_tl_req_i),
     .tl_o(sensor_ctrl_tl_rsp_o)
   );
 
   sram_ctrl #(
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[34]),
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[35]),
     .AlertSkewCycles(top_pkg::AlertSkewCycles),
     .RndCnstSramKey(RndCnstSramCtrlRetSramKey),
     .RndCnstSramNonce(RndCnstSramCtrlRetSramNonce),
@@ -814,7 +817,7 @@ module earlgrey_pd_aon #(
     .rst_ni(rstmgr_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainAonSel]),
     .rst_otp_ni(rstmgr_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainAonSel]),
 
-    // alert_handler[34]: fatal_error
+    // alert_handler[35]: fatal_error
     .alert_tx_o(alert_tx_o[11]),
     .alert_rx_i(alert_rx_i[11]),
 
@@ -853,38 +856,70 @@ module earlgrey_pd_aon #(
 
   // Pinmux connections
   // All muxed inputs
-  assign cio_gpio_gpio_p2d_o[0] = mio_p2d[MioInGpioGpio0];
-  assign cio_gpio_gpio_p2d_o[1] = mio_p2d[MioInGpioGpio1];
-  assign cio_gpio_gpio_p2d_o[2] = mio_p2d[MioInGpioGpio2];
-  assign cio_gpio_gpio_p2d_o[3] = mio_p2d[MioInGpioGpio3];
-  assign cio_gpio_gpio_p2d_o[4] = mio_p2d[MioInGpioGpio4];
-  assign cio_gpio_gpio_p2d_o[5] = mio_p2d[MioInGpioGpio5];
-  assign cio_gpio_gpio_p2d_o[6] = mio_p2d[MioInGpioGpio6];
-  assign cio_gpio_gpio_p2d_o[7] = mio_p2d[MioInGpioGpio7];
-  assign cio_gpio_gpio_p2d_o[8] = mio_p2d[MioInGpioGpio8];
-  assign cio_gpio_gpio_p2d_o[9] = mio_p2d[MioInGpioGpio9];
-  assign cio_gpio_gpio_p2d_o[10] = mio_p2d[MioInGpioGpio10];
-  assign cio_gpio_gpio_p2d_o[11] = mio_p2d[MioInGpioGpio11];
-  assign cio_gpio_gpio_p2d_o[12] = mio_p2d[MioInGpioGpio12];
-  assign cio_gpio_gpio_p2d_o[13] = mio_p2d[MioInGpioGpio13];
-  assign cio_gpio_gpio_p2d_o[14] = mio_p2d[MioInGpioGpio14];
-  assign cio_gpio_gpio_p2d_o[15] = mio_p2d[MioInGpioGpio15];
-  assign cio_gpio_gpio_p2d_o[16] = mio_p2d[MioInGpioGpio16];
-  assign cio_gpio_gpio_p2d_o[17] = mio_p2d[MioInGpioGpio17];
-  assign cio_gpio_gpio_p2d_o[18] = mio_p2d[MioInGpioGpio18];
-  assign cio_gpio_gpio_p2d_o[19] = mio_p2d[MioInGpioGpio19];
-  assign cio_gpio_gpio_p2d_o[20] = mio_p2d[MioInGpioGpio20];
-  assign cio_gpio_gpio_p2d_o[21] = mio_p2d[MioInGpioGpio21];
-  assign cio_gpio_gpio_p2d_o[22] = mio_p2d[MioInGpioGpio22];
-  assign cio_gpio_gpio_p2d_o[23] = mio_p2d[MioInGpioGpio23];
-  assign cio_gpio_gpio_p2d_o[24] = mio_p2d[MioInGpioGpio24];
-  assign cio_gpio_gpio_p2d_o[25] = mio_p2d[MioInGpioGpio25];
-  assign cio_gpio_gpio_p2d_o[26] = mio_p2d[MioInGpioGpio26];
-  assign cio_gpio_gpio_p2d_o[27] = mio_p2d[MioInGpioGpio27];
-  assign cio_gpio_gpio_p2d_o[28] = mio_p2d[MioInGpioGpio28];
-  assign cio_gpio_gpio_p2d_o[29] = mio_p2d[MioInGpioGpio29];
-  assign cio_gpio_gpio_p2d_o[30] = mio_p2d[MioInGpioGpio30];
-  assign cio_gpio_gpio_p2d_o[31] = mio_p2d[MioInGpioGpio31];
+  assign cio_gpio0_gpio_p2d_o[0] = mio_p2d[MioInGpio0Gpio0];
+  assign cio_gpio0_gpio_p2d_o[1] = mio_p2d[MioInGpio0Gpio1];
+  assign cio_gpio0_gpio_p2d_o[2] = mio_p2d[MioInGpio0Gpio2];
+  assign cio_gpio0_gpio_p2d_o[3] = mio_p2d[MioInGpio0Gpio3];
+  assign cio_gpio0_gpio_p2d_o[4] = mio_p2d[MioInGpio0Gpio4];
+  assign cio_gpio0_gpio_p2d_o[5] = mio_p2d[MioInGpio0Gpio5];
+  assign cio_gpio0_gpio_p2d_o[6] = mio_p2d[MioInGpio0Gpio6];
+  assign cio_gpio0_gpio_p2d_o[7] = mio_p2d[MioInGpio0Gpio7];
+  assign cio_gpio0_gpio_p2d_o[8] = mio_p2d[MioInGpio0Gpio8];
+  assign cio_gpio0_gpio_p2d_o[9] = mio_p2d[MioInGpio0Gpio9];
+  assign cio_gpio0_gpio_p2d_o[10] = mio_p2d[MioInGpio0Gpio10];
+  assign cio_gpio0_gpio_p2d_o[11] = mio_p2d[MioInGpio0Gpio11];
+  assign cio_gpio0_gpio_p2d_o[12] = mio_p2d[MioInGpio0Gpio12];
+  assign cio_gpio0_gpio_p2d_o[13] = mio_p2d[MioInGpio0Gpio13];
+  assign cio_gpio0_gpio_p2d_o[14] = mio_p2d[MioInGpio0Gpio14];
+  assign cio_gpio0_gpio_p2d_o[15] = mio_p2d[MioInGpio0Gpio15];
+  assign cio_gpio0_gpio_p2d_o[16] = mio_p2d[MioInGpio0Gpio16];
+  assign cio_gpio0_gpio_p2d_o[17] = mio_p2d[MioInGpio0Gpio17];
+  assign cio_gpio0_gpio_p2d_o[18] = mio_p2d[MioInGpio0Gpio18];
+  assign cio_gpio0_gpio_p2d_o[19] = mio_p2d[MioInGpio0Gpio19];
+  assign cio_gpio0_gpio_p2d_o[20] = mio_p2d[MioInGpio0Gpio20];
+  assign cio_gpio0_gpio_p2d_o[21] = mio_p2d[MioInGpio0Gpio21];
+  assign cio_gpio0_gpio_p2d_o[22] = mio_p2d[MioInGpio0Gpio22];
+  assign cio_gpio0_gpio_p2d_o[23] = mio_p2d[MioInGpio0Gpio23];
+  assign cio_gpio0_gpio_p2d_o[24] = mio_p2d[MioInGpio0Gpio24];
+  assign cio_gpio0_gpio_p2d_o[25] = mio_p2d[MioInGpio0Gpio25];
+  assign cio_gpio0_gpio_p2d_o[26] = mio_p2d[MioInGpio0Gpio26];
+  assign cio_gpio0_gpio_p2d_o[27] = mio_p2d[MioInGpio0Gpio27];
+  assign cio_gpio0_gpio_p2d_o[28] = mio_p2d[MioInGpio0Gpio28];
+  assign cio_gpio0_gpio_p2d_o[29] = mio_p2d[MioInGpio0Gpio29];
+  assign cio_gpio0_gpio_p2d_o[30] = mio_p2d[MioInGpio0Gpio30];
+  assign cio_gpio0_gpio_p2d_o[31] = mio_p2d[MioInGpio0Gpio31];
+  assign cio_gpio1_gpio_p2d_o[0] = mio_p2d[MioInGpio1Gpio0];
+  assign cio_gpio1_gpio_p2d_o[1] = mio_p2d[MioInGpio1Gpio1];
+  assign cio_gpio1_gpio_p2d_o[2] = mio_p2d[MioInGpio1Gpio2];
+  assign cio_gpio1_gpio_p2d_o[3] = mio_p2d[MioInGpio1Gpio3];
+  assign cio_gpio1_gpio_p2d_o[4] = mio_p2d[MioInGpio1Gpio4];
+  assign cio_gpio1_gpio_p2d_o[5] = mio_p2d[MioInGpio1Gpio5];
+  assign cio_gpio1_gpio_p2d_o[6] = mio_p2d[MioInGpio1Gpio6];
+  assign cio_gpio1_gpio_p2d_o[7] = mio_p2d[MioInGpio1Gpio7];
+  assign cio_gpio1_gpio_p2d_o[8] = mio_p2d[MioInGpio1Gpio8];
+  assign cio_gpio1_gpio_p2d_o[9] = mio_p2d[MioInGpio1Gpio9];
+  assign cio_gpio1_gpio_p2d_o[10] = mio_p2d[MioInGpio1Gpio10];
+  assign cio_gpio1_gpio_p2d_o[11] = mio_p2d[MioInGpio1Gpio11];
+  assign cio_gpio1_gpio_p2d_o[12] = mio_p2d[MioInGpio1Gpio12];
+  assign cio_gpio1_gpio_p2d_o[13] = mio_p2d[MioInGpio1Gpio13];
+  assign cio_gpio1_gpio_p2d_o[14] = mio_p2d[MioInGpio1Gpio14];
+  assign cio_gpio1_gpio_p2d_o[15] = mio_p2d[MioInGpio1Gpio15];
+  assign cio_gpio1_gpio_p2d_o[16] = mio_p2d[MioInGpio1Gpio16];
+  assign cio_gpio1_gpio_p2d_o[17] = mio_p2d[MioInGpio1Gpio17];
+  assign cio_gpio1_gpio_p2d_o[18] = mio_p2d[MioInGpio1Gpio18];
+  assign cio_gpio1_gpio_p2d_o[19] = mio_p2d[MioInGpio1Gpio19];
+  assign cio_gpio1_gpio_p2d_o[20] = mio_p2d[MioInGpio1Gpio20];
+  assign cio_gpio1_gpio_p2d_o[21] = mio_p2d[MioInGpio1Gpio21];
+  assign cio_gpio1_gpio_p2d_o[22] = mio_p2d[MioInGpio1Gpio22];
+  assign cio_gpio1_gpio_p2d_o[23] = mio_p2d[MioInGpio1Gpio23];
+  assign cio_gpio1_gpio_p2d_o[24] = mio_p2d[MioInGpio1Gpio24];
+  assign cio_gpio1_gpio_p2d_o[25] = mio_p2d[MioInGpio1Gpio25];
+  assign cio_gpio1_gpio_p2d_o[26] = mio_p2d[MioInGpio1Gpio26];
+  assign cio_gpio1_gpio_p2d_o[27] = mio_p2d[MioInGpio1Gpio27];
+  assign cio_gpio1_gpio_p2d_o[28] = mio_p2d[MioInGpio1Gpio28];
+  assign cio_gpio1_gpio_p2d_o[29] = mio_p2d[MioInGpio1Gpio29];
+  assign cio_gpio1_gpio_p2d_o[30] = mio_p2d[MioInGpio1Gpio30];
+  assign cio_gpio1_gpio_p2d_o[31] = mio_p2d[MioInGpio1Gpio31];
   assign cio_i2c0_sda_p2d_o = mio_p2d[MioInI2c0Sda];
   assign cio_i2c0_scl_p2d_o = mio_p2d[MioInI2c0Scl];
   assign cio_i2c1_sda_p2d_o = mio_p2d[MioInI2c1Sda];
@@ -903,6 +938,10 @@ module earlgrey_pd_aon #(
   assign cio_uart1_rx_p2d_o = mio_p2d[MioInUart1Rx];
   assign cio_uart2_rx_p2d_o = mio_p2d[MioInUart2Rx];
   assign cio_uart3_rx_p2d_o = mio_p2d[MioInUart3Rx];
+  assign cio_i3c0_rstdet_scl_p2d = mio_p2d[MioInI3c0RstdetScl];
+  assign cio_i3c0_rstdet_sda_p2d = mio_p2d[MioInI3c0RstdetSda];
+  assign cio_i3c1_rstdet_scl_p2d_o = mio_p2d[MioInI3c1RstdetScl];
+  assign cio_i3c1_rstdet_sda_p2d_o = mio_p2d[MioInI3c1RstdetSda];
   assign cio_spi_device_tpm_csb_p2d_o = mio_p2d[MioInSpiDeviceTpmCsb];
   assign cio_rram_macro_tck_p2d_o = mio_p2d[MioInRramMacroTck];
   assign cio_rram_macro_tms_p2d_o = mio_p2d[MioInRramMacroTms];
@@ -916,38 +955,70 @@ module earlgrey_pd_aon #(
   assign cio_usbdev_sense_p2d_o = mio_p2d[MioInUsbdevSense];
 
   // All muxed outputs
-  assign mio_d2p[MioOutGpioGpio0] = cio_gpio_gpio_d2p_i[0];
-  assign mio_d2p[MioOutGpioGpio1] = cio_gpio_gpio_d2p_i[1];
-  assign mio_d2p[MioOutGpioGpio2] = cio_gpio_gpio_d2p_i[2];
-  assign mio_d2p[MioOutGpioGpio3] = cio_gpio_gpio_d2p_i[3];
-  assign mio_d2p[MioOutGpioGpio4] = cio_gpio_gpio_d2p_i[4];
-  assign mio_d2p[MioOutGpioGpio5] = cio_gpio_gpio_d2p_i[5];
-  assign mio_d2p[MioOutGpioGpio6] = cio_gpio_gpio_d2p_i[6];
-  assign mio_d2p[MioOutGpioGpio7] = cio_gpio_gpio_d2p_i[7];
-  assign mio_d2p[MioOutGpioGpio8] = cio_gpio_gpio_d2p_i[8];
-  assign mio_d2p[MioOutGpioGpio9] = cio_gpio_gpio_d2p_i[9];
-  assign mio_d2p[MioOutGpioGpio10] = cio_gpio_gpio_d2p_i[10];
-  assign mio_d2p[MioOutGpioGpio11] = cio_gpio_gpio_d2p_i[11];
-  assign mio_d2p[MioOutGpioGpio12] = cio_gpio_gpio_d2p_i[12];
-  assign mio_d2p[MioOutGpioGpio13] = cio_gpio_gpio_d2p_i[13];
-  assign mio_d2p[MioOutGpioGpio14] = cio_gpio_gpio_d2p_i[14];
-  assign mio_d2p[MioOutGpioGpio15] = cio_gpio_gpio_d2p_i[15];
-  assign mio_d2p[MioOutGpioGpio16] = cio_gpio_gpio_d2p_i[16];
-  assign mio_d2p[MioOutGpioGpio17] = cio_gpio_gpio_d2p_i[17];
-  assign mio_d2p[MioOutGpioGpio18] = cio_gpio_gpio_d2p_i[18];
-  assign mio_d2p[MioOutGpioGpio19] = cio_gpio_gpio_d2p_i[19];
-  assign mio_d2p[MioOutGpioGpio20] = cio_gpio_gpio_d2p_i[20];
-  assign mio_d2p[MioOutGpioGpio21] = cio_gpio_gpio_d2p_i[21];
-  assign mio_d2p[MioOutGpioGpio22] = cio_gpio_gpio_d2p_i[22];
-  assign mio_d2p[MioOutGpioGpio23] = cio_gpio_gpio_d2p_i[23];
-  assign mio_d2p[MioOutGpioGpio24] = cio_gpio_gpio_d2p_i[24];
-  assign mio_d2p[MioOutGpioGpio25] = cio_gpio_gpio_d2p_i[25];
-  assign mio_d2p[MioOutGpioGpio26] = cio_gpio_gpio_d2p_i[26];
-  assign mio_d2p[MioOutGpioGpio27] = cio_gpio_gpio_d2p_i[27];
-  assign mio_d2p[MioOutGpioGpio28] = cio_gpio_gpio_d2p_i[28];
-  assign mio_d2p[MioOutGpioGpio29] = cio_gpio_gpio_d2p_i[29];
-  assign mio_d2p[MioOutGpioGpio30] = cio_gpio_gpio_d2p_i[30];
-  assign mio_d2p[MioOutGpioGpio31] = cio_gpio_gpio_d2p_i[31];
+  assign mio_d2p[MioOutGpio0Gpio0] = cio_gpio0_gpio_d2p_i[0];
+  assign mio_d2p[MioOutGpio0Gpio1] = cio_gpio0_gpio_d2p_i[1];
+  assign mio_d2p[MioOutGpio0Gpio2] = cio_gpio0_gpio_d2p_i[2];
+  assign mio_d2p[MioOutGpio0Gpio3] = cio_gpio0_gpio_d2p_i[3];
+  assign mio_d2p[MioOutGpio0Gpio4] = cio_gpio0_gpio_d2p_i[4];
+  assign mio_d2p[MioOutGpio0Gpio5] = cio_gpio0_gpio_d2p_i[5];
+  assign mio_d2p[MioOutGpio0Gpio6] = cio_gpio0_gpio_d2p_i[6];
+  assign mio_d2p[MioOutGpio0Gpio7] = cio_gpio0_gpio_d2p_i[7];
+  assign mio_d2p[MioOutGpio0Gpio8] = cio_gpio0_gpio_d2p_i[8];
+  assign mio_d2p[MioOutGpio0Gpio9] = cio_gpio0_gpio_d2p_i[9];
+  assign mio_d2p[MioOutGpio0Gpio10] = cio_gpio0_gpio_d2p_i[10];
+  assign mio_d2p[MioOutGpio0Gpio11] = cio_gpio0_gpio_d2p_i[11];
+  assign mio_d2p[MioOutGpio0Gpio12] = cio_gpio0_gpio_d2p_i[12];
+  assign mio_d2p[MioOutGpio0Gpio13] = cio_gpio0_gpio_d2p_i[13];
+  assign mio_d2p[MioOutGpio0Gpio14] = cio_gpio0_gpio_d2p_i[14];
+  assign mio_d2p[MioOutGpio0Gpio15] = cio_gpio0_gpio_d2p_i[15];
+  assign mio_d2p[MioOutGpio0Gpio16] = cio_gpio0_gpio_d2p_i[16];
+  assign mio_d2p[MioOutGpio0Gpio17] = cio_gpio0_gpio_d2p_i[17];
+  assign mio_d2p[MioOutGpio0Gpio18] = cio_gpio0_gpio_d2p_i[18];
+  assign mio_d2p[MioOutGpio0Gpio19] = cio_gpio0_gpio_d2p_i[19];
+  assign mio_d2p[MioOutGpio0Gpio20] = cio_gpio0_gpio_d2p_i[20];
+  assign mio_d2p[MioOutGpio0Gpio21] = cio_gpio0_gpio_d2p_i[21];
+  assign mio_d2p[MioOutGpio0Gpio22] = cio_gpio0_gpio_d2p_i[22];
+  assign mio_d2p[MioOutGpio0Gpio23] = cio_gpio0_gpio_d2p_i[23];
+  assign mio_d2p[MioOutGpio0Gpio24] = cio_gpio0_gpio_d2p_i[24];
+  assign mio_d2p[MioOutGpio0Gpio25] = cio_gpio0_gpio_d2p_i[25];
+  assign mio_d2p[MioOutGpio0Gpio26] = cio_gpio0_gpio_d2p_i[26];
+  assign mio_d2p[MioOutGpio0Gpio27] = cio_gpio0_gpio_d2p_i[27];
+  assign mio_d2p[MioOutGpio0Gpio28] = cio_gpio0_gpio_d2p_i[28];
+  assign mio_d2p[MioOutGpio0Gpio29] = cio_gpio0_gpio_d2p_i[29];
+  assign mio_d2p[MioOutGpio0Gpio30] = cio_gpio0_gpio_d2p_i[30];
+  assign mio_d2p[MioOutGpio0Gpio31] = cio_gpio0_gpio_d2p_i[31];
+  assign mio_d2p[MioOutGpio1Gpio0] = cio_gpio1_gpio_d2p_i[0];
+  assign mio_d2p[MioOutGpio1Gpio1] = cio_gpio1_gpio_d2p_i[1];
+  assign mio_d2p[MioOutGpio1Gpio2] = cio_gpio1_gpio_d2p_i[2];
+  assign mio_d2p[MioOutGpio1Gpio3] = cio_gpio1_gpio_d2p_i[3];
+  assign mio_d2p[MioOutGpio1Gpio4] = cio_gpio1_gpio_d2p_i[4];
+  assign mio_d2p[MioOutGpio1Gpio5] = cio_gpio1_gpio_d2p_i[5];
+  assign mio_d2p[MioOutGpio1Gpio6] = cio_gpio1_gpio_d2p_i[6];
+  assign mio_d2p[MioOutGpio1Gpio7] = cio_gpio1_gpio_d2p_i[7];
+  assign mio_d2p[MioOutGpio1Gpio8] = cio_gpio1_gpio_d2p_i[8];
+  assign mio_d2p[MioOutGpio1Gpio9] = cio_gpio1_gpio_d2p_i[9];
+  assign mio_d2p[MioOutGpio1Gpio10] = cio_gpio1_gpio_d2p_i[10];
+  assign mio_d2p[MioOutGpio1Gpio11] = cio_gpio1_gpio_d2p_i[11];
+  assign mio_d2p[MioOutGpio1Gpio12] = cio_gpio1_gpio_d2p_i[12];
+  assign mio_d2p[MioOutGpio1Gpio13] = cio_gpio1_gpio_d2p_i[13];
+  assign mio_d2p[MioOutGpio1Gpio14] = cio_gpio1_gpio_d2p_i[14];
+  assign mio_d2p[MioOutGpio1Gpio15] = cio_gpio1_gpio_d2p_i[15];
+  assign mio_d2p[MioOutGpio1Gpio16] = cio_gpio1_gpio_d2p_i[16];
+  assign mio_d2p[MioOutGpio1Gpio17] = cio_gpio1_gpio_d2p_i[17];
+  assign mio_d2p[MioOutGpio1Gpio18] = cio_gpio1_gpio_d2p_i[18];
+  assign mio_d2p[MioOutGpio1Gpio19] = cio_gpio1_gpio_d2p_i[19];
+  assign mio_d2p[MioOutGpio1Gpio20] = cio_gpio1_gpio_d2p_i[20];
+  assign mio_d2p[MioOutGpio1Gpio21] = cio_gpio1_gpio_d2p_i[21];
+  assign mio_d2p[MioOutGpio1Gpio22] = cio_gpio1_gpio_d2p_i[22];
+  assign mio_d2p[MioOutGpio1Gpio23] = cio_gpio1_gpio_d2p_i[23];
+  assign mio_d2p[MioOutGpio1Gpio24] = cio_gpio1_gpio_d2p_i[24];
+  assign mio_d2p[MioOutGpio1Gpio25] = cio_gpio1_gpio_d2p_i[25];
+  assign mio_d2p[MioOutGpio1Gpio26] = cio_gpio1_gpio_d2p_i[26];
+  assign mio_d2p[MioOutGpio1Gpio27] = cio_gpio1_gpio_d2p_i[27];
+  assign mio_d2p[MioOutGpio1Gpio28] = cio_gpio1_gpio_d2p_i[28];
+  assign mio_d2p[MioOutGpio1Gpio29] = cio_gpio1_gpio_d2p_i[29];
+  assign mio_d2p[MioOutGpio1Gpio30] = cio_gpio1_gpio_d2p_i[30];
+  assign mio_d2p[MioOutGpio1Gpio31] = cio_gpio1_gpio_d2p_i[31];
   assign mio_d2p[MioOutI2c0Sda] = cio_i2c0_sda_d2p_i;
   assign mio_d2p[MioOutI2c0Scl] = cio_i2c0_scl_d2p_i;
   assign mio_d2p[MioOutI2c1Sda] = cio_i2c1_sda_d2p_i;
@@ -988,38 +1059,70 @@ module earlgrey_pd_aon #(
   assign mio_d2p[MioOutSysrstCtrlZ3Wakeup] = cio_sysrst_ctrl_z3_wakeup_d2p;
 
   // All muxed output enables
-  assign mio_en_d2p[MioOutGpioGpio0] = cio_gpio_gpio_en_d2p_i[0];
-  assign mio_en_d2p[MioOutGpioGpio1] = cio_gpio_gpio_en_d2p_i[1];
-  assign mio_en_d2p[MioOutGpioGpio2] = cio_gpio_gpio_en_d2p_i[2];
-  assign mio_en_d2p[MioOutGpioGpio3] = cio_gpio_gpio_en_d2p_i[3];
-  assign mio_en_d2p[MioOutGpioGpio4] = cio_gpio_gpio_en_d2p_i[4];
-  assign mio_en_d2p[MioOutGpioGpio5] = cio_gpio_gpio_en_d2p_i[5];
-  assign mio_en_d2p[MioOutGpioGpio6] = cio_gpio_gpio_en_d2p_i[6];
-  assign mio_en_d2p[MioOutGpioGpio7] = cio_gpio_gpio_en_d2p_i[7];
-  assign mio_en_d2p[MioOutGpioGpio8] = cio_gpio_gpio_en_d2p_i[8];
-  assign mio_en_d2p[MioOutGpioGpio9] = cio_gpio_gpio_en_d2p_i[9];
-  assign mio_en_d2p[MioOutGpioGpio10] = cio_gpio_gpio_en_d2p_i[10];
-  assign mio_en_d2p[MioOutGpioGpio11] = cio_gpio_gpio_en_d2p_i[11];
-  assign mio_en_d2p[MioOutGpioGpio12] = cio_gpio_gpio_en_d2p_i[12];
-  assign mio_en_d2p[MioOutGpioGpio13] = cio_gpio_gpio_en_d2p_i[13];
-  assign mio_en_d2p[MioOutGpioGpio14] = cio_gpio_gpio_en_d2p_i[14];
-  assign mio_en_d2p[MioOutGpioGpio15] = cio_gpio_gpio_en_d2p_i[15];
-  assign mio_en_d2p[MioOutGpioGpio16] = cio_gpio_gpio_en_d2p_i[16];
-  assign mio_en_d2p[MioOutGpioGpio17] = cio_gpio_gpio_en_d2p_i[17];
-  assign mio_en_d2p[MioOutGpioGpio18] = cio_gpio_gpio_en_d2p_i[18];
-  assign mio_en_d2p[MioOutGpioGpio19] = cio_gpio_gpio_en_d2p_i[19];
-  assign mio_en_d2p[MioOutGpioGpio20] = cio_gpio_gpio_en_d2p_i[20];
-  assign mio_en_d2p[MioOutGpioGpio21] = cio_gpio_gpio_en_d2p_i[21];
-  assign mio_en_d2p[MioOutGpioGpio22] = cio_gpio_gpio_en_d2p_i[22];
-  assign mio_en_d2p[MioOutGpioGpio23] = cio_gpio_gpio_en_d2p_i[23];
-  assign mio_en_d2p[MioOutGpioGpio24] = cio_gpio_gpio_en_d2p_i[24];
-  assign mio_en_d2p[MioOutGpioGpio25] = cio_gpio_gpio_en_d2p_i[25];
-  assign mio_en_d2p[MioOutGpioGpio26] = cio_gpio_gpio_en_d2p_i[26];
-  assign mio_en_d2p[MioOutGpioGpio27] = cio_gpio_gpio_en_d2p_i[27];
-  assign mio_en_d2p[MioOutGpioGpio28] = cio_gpio_gpio_en_d2p_i[28];
-  assign mio_en_d2p[MioOutGpioGpio29] = cio_gpio_gpio_en_d2p_i[29];
-  assign mio_en_d2p[MioOutGpioGpio30] = cio_gpio_gpio_en_d2p_i[30];
-  assign mio_en_d2p[MioOutGpioGpio31] = cio_gpio_gpio_en_d2p_i[31];
+  assign mio_en_d2p[MioOutGpio0Gpio0] = cio_gpio0_gpio_en_d2p_i[0];
+  assign mio_en_d2p[MioOutGpio0Gpio1] = cio_gpio0_gpio_en_d2p_i[1];
+  assign mio_en_d2p[MioOutGpio0Gpio2] = cio_gpio0_gpio_en_d2p_i[2];
+  assign mio_en_d2p[MioOutGpio0Gpio3] = cio_gpio0_gpio_en_d2p_i[3];
+  assign mio_en_d2p[MioOutGpio0Gpio4] = cio_gpio0_gpio_en_d2p_i[4];
+  assign mio_en_d2p[MioOutGpio0Gpio5] = cio_gpio0_gpio_en_d2p_i[5];
+  assign mio_en_d2p[MioOutGpio0Gpio6] = cio_gpio0_gpio_en_d2p_i[6];
+  assign mio_en_d2p[MioOutGpio0Gpio7] = cio_gpio0_gpio_en_d2p_i[7];
+  assign mio_en_d2p[MioOutGpio0Gpio8] = cio_gpio0_gpio_en_d2p_i[8];
+  assign mio_en_d2p[MioOutGpio0Gpio9] = cio_gpio0_gpio_en_d2p_i[9];
+  assign mio_en_d2p[MioOutGpio0Gpio10] = cio_gpio0_gpio_en_d2p_i[10];
+  assign mio_en_d2p[MioOutGpio0Gpio11] = cio_gpio0_gpio_en_d2p_i[11];
+  assign mio_en_d2p[MioOutGpio0Gpio12] = cio_gpio0_gpio_en_d2p_i[12];
+  assign mio_en_d2p[MioOutGpio0Gpio13] = cio_gpio0_gpio_en_d2p_i[13];
+  assign mio_en_d2p[MioOutGpio0Gpio14] = cio_gpio0_gpio_en_d2p_i[14];
+  assign mio_en_d2p[MioOutGpio0Gpio15] = cio_gpio0_gpio_en_d2p_i[15];
+  assign mio_en_d2p[MioOutGpio0Gpio16] = cio_gpio0_gpio_en_d2p_i[16];
+  assign mio_en_d2p[MioOutGpio0Gpio17] = cio_gpio0_gpio_en_d2p_i[17];
+  assign mio_en_d2p[MioOutGpio0Gpio18] = cio_gpio0_gpio_en_d2p_i[18];
+  assign mio_en_d2p[MioOutGpio0Gpio19] = cio_gpio0_gpio_en_d2p_i[19];
+  assign mio_en_d2p[MioOutGpio0Gpio20] = cio_gpio0_gpio_en_d2p_i[20];
+  assign mio_en_d2p[MioOutGpio0Gpio21] = cio_gpio0_gpio_en_d2p_i[21];
+  assign mio_en_d2p[MioOutGpio0Gpio22] = cio_gpio0_gpio_en_d2p_i[22];
+  assign mio_en_d2p[MioOutGpio0Gpio23] = cio_gpio0_gpio_en_d2p_i[23];
+  assign mio_en_d2p[MioOutGpio0Gpio24] = cio_gpio0_gpio_en_d2p_i[24];
+  assign mio_en_d2p[MioOutGpio0Gpio25] = cio_gpio0_gpio_en_d2p_i[25];
+  assign mio_en_d2p[MioOutGpio0Gpio26] = cio_gpio0_gpio_en_d2p_i[26];
+  assign mio_en_d2p[MioOutGpio0Gpio27] = cio_gpio0_gpio_en_d2p_i[27];
+  assign mio_en_d2p[MioOutGpio0Gpio28] = cio_gpio0_gpio_en_d2p_i[28];
+  assign mio_en_d2p[MioOutGpio0Gpio29] = cio_gpio0_gpio_en_d2p_i[29];
+  assign mio_en_d2p[MioOutGpio0Gpio30] = cio_gpio0_gpio_en_d2p_i[30];
+  assign mio_en_d2p[MioOutGpio0Gpio31] = cio_gpio0_gpio_en_d2p_i[31];
+  assign mio_en_d2p[MioOutGpio1Gpio0] = cio_gpio1_gpio_en_d2p_i[0];
+  assign mio_en_d2p[MioOutGpio1Gpio1] = cio_gpio1_gpio_en_d2p_i[1];
+  assign mio_en_d2p[MioOutGpio1Gpio2] = cio_gpio1_gpio_en_d2p_i[2];
+  assign mio_en_d2p[MioOutGpio1Gpio3] = cio_gpio1_gpio_en_d2p_i[3];
+  assign mio_en_d2p[MioOutGpio1Gpio4] = cio_gpio1_gpio_en_d2p_i[4];
+  assign mio_en_d2p[MioOutGpio1Gpio5] = cio_gpio1_gpio_en_d2p_i[5];
+  assign mio_en_d2p[MioOutGpio1Gpio6] = cio_gpio1_gpio_en_d2p_i[6];
+  assign mio_en_d2p[MioOutGpio1Gpio7] = cio_gpio1_gpio_en_d2p_i[7];
+  assign mio_en_d2p[MioOutGpio1Gpio8] = cio_gpio1_gpio_en_d2p_i[8];
+  assign mio_en_d2p[MioOutGpio1Gpio9] = cio_gpio1_gpio_en_d2p_i[9];
+  assign mio_en_d2p[MioOutGpio1Gpio10] = cio_gpio1_gpio_en_d2p_i[10];
+  assign mio_en_d2p[MioOutGpio1Gpio11] = cio_gpio1_gpio_en_d2p_i[11];
+  assign mio_en_d2p[MioOutGpio1Gpio12] = cio_gpio1_gpio_en_d2p_i[12];
+  assign mio_en_d2p[MioOutGpio1Gpio13] = cio_gpio1_gpio_en_d2p_i[13];
+  assign mio_en_d2p[MioOutGpio1Gpio14] = cio_gpio1_gpio_en_d2p_i[14];
+  assign mio_en_d2p[MioOutGpio1Gpio15] = cio_gpio1_gpio_en_d2p_i[15];
+  assign mio_en_d2p[MioOutGpio1Gpio16] = cio_gpio1_gpio_en_d2p_i[16];
+  assign mio_en_d2p[MioOutGpio1Gpio17] = cio_gpio1_gpio_en_d2p_i[17];
+  assign mio_en_d2p[MioOutGpio1Gpio18] = cio_gpio1_gpio_en_d2p_i[18];
+  assign mio_en_d2p[MioOutGpio1Gpio19] = cio_gpio1_gpio_en_d2p_i[19];
+  assign mio_en_d2p[MioOutGpio1Gpio20] = cio_gpio1_gpio_en_d2p_i[20];
+  assign mio_en_d2p[MioOutGpio1Gpio21] = cio_gpio1_gpio_en_d2p_i[21];
+  assign mio_en_d2p[MioOutGpio1Gpio22] = cio_gpio1_gpio_en_d2p_i[22];
+  assign mio_en_d2p[MioOutGpio1Gpio23] = cio_gpio1_gpio_en_d2p_i[23];
+  assign mio_en_d2p[MioOutGpio1Gpio24] = cio_gpio1_gpio_en_d2p_i[24];
+  assign mio_en_d2p[MioOutGpio1Gpio25] = cio_gpio1_gpio_en_d2p_i[25];
+  assign mio_en_d2p[MioOutGpio1Gpio26] = cio_gpio1_gpio_en_d2p_i[26];
+  assign mio_en_d2p[MioOutGpio1Gpio27] = cio_gpio1_gpio_en_d2p_i[27];
+  assign mio_en_d2p[MioOutGpio1Gpio28] = cio_gpio1_gpio_en_d2p_i[28];
+  assign mio_en_d2p[MioOutGpio1Gpio29] = cio_gpio1_gpio_en_d2p_i[29];
+  assign mio_en_d2p[MioOutGpio1Gpio30] = cio_gpio1_gpio_en_d2p_i[30];
+  assign mio_en_d2p[MioOutGpio1Gpio31] = cio_gpio1_gpio_en_d2p_i[31];
   assign mio_en_d2p[MioOutI2c0Sda] = cio_i2c0_sda_en_d2p_i;
   assign mio_en_d2p[MioOutI2c0Scl] = cio_i2c0_scl_en_d2p_i;
   assign mio_en_d2p[MioOutI2c1Sda] = cio_i2c1_sda_en_d2p_i;

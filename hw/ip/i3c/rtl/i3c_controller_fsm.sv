@@ -8,6 +8,7 @@
 module i3c_controller_fsm
   import i3c_controller_pkg::*;
   import i3c_fifo_pkg::*;
+  import i3c_hci_pkg::*;
   import i3c_pkg::*;
   import i3c_reg_pkg::*;
 #(
@@ -51,7 +52,6 @@ module i3c_controller_fsm
   input        [DCTAddrW-1:0] dct_idx_q_i,
 
   // Blocked device addresses.
-  // TODO(#31307): Implement this debug/safety functionality.
   input                 [6:0] addr_blocked_i[NumBlocked],
   input                 [6:0] mask_blocked_i[NumBlocked],
 
@@ -181,8 +181,16 @@ module i3c_controller_fsm
   // - this is valid from `CmdDecode` onwards because it depends upon the Device Address Table entry
   //   as well as the Command Descriptor.
   logic cmd_dec_err;
+  // Is the Target address for this command phase blocked?
+  logic cmd_addr_blocked;
   // Was the command `Nack`ed too many times?
   logic cmd_nack_excess;
+
+  // Enable Broadcast Address, in the 'Operating Context' of queued Transfer Commands (HCI 8.4.2.2).
+  // - the specification does not seems to state how this should interact with `IBA_INCLUDE.` The
+  //   point of this feature is to reduce the response latency to IBIs, so we play safe and use OR.
+  logic pio_bcst_addr_en;
+  wire use_bcst_addr = pio_bcst_addr_en | hc_control_i.iba_include.d;  // hwext, so use `d`.
 
   // Interpretations of the raw Command Descriptor DWORDs.
   i3c_xfer_cmd_intern_ctrl_t cmd_intn;
@@ -205,30 +213,39 @@ module i3c_controller_fsm
   // Command validation and decoding.
   // - commands come from the Command Queue and - at some point - Auto-Command handling.
   // - Scheduled Commands are presently not implemented at all.
-  i3c_cmd_decode u_cmd_decode (
+  i3c_cmd_decode #(
+    .NumBlocked(NumBlocked)  // Number of blocked address settings supported.
+  ) u_cmd_decode (
     // Current command state, for phase-dependent command properties.
-    .cmd_state_i(cmd_state),
+    .cmd_state_i    (cmd_state),
     // Device Address Table entry; the transfer mode depends upon this.
-    .dat_entry_i(dat_entry),
+    .dat_entry_i    (dat_entry),
 
     // Raw command descriptor DWORDs from the Command Queue.
-    .cmd_queue_i(cmd_raw),
+    .cmd_queue_i    (cmd_raw),
+
+    // Configuration.
+    .use_bcst_addr_i(use_bcst_addr),
+    .addr_blocked_i (addr_blocked_i),
+    .mask_blocked_i (mask_blocked_i),
 
     // Initial validity check of a Command Descriptor.
-    .init_ok_o  (cmd_init_ok),
+    .init_ok_o      (cmd_init_ok),
 
     // Command attributes, derived combinationally from the Command Descriptor.
-    .cmd_attrs_o(cmd_attrs),
+    .cmd_attrs_o    (cmd_attrs),
 
     // Interpretations of the input Command Descriptor.
-    .cmd_intn_o (cmd_intn),
-    .cmd_daa_o  (cmd_daa),
-    .cmd_combo_o(cmd_combo),
-    .cmd_reg_o  (cmd_reg),
-    .cmd_imm_o  (cmd_imm),
+    .cmd_intn_o     (cmd_intn),
+    .cmd_daa_o      (cmd_daa),
+    .cmd_combo_o    (cmd_combo),
+    .cmd_reg_o      (cmd_reg),
+    .cmd_imm_o      (cmd_imm),
 
-    // Response status; ErrStatus_OK iff the command is accepted by the decoder.
-    .err_o      (cmd_dec_err)
+    // Response status.
+    .err_o          (cmd_dec_err),
+    // Have accesses to the Target address of this command been blocked?
+    .blocked_o      (cmd_addr_blocked)
   );
 
   // Current and next states.
@@ -360,8 +377,9 @@ module i3c_controller_fsm
   // Command Queue enabled?
   // - software may choose to Run/Stop PIO Command Queue handling at any point.
   // - do not start command processing either when Disabled or when Abort requested.
-  wire cmd_enabled = reg2hw_i.pio_control.enable & reg2hw_i.pio_control.rs &
-                    !reg2hw_i.pio_control.abort;
+  // - TODO(#31304): note that there are two Abort mechanisms (Controller-global and PIO-local).
+  wire cmd_enabled = reg2hw_i.pio_control.enable.q & reg2hw_i.pio_control.rs.q &
+                    !reg2hw_i.pio_control.abort.q;
 
   // Requests from the HCI Driver software; Command Descriptors are formed of two DWORDs.
   // Note: although we may know that there _are_ at least two DWORDs, there may be a delay in
@@ -412,14 +430,6 @@ module i3c_controller_fsm
   // - The open drain timing is more relaxed for the first I3C Broadcast address, so that I3C
   //   devices can see it even if they have spike filters enabled.
   logic i3c_first;
-  // Does the current command employ the I3C Broadcast Address (7'h7e)?
-  logic addr_bcst;
-
-  // Enable Broadcast Address, in the 'Operating Context' of queued Transfer Commands (HCI 8.4.2.2).
-  // - the specification does not seems to state how this should interact with `IBA_INCLUDE.` The
-  //   point of this feature is to reduce the response latency to IBIs, so we play safe and use OR.
-  logic pio_bcst_addr_en;
-  wire use_bcst_addr = pio_bcst_addr_en | hc_control_i.iba_include.d;  // hwext, so use `d`.
 
   logic hj_crr_captured;
 
@@ -530,7 +540,7 @@ module i3c_controller_fsm
       CmdBegin: state_d = DATCapt;
       DATCapt:  state_d = CmdDecode;
       CmdDecode: begin  // TODO(#31304): This probably wants tidying once the logic is finalized.
-        if (cmd_dec_err) state_d = CmdDecErr;
+        if (cmd_dec_err | cmd_addr_blocked) state_d = CmdDecErr;
         else begin
           // Here we need only handle the Command Descriptors that `i3c_cmd_decode` did not reject.
           unique case (cmd_attrs.attr)
@@ -553,9 +563,9 @@ module i3c_controller_fsm
                 default: state_d = CmdDecErr;
               endcase
             end
-            default: state_d = ((cmd_attrs.ddr & curr_ddr) ? CmdWord :
-                                                (curr_ddr  ? ExitHDR :
-                                      (cmd_state.rep_start ? CmdAddr : StartSDR)));
+            default: state_d = (cmd_attrs.ddr & curr_ddr) ? CmdWord :
+                                                curr_ddr  ? ExitHDR :
+                                      cmd_state.rep_start ? CmdAddr : StartSDR;
           endcase
         end
       end
@@ -577,14 +587,15 @@ module i3c_controller_fsm
       CmdAddr:  state_d = WaitAckb;
 
       // Awaiting Ack/Nack from the Target/Group.
-      WaitAckb: state_d = trx_arb_i.nack ? StopSDR :
-                        cmd_attrs.is_ccc ? CCC :
+      WaitAckb: state_d = trx_arb_i.nack ? StopSDR  :
+                        cmd_attrs.is_ccc ? CCC      :
              (cmd_attrs.ddr & !curr_ddr) ? EnterDDR :
-            (addr_bcst & !cmd_attrs.ddr) ? RepStPriv :  // Sr before Private Transfer, after 7'h7e.
-                           cmd_attrs.rnw ? RxData : TxData;
+             // Sr before Private Transfer, after 7'h7e?
+             (cmd_attrs.addr_bcst & !cmd_attrs.ddr) ? RepStPriv :
+                                      cmd_attrs.rnw ? RxData    : TxData;
 
       // Sending Ack/Nack to the Target when we lost arbitration, or did not contend.
-      SendAckb: state_d = hotjoin_req ? HotJoin :
+      SendAckb: state_d = hotjoin_req ? HotJoin  :
                               ibi_req ? IBICheck : CRR;
       EnterDDR: state_d = CmdWord;
       CmdWord:  state_d = cmd_attrs.rnw ? RxData : TxData;
@@ -607,12 +618,15 @@ module i3c_controller_fsm
       // or otherwise.
       CCC: begin
         unique case (ccc_rsp.err_status)
-          ErrStatus_OK: state_d = cmd_attrs.toc ? StopSDR : RepStSDR;
+          ErrStatus_SUCCESS: state_d = cmd_attrs.toc ? StopSDR : RepStSDR;
           default: state_d = ErrFatal;
         endcase
       end
 
       // --- Command Errors ---
+      // TODO(#31305): This suffices only for a simple rejection during command decoding; it needs
+      // extending for other conditions, to return the bus safely to an idle state and report the
+      // issue to the HCI Driver software.
       CmdDecErr:  state_d = Idle;
 
       // --- Target Reset operations ---
@@ -684,6 +698,7 @@ module i3c_controller_fsm
       bus_state.mode      <= XferMode_SDR0;
       bus_state.i2c       <= 1'b0;
       cmdq_lo_valid       <= 1'b0;
+      cmdq_lo_data        <= 'b0;  // Not logically required, just for the HCI `SOFT_RST` action.
       cmd_state.available <= 1'b0;
       cmd_state.started   <= 1'b0;
       pio_bcst_addr_en    <= 1'b0;
@@ -698,10 +713,10 @@ module i3c_controller_fsm
             cmd_state.available <= cmd_dispatch;
             trans_type          <= cmd_dispatch ? TransType_Cmd : TransType_Intr;
           end
-          // Capture the DAT entry (read data from DAT could be altered by software access);
+          // DAT entry must be captured immediately (see `datf_re_q` below).
           // - note that we also wait here until the result from the previous command has been
           //   posted into the Response Queue.
-          DATCapt: if (datf_re_q) dat_entry <= dat_rdata_i;
+          DATCapt: begin end
           // Now that we have the captured DAT entry available to complete the command decoding,
           // we can proceed
           CmdDecode: begin
@@ -745,7 +760,7 @@ module i3c_controller_fsm
           WaitAckb: begin
             // Once we've successfully issued the first I3C Broadcast Address we can transmit
             // faster.
-            if (addr_bcst & ~trx_arb_i.arb_lost) i3c_first <= 1'b0;
+            if (cmd_attrs.addr_bcst & ~trx_arb_i.arb_lost) i3c_first <= 1'b0;
           end
           // Track changes to the current bus mode.
           EnterDDR: begin
@@ -804,6 +819,9 @@ module i3c_controller_fsm
           trans_type          <= TransType_None;
         end
       end
+
+      // Capture the DAT entry immediately (read data from DAT could be altered by software access).
+      if (datf_re_q) dat_entry <= dat_rdata_i;
 
       // Remember whether a DAT read was performed.
       datf_re_q <= datf_re;
@@ -905,7 +923,7 @@ module i3c_controller_fsm
     // We may need to pad the final half-word with a 0 byte; half-words are transmitted as
     // big endian, though, so the final (non-existent) byte is bits [7:0] of the half-word.
     for (int unsigned ib = 0; ib < DataWidth; ib += 16) begin
-      // Data Words transmit the first byte within the MSBs.
+      // HDR-DDR 'Data Word's transmit the first byte within the MSBs.
       revh[DataWidth - ib - 16 +: 16] = {wdata[ib +: 8],
                                          wdata[ib + 8 +: 8] & {8{ib + 8 < bits_left}}};
     end
@@ -987,12 +1005,16 @@ module i3c_controller_fsm
   // Generate request to the transceiver logic; this is a purely combinational module that
   // constructs the request from the current FSM state and the data to be transferred.
   i3c_ctrl_req_gen #(
-    .ClkFreq  (ClkFreq),
-    .DataWidth(DataWidth)
+    .ClkFreq   (ClkFreq),
+    .DataWidth (DataWidth),
+    .NumBlocked(NumBlocked)  // Number of blocked address settings supported.
   ) u_req_gen (
     // Configuration.
     .reg2hw_i       (reg2hw_i),
-    .use_bcst_addr_i(use_bcst_addr),
+
+    // Blocked addresses.
+    .addr_blocked_i (addr_blocked_i),
+    .mask_blocked_i (mask_blocked_i),
 
     // The current FSM state.
     .state_i        (state_q),
@@ -1019,8 +1041,6 @@ module i3c_controller_fsm
     .tcas_d2_o      (tcas_d2_o),
     .tcbp_d2_o      (tcbp_d2_o),
 
-    // Using I3C Broadcast Address?
-    .addr_bcst_o    (addr_bcst),
     // Request to the transceiver logic.
     .trx_dvalid_o   (trx_dvalid_o),
     .trx_dreq_o     (trx_dreq_o)
@@ -1051,7 +1071,7 @@ module i3c_controller_fsm
 
   // -------------------------------------- Data reception -----------------------------------------
 
-  logic rxbuf_wdata_accepted, ibi_data_accepted;
+  logic rx_data_accepted, rxbuf_wdata_accepted, ibi_data_accepted;
   logic rx_wvalid_q;
   logic [DataWidth-1:0] rx_data_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -1073,15 +1093,16 @@ module i3c_controller_fsm
             // manage to assign all `dev_count` addresses (HCI 8.4.1.1).
             rx_data_len   <= {15'b0, ~|cmd_state.reps_left};
           end
+          // Read data is steered to either the Rx Buffer or the IBI Data Buffer.
           default: begin
             if (trx_rdvalid_i | rx_wvalid_q) begin
-              // Read data is steered to either the Rx Buffer or the IBI Data Buffer.
-              rx_wvalid_q <= (trx_rdvalid_i | rx_wvalid_q) &
-                            ~(rxbuf_wdata_accepted | ibi_data_accepted);
-            end
-            if (trx_rdvalid_i & ~rx_wvalid_q) begin
-              // Keep old data rather than accept new, to avoid corrupting the transmitted data;
-              // TODO: this shall be reported as an error condition.
+              rx_wvalid_q <= (rx_wvalid_q & ~rx_data_accepted)  // Older data still pending.
+                           | (trx_rdvalid_i & (rx_wvalid_q | ~rx_data_accepted));  // New data.
+           end
+            // Keep old data rather than accept new, to avoid corrupting the transmitted data,
+            // but we must be sure to update `rx_data_len` even if the combinationally-forwarded
+            // data is accepted immediately.
+            if (trx_rdvalid_i & (rx_data_accepted | ~rx_wvalid_q)) begin
               rx_data_len <= rx_next_len;
               rx_data_q   <= rx_data;
             end
@@ -1141,16 +1162,26 @@ module i3c_controller_fsm
   //
   // Note: the write strobe remains asserted until the data is accepted; the shared message buffer
   // cannot always accept write data immediately even if there is space available for the data.
+  //
+  // To be slightly more robust against data loss, we provide a combinational path; remembering to
+  // prioritize the older data word (truncate rather than corrupt the data).
 
   // Write the data into the Rx Buffer.
-  assign rxbuf_wvalid_o = (rx_dest == RxDest_Buf) & (rx_wvalid_q | trx_rdvalid_i);
-  assign rxbuf_wdata_o  = trx_rdvalid_i ? rx_data : rx_data_q;
+  assign rxbuf_wvalid_o       = (rx_dest == RxDest_Buf) & (rx_wvalid_q | trx_rdvalid_i);
+  assign rxbuf_wdata_o        = rx_wvalid_q ? rx_data_q : rx_data;  // Keep older data.
   assign rxbuf_wdata_accepted = rxbuf_wvalid_o & rxbuf_wready_i;
 
   // We also need to support writing into the IBI data buffer.
-  assign ibi_data_wvalid_o = (rx_dest == RxDest_IBI) & (rx_wvalid_q | trx_rdvalid_i);
-  assign ibi_data_wdata_o  = trx_rdvalid_i ? rx_data : rx_data_q;
-  assign ibi_data_accepted = ibi_data_wvalid_o & ibi_data_wready_i;
+  assign ibi_data_wvalid_o    = (rx_dest == RxDest_IBI) & (rx_wvalid_q | trx_rdvalid_i);
+  assign ibi_data_wdata_o     = rx_wvalid_q ? rx_data_q : rx_data;  // Keep older data.
+  assign ibi_data_accepted    = ibi_data_wvalid_o & ibi_data_wready_i;
+
+  assign rx_data_accepted     = rxbuf_wdata_accepted | ibi_data_accepted;
+
+  // TODO(#31305): We should also report data loss somehow; the following are the raw events but
+  // we shall need to record these using sticky status bits.
+  wire rxbuf_data_loss = &{rx_dest == RxDest_Buf, rx_wvalid_q, trx_rdvalid_i, ~rxbuf_wready_i};
+  wire ibi_data_loss   = &{rx_dest == RxDest_IBI, rx_wvalid_q, trx_rdvalid_i, ~ibi_data_wready_i};
 
   // ------------------------------------ Response construction ------------------------------------
 
@@ -1164,7 +1195,7 @@ module i3c_controller_fsm
   // - this response indicates the success/failure of the transfer, including any error information.
   // - do not create a response for an IBI payload read.
   wire rsp_received = (rx_dest != RxDest_IBI) & trx_rvalid_i;
-  wire rsp_success = (trx_rsp_i.err_status == ErrStatus_OK);
+  wire rsp_success = (trx_rsp_i.err_status == ErrStatus_SUCCESS);
   wire rsp_post = rsp_info.pending & |{rsp_received & rsp_info.wroc,  // From transceiver.
                                        rsp_received & !rsp_success,   // All errors are posted.
                                        rsp_info.dec_err,              // From command decode.
@@ -1185,8 +1216,8 @@ module i3c_controller_fsm
                            rsp_info.nack_det ? ErrStatus_NACK : trx_rsp_i.err_status;
         rsp.tid         <= rsp_info.tid;
         rsp.reserved    <= 'b0;  // Not used; pacify synthesis.
-        // TODO(#31304): The reported `DATA_LENGTH` field can be incorrect for early-terminated/
-        // writes.
+        // TODO(#31304): The reported `DATA_LENGTH` field may presently be incorrect for reads that
+        // suffer data loss, or writes that are terminated early.
         rsp.data_length <= (rsp_info.nack_det | ~rsp_info.rnw) ? data_len :  // From the command.
                                                  trx_rdvalid_i ? rx_next_len : rx_data_len;
       end
@@ -1207,7 +1238,7 @@ module i3c_controller_fsm
     dec_err = &{state_q == Idle, !direct_drive, !disable_now, cmd_reject} | (state_q == CmdDecErr);
     cmd_acked = &{state_q == WaitAckb, trx_avalid_i, !trx_arb_i.nack};
     // Is this acknowledgement for the Arbitrable I3C Broadcast Address of a Private SDR transfer?
-    bcst_priv = &{addr_bcst, ~cmd_attrs.is_ccc, ~cmd_attrs.ddr};
+    bcst_priv = &{cmd_attrs.addr_bcst, ~cmd_attrs.is_ccc, ~cmd_attrs.ddr};
 
     if (|{cmd_acked & ~bcst_priv, dec_err, cmd_nack_excess}) begin
       rsp_next.pending  = 1'b1;
@@ -1280,7 +1311,7 @@ module i3c_controller_fsm
         // Hot-Join requests do not consult the DAT cache and cannot be rejected.
         ibi_stat_desc.ibi_sts     = nacked;
         // CRR and Hot-Join requests shall always return 1'b0 for these two fields (HCI 8.6.3).
-        ibi_stat_desc.error       = (trx_rsp_i.err_status != ErrStatus_OK) & ~ibi_capt_crr_hj;
+        ibi_stat_desc.error       = (trx_rsp_i.err_status != ErrStatus_SUCCESS) & ~ibi_capt_crr_hj;
         ibi_stat_desc.last_status = ibi_rlast & ~ibi_capt_crr_hj;
       end
       // Notes: IBIStatus_StbyCrBastCCC required when Controller Role Handoff is implemented.
@@ -1476,13 +1507,14 @@ module i3c_controller_fsm
       CmdWord:   bcl_tfr_ststat_o = BCLState_HDR;
       TxData:    bcl_tfr_ststat_o = BCLState_Wr;
       RxData:    bcl_tfr_ststat_o = BCLState_Rd;
-      CmdAddr:   bcl_tfr_ststat_o = addr_bcst ? (cmd_attrs.rnw ? BCLState_BcastRead
-                                                               : BCLState_BcastWrite)
-                                              : BCLState_Addr;
+      CmdAddr:   bcl_tfr_ststat_o = cmd_attrs.addr_bcst ? (cmd_attrs.rnw ? BCLState_BcastRead
+                                                                         : BCLState_BcastWrite)
+                                                        : BCLState_Addr;
       CmdArb,
-      WaitArb:   bcl_tfr_ststat_o = addr_bcst ?
-                               (cmd_attrs.rnw ? BCLState_BcastRead  : BCLState_BcastWrite) :
-                          (trx_arb_i.arb_lost ? BCLState_IBIAdrRead : BCLState_Addr);
+      WaitArb:   bcl_tfr_ststat_o = cmd_attrs.addr_bcst ? (cmd_attrs.rnw ? BCLState_BcastRead
+                                                                         : BCLState_BcastWrite)
+                                                        : (trx_arb_i.arb_lost ? BCLState_IBIAdrRead
+                                                                              : BCLState_Addr);
       CCC:       bcl_tfr_ststat_o = (cmd_attrs.attr == CmdAttr_AddrAssignment) ? BCLState_DAA
                                                                                : BCLState_CCC;
       CRR,
@@ -1498,7 +1530,8 @@ module i3c_controller_fsm
 
   // Detection and reporting of CE[3:0] error conditions.
   assign ctrl_error_o = {1'b0,
-                         &{state_q == WaitAckb, addr_bcst, trx_arb_i.nack},  // No ACK to 7'h7e.
+                         // No ACK in response to I3C Broadcast Address (7'h7e).
+                         &{state_q == WaitAckb, cmd_attrs.addr_bcst, trx_arb_i.nack},
                          1'b0,
                          1'b0};
 
@@ -1518,14 +1551,6 @@ module i3c_controller_fsm
                                hc_control_i.halt_on_cmd_seq_timeout, hc_control_i.hot_join_ctrl,
                                hc_control_i.i2c_dev_present, hc_control_i.mode_selector,
                                hc_control_i.resume};
-  // - TODO(#31304): blocked addresses are not checked yet.
-  logic unused_blocked;
-  always_comb begin
-    unused_blocked = 1'b0;
-    for (int unsigned b = 0; b < NumBlocked; b++) begin
-      unused_blocked ^= ^{addr_blocked_i[b], mask_blocked_i[b]};
-    end
-  end
   // - buffer status and broadcast writes from the Standby Controller that are not used yet.
   logic unused_buf_status;
   assign unused_buf_status = ^{txbuf_rempty_i, rxbuf_wfull_i, ibi_data_wfull_i,
@@ -1534,6 +1559,9 @@ module i3c_controller_fsm
   logic unused_trx_rsp;
   assign unused_trx_rsp = ^{trx_rdata_i.rearly, trx_rdata_i.rerr, trx_rsp_i.wearly,
                             trx_rsp_i.werr, trx_rsp_i.wlen};
+  // - reporting of data loss not yet implemented.
+  logic unused_rxdata_loss;
+  assign unused_rxdata_loss = ^{rxbuf_data_loss, ibi_data_loss};
   // - fields of the Command Descriptor interpretations that the logic does not need.
   logic unused_cmd_desc;
   assign unused_cmd_desc = ^{cmd_intn.cmd_attr, cmd_intn.mipi_reserved[31:19], cmd_intn.tid,

@@ -229,7 +229,8 @@
             "uart1",
             "uart2",
             "uart3",
-            "gpio",
+            "gpio0",
+            "gpio1",
             "spi_device",
             "i2c0",
             "i2c1",
@@ -357,7 +358,7 @@
         hart: "0x40030000",
       },
     },
-    { name: "gpio",
+    { name: "gpio0",
       type: "gpio",
       template_type: "gpio",
       clock_srcs: {clk_i: "io_div4"},
@@ -375,13 +376,33 @@
       }
       attr: "ipgen"
     },
+    { name: "gpio1",
+      type: "gpio",
+      template_type: "gpio",
+      clock_srcs: {clk_i: "io_div4"},
+      clock_group: "peri",
+      reset_connections: {rst_ni: "lc_io_div4"},
+      base_addr: {
+        hart: "0x40050000",
+      },
+      param_decl: {
+        GpioAsHwStrapsEn: "0",
+        GpioAsyncOn: "1"
+      },
+      // The ipgen parameters must exactly match the parameters of gpio0. Topgen only supports
+      // rendering one version of a templated IP.
+      ipgen_params: {
+        per_pin_view: true
+      }
+      attr: "ipgen"
+    },
     { name: "spi_device",
       type: "spi_device",
       clock_srcs: {clk_i: "io_div4", scan_clk_i: "io_div2"},
       clock_group: "peri",
       reset_connections: {rst_ni: "spi_device"},
       base_addr: {
-        hart: "0x40050000",
+        hart: "0x40060000",
       },
       param_decl: {
         "SramType": "spi_device_pkg::SramType1r1w"
@@ -416,9 +437,17 @@
     },
     { name: "i3c0",
       type: "i3c",
-      clock_srcs: {clk_i: "io", clk_aon_i: "aon", scan_clk_i: "io_div2"},
-      clock_group: "peri",
-      reset_connections: {rst_ni: "i3c0", rst_aon_ni: "lc_aon"},
+      clock_srcs: {
+        primary: {clk_i: "io", clk_aon_i: "aon", scan_clk_i: "io_div2"},
+        secondary: {clk_aon_i: "aon"},
+      },
+      clock_group: {primary: "peri", secondary: "peri"},
+      reset_connections: {
+        primary: {rst_ni: "i3c0", rst_aon_ni: "lc_aon"},
+        secondary: {rst_aon_ni: {name: "lc_aon", domain: "Aon"}},
+      },
+      domain: "Main",
+      domain_secondary: "Aon",
       base_addr: {
         hart: "0x40330000",
       },
@@ -430,9 +459,17 @@
     },
     { name: "i3c1",
       type: "i3c",
-      clock_srcs: {clk_i: "io", clk_aon_i: "aon", scan_clk_i: "io_div2"},
-      clock_group: "peri",
-      reset_connections: {rst_ni: "i3c1", rst_aon_ni: "lc_aon"},
+      clock_srcs: {
+        primary: {clk_i: "io", clk_aon_i: "aon", scan_clk_i: "io_div2"},
+        secondary: {clk_aon_i: "aon"},
+      },
+      clock_group: {primary: "peri", secondary: "peri"},
+      reset_connections: {
+        primary: {rst_ni: "i3c1", rst_aon_ni: "lc_aon"},
+        secondary: {rst_aon_ni: {name: "lc_aon", domain: "Main"}},
+      },
+      domain: "Main",
+      domain_secondary: "Main",
       base_addr: {
         hart: "0x40340000",
       },
@@ -724,6 +761,10 @@
             clock: "main",
             group: "secure"
           },
+          clk_ast_rng_i: {
+            clock: "main",
+            group: "secure"
+          },
           clk_ast_usb_i: {
             clock: "usb",
             group: "peri"
@@ -738,22 +779,6 @@
           clk_ast_alert_i: {
             clock: "io_div4",
             group: "secure"
-          },
-          clk_ast_es_i: {
-            clock: "main",
-            group: "secure"
-          },
-          clk_ast_rng_i: {
-            clock: "main",
-            group: "secure"
-          },
-          clk_ast_tlul_i: {
-            clock: "io_div4",
-            group: "infra"
-          },
-          clk_ast_usb_i: {
-            clock: "usb",
-            group: "peri"
           },
           clk_ast_ext_i: "ast_ext",
         },
@@ -773,6 +798,10 @@
             name: "lc",
             domain: "Main",
           },
+          rst_ast_rng_ni: {
+            name: "lc",
+            domain: "Main",
+          },
           rst_ast_usb_ni: {
             name: "usb",
             domain: "Main"
@@ -787,22 +816,6 @@
             name: "lc_io_div4",
             domain: "Main",
           },
-          rst_ast_es_ni: {
-            name: "lc",
-            domain: "Main",
-          },
-          rst_ast_rng_ni: {
-            name: "lc",
-            domain: "Main",
-          },
-          rst_ast_tlul_ni: {
-            name: "lc_io_div4",
-            domain: "Main",
-          },
-          rst_ast_usb_ni: {
-            name: "usb",
-            domain: "Main"
-          }
         },
       },
       domain: "Main",
@@ -897,6 +910,7 @@
       reset_connections: {rst_ni: "sys", rst_lc_ni: "lc"},
       param_decl: {
         IdcodeValue: "jtag_id_pkg::RV_DM_JTAG_IDCODE",
+        CheriotSupport: "1",
       },
       // Note that this module also contains a bus host.
       base_addrs: {
@@ -984,7 +998,7 @@
       },
       param_decl: {
         NumInstHwSlot: "4",
-        NumBootStages: "3",
+        NumBootStages: "4",
         NumRomDigestInputs: "1",
       },
     },
@@ -1273,18 +1287,14 @@
                                    'sensor_ctrl.ast_init_done'],
       'ast.ast2padmux'          : ['sensor_ctrl.ast2pinmux'],
       'ast.io_pwr_st'           : ['sensor_ctrl.ast_status'],
-      'spi_device.sck_monitor'  : ['ast.sns_spi_ext_clk'],
       'usbdev.usb_ref_pulse'    : ['ast.usb_ref_pulse'],
       'usbdev.usb_ref_val'      : ['ast.usb_ref_val'],
       'pinmux.dft_strap_test'   : ['ast.dft_strap_test'],
-      'clkmgr.all_clk_byp_req'  : ['ast.all_clk_byp_req.primary', // TODO: is unused in secondary.
-                                   'ast.all_clk_byp_req.secondary'],
+      'clkmgr.all_clk_byp_req'  : ['ast.all_clk_byp_req'],
       'clkmgr.all_clk_byp_ack'  : ['ast.all_clk_byp_ack'],
-      'clkmgr.io_clk_byp_req'   : ['ast.io_clk_byp_req.primary',  // TODO: is unused in secondary.
-                                   'ast.io_clk_byp_req.secondary'],
+      'clkmgr.io_clk_byp_req'   : ['ast.io_clk_byp_req'],
       'clkmgr.io_clk_byp_ack'   : ['ast.io_clk_byp_ack'],
-      'clkmgr.hi_speed_sel'     : ['ast.ext_freq_is_96m.primary',
-                                   'ast.ext_freq_is_96m.secondary'],
+      'clkmgr.hi_speed_sel'     : ['ast.ext_freq_is_96m'],
       'clkmgr.div_step_down_req': ['ast.clk_src_io_48m'],
       'sensor_ctrl.ast_alert'   : ['ast.alert'],
 
@@ -1356,11 +1366,15 @@
       'keymgr_dpe.otbn_key'               : ['otbn.keymgr_key'],
 
       // KMAC Application Interface
-      'kmac.app'                : ['keymgr_dpe.kmac_data',   // Keymgr needs to be at index 0
-                                   'lc_ctrl.kmac_data',  // LC needs to be at index 1
-                                   'rom_ctrl.kmac_data', // ROM needs to be at index 2
-                                   'otbn.kmac_data'],    // OTBN needs to be at index 3
+      'kmac.app'                : ['keymgr_dpe.kmac_app', // Keymgr needs to be at index 0
+                                   'lc_ctrl.kmac_data',   // LC needs to be at index 1
+                                   'rom_ctrl.kmac_data',  // ROM needs to be at index 2
+                                   'otbn.kmac_app'],      // OTBN needs to be at index 3
       'kmac.en_masking'         : ['keymgr_dpe.kmac_en_masking'],
+
+      // OTBN Application Interface
+      'otbn.keymgr_app'           : ['keymgr_dpe.otbn_app'],
+      'otbn.keymgr_sensitive_key' : ['keymgr_dpe.sensitive_key'],
 
       // The idle connection is automatically connected through topgen.
       // The user does not need to explicitly declare anything other than
@@ -1467,7 +1481,7 @@
       // CHERIoT connections
       'cheriot_mem_sys.meta_sram_tl'  : ['sram_ctrl_meta.ram_tl'],
       'cheriot_mem_sys.cored_tag_d2h' : ['rv_core_ibex.cored_tag_d2h'],
-      'rv_core_ibex.cheriot_ena'      : ['cheriot_mem_sys.cheriot_ena'],
+      'rv_core_ibex.cheriot_ena'      : ['cheriot_mem_sys.cheriot_ena', 'rv_dm.cheriot_ena'],
     },
 
     // top is to connect to top net/struct.
@@ -1482,7 +1496,6 @@
 
         // Net for bypass clock for FPGA
         'ast.clk_osc_byp.primary',
-        'ast.clk_osc_byp.secondary',
 
         // Memory configurations for main PD
         'ast.mem_cfg.primary',
@@ -1556,8 +1569,7 @@
         'ast.adc_a1_a'                       : '',
         'ast.ast2pad_t0_a'                   : 'ast2pad_t0_a',
         'ast.ast2pad_t1_a'                   : 'ast2pad_t1_a',
-        'ast.clk_osc_byp.primary'            : 'clk_osc_byp_pd_main',
-        'ast.clk_osc_byp.secondary'          : 'clk_osc_byp_pd_aon',
+        'ast.clk_osc_byp.primary'            : 'clks_osc_byp',
         'ast.ast_pwst_h'                     : 'ast_pwst_h',
         'pinmux.dft_hold_tap_sel'            : 'dft_hold_tap_sel',
         'pinmux.usb_dppullup_en'             : 'usb_dp_pullup_en',
@@ -1757,7 +1769,8 @@
       { instance: 'spi_device',  port: 'sd[2]',          connection: 'direct', pad: 'SPI_DEV_D2'   , desc: ''},
       { instance: 'spi_device',  port: 'sd[3]',          connection: 'direct', pad: 'SPI_DEV_D3'   , desc: ''},
       // MIOs
-      { instance: "gpio",        port: '',               connection: 'muxed' , pad: ''             , desc: ''},
+      { instance: "gpio0",       port: '',               connection: 'muxed' , pad: ''             , desc: ''},
+      { instance: "gpio1",       port: '',               connection: 'muxed' , pad: ''             , desc: ''},
       { instance: "uart0",       port: '',               connection: 'muxed' , pad: ''             , desc: ''},
       { instance: "uart1",       port: '',               connection: 'muxed' , pad: ''             , desc: ''},
       { instance: "uart2",       port: '',               connection: 'muxed' , pad: ''             , desc: ''},

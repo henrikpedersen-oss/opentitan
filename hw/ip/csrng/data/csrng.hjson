@@ -62,7 +62,7 @@
   ],
   interrupt_list: [
     { name: "cs_cmd_req_done"
-      desc: "Asserted when a command request is completed."}
+      desc: "Asserted when a command request is completed, or when a CSRNG instance halted via INT_STATE_HALT has quiesced."}
     { name: "cs_entropy_req"
       desc: "Asserted when a request for entropy has been made."}
     { name: "cs_hw_inst_exc"
@@ -162,11 +162,11 @@
     { name: "CTR_DRBG.FSM.SPARSE"
       desc: "The CTR DRBG state machine uses a sparse state encoding."
     }
-    { name: "GEN_CMD.CTR.REDUN"
-      desc: "The generate command uses a counter that is protected by a second counter that counts in the opposite direction."
-    }
     { name: "CTR_DRBG.CTR.REDUN"
       desc: "The ctr_drbg algorithm uses a counter that is protected by a second counter that counts in the opposite direction."
+    }
+    { name: "STATE_DB.CTR.REDUN"
+      desc: "The !!INT_STATE_VAL word pointer uses a counter that is protected by a second counter that counts in the opposite direction."
     }
     { name: "CTRL.MUBI"
       desc: "Multi-bit field used for selection control."
@@ -298,6 +298,7 @@
                 Writing this request with defined CSRNG commands will initiate all
                 possible CSRNG actions. The application interface must wait for the
                 "ack" to return before issuing new commands.
+                Before writing each word of a command, !!SW_CMD_STS.CMD_RDY needs to be polled.
                 '''
         }
       ]
@@ -357,10 +358,11 @@
         { bits: "1",
           name: "CMD_RDY",
           desc: '''
-                This bit indicates when the command interface is ready to accept commands.
-                Before starting to write a new command to !!SW_CMD_REQ, this field needs to be polled.
-                0b0: CSRNG is not ready to accept commands or the last command hasn't been acked yet.
-                0b1: CSRNG is ready to accept the next command.
+                This bit indicates when the command interface is ready to accept the next command word.
+                Before writing each word of a command to !!CMD_REQ, this field needs to be polled.
+                Words written while this field is low are dropped.
+                0b0: CSRNG is not ready to accept the next command word or the last command hasn't been acked yet.
+                0b1: CSRNG is ready to accept the next command word.
                 '''
           resval: "0"
         }
@@ -403,9 +405,9 @@
             { value: "2",
               name: "INVALID_GEN_CMD",
               desc: '''
-                    Request completed with an invalid counter DRBG generation command error.
-                    This error indicates that CSRNG entropy was generated for a command that is not a Generate command.
-                    In this case the entropy should not be considered as valid.
+                    Request completed with an invalid Generate command error.
+                    This error indicates that a Generate command was issued with a `glen` field of zero.
+                    The command is ignored and no entropy is generated.
                     '''
             },
             { value: "3",
@@ -526,6 +528,7 @@
                   pointer for the !!INT_STATE_VAL register.
                   Note: This register should be read back after being written to ensure
                   that the !!INT_STATE_VAL read back is accurate.
+                  This field also selects the instance targeted by !!INT_STATE_HALT and !!INT_STATE_STS.
                   '''
         },
       ]
@@ -547,6 +550,7 @@
                 pointer (selects 32 bits of the 448 bit field) will reset to zero. The !!INT_STATE_NUM
                 can be re-written at this time (internal read pointer is also reset), and then
                 another internal state field can be read.
+                To get a consistent snapshot, halt the instance via !!INT_STATE_HALT first.
                 Note that for !!INT_STATE_VAL to provide read access to the internal state, also !!CTRL.READ_INT_STATE needs to be set to `kMultiBitBool4True`.
                 Also, the !!INT_STATE_READ_ENABLE bit of the selected instance needs to be set to true for this to work.
                 Otherwise, the register reads as 0.
@@ -715,6 +719,14 @@
                 Writing a zero resets this status bit.
                 '''
         }
+        { bits: "7",
+          name: "INT_STATE_HALT_FIELD_ALERT",
+          desc: '''
+                This bit is set when the !!INT_STATE_HALT register is set to a value other than
+                kMultiBitBool4True or kMultiBitBool4False.
+                Writing a zero resets this status bit.
+                '''
+        }
         { bits: "12",
           name: "CS_BUS_CMP_ALERT",
           desc: '''
@@ -733,6 +745,14 @@
                 '''
         }
         { bits: "14",
+          name: "CMD_STAGE_INVALID_GEN_CMD_ALERT",
+          desc: '''
+                This bit is set when a Generate command is received with a `glen` field of zero.
+                The invalid command is ignored and CSRNG continues to operate.
+                Writing a zero resets this status bit.
+                '''
+        }
+        { bits: "15",
           name: "CMD_STAGE_INVALID_CMD_SEQ_ALERT",
           desc: '''
                 This bit is set when an out of order command is received by the main state machine.
@@ -743,7 +763,7 @@
                 Writing a zero resets this status bit.
                 '''
         }
-        { bits: "15",
+        { bits: "16",
           name: "CMD_STAGE_RESEED_CNT_ALERT",
           desc: '''
                 This bit is set when the maximum number of generate requests between reseeds is
@@ -766,6 +786,7 @@
                 This bit will be set to one when an error has been detected for the
                 command stage command FIFO. The type of error is reflected in the type status
                 bits (bits 28 through 30 of this register).
+                This includes words written to !!CMD_REQ while !!SW_CMD_STS.CMD_RDY is low.
                 This bit will stay set until the next reset.
                 '''
         }
@@ -827,7 +848,8 @@
           desc: '''
                 This bit will be set to one when any of the source bits (bits 0 through 15 of this
                 this register) are asserted as a result of an error pulse generated from
-                any full FIFO that has been received a write pulse.
+                any full FIFO that has received a write pulse, or from a word written to
+                !!CMD_REQ while !!SW_CMD_STS.CMD_RDY is low.
                 This bit will stay set until the next reset.
                 '''
         }
@@ -885,6 +907,82 @@
                 See the RTL file `csrng_main_sm` for the meaning of the values.
                 '''
           resval: 0x37
+        }
+      ]
+    },
+    {
+      name: "INT_STATE_HALT_ENABLE_REGWEN",
+      desc: "Internal state halt enable REGWEN register",
+      swaccess: "rw0c",
+      hwaccess: "none",
+      fields: [
+        { bits: "0",
+          desc: '''
+                INT_STATE_HALT_ENABLE register configuration enable bit.
+                If this is cleared to 0, the INT_STATE_HALT_ENABLE register cannot be written anymore.
+                '''
+          resval: 1,
+        }
+      ]
+    },
+    {
+      name: "INT_STATE_HALT_ENABLE",
+      desc: "Internal state halt enable register",
+      swaccess: "rw",
+      hwaccess: "hro",
+      regwen: "INT_STATE_HALT_ENABLE_REGWEN",
+      fields: [
+        { bits: "2:0",
+          name: "INT_STATE_HALT_ENABLE",
+          desc: '''
+                Per-instance internal state halt enable.
+                Defines whether the corresponding instance can be halted via !!INT_STATE_HALT.
+                Setting !!INT_STATE_HALT has no effect on an instance whose bit is cleared.
+                '''
+          resval: 0x7
+        }
+      ]
+    },
+    {
+      name: "INT_STATE_HALT",
+      desc: "Internal state halt register",
+      swaccess: "rw",
+      hwaccess: "hro",
+      tags: [// A write can halt an instance and affect RECOV_ALERT_STS.
+             "excl:CsrAllTests:CsrExclWrite"]
+      fields: [
+        { bits: "3:0",
+          name: "INT_STATE_HALT",
+          mubi: true,
+          resval: false,
+          desc: '''
+                While this field is set to kMultiBitBool4True, the instance selected by !!INT_STATE_NUM halts.
+                The instance first completes the command in progress and any commands already queued for it.
+                A Generate command is instead halted as soon as the block currently being generated is complete.
+                If this is the final block, the command is acknowledged after resuming, once the block has been read out.
+                While halted, the instance accepts no new commands: EDN requests are back-pressured and !!SW_CMD_STS.CMD_RDY is low for the software instance.
+                This requires the bit of the selected instance in !!INT_STATE_HALT_ENABLE to be set, otherwise the instance is not halted.
+                Poll !!INT_STATE_STS.HALTED, or wait for !!INTR_STATE.CS_CMD_REQ_DONE, to know when the instance has halted.
+                Setting this field to kMultiBitBool4False resumes the command processing of the instance.
+                '''
+        }
+      ]
+    },
+    {
+      name: "INT_STATE_STS",
+      desc: "Internal state halt status register",
+      swaccess: "ro",
+      hwaccess: "hwo",
+      tags: ["excl:CsrNonInitTests:CsrExclCheck"]
+      fields: [
+        { bits: "0",
+          name: "HALTED",
+          desc: '''
+                Reflects whether the instance selected by !!INT_STATE_NUM has quiesced following !!INT_STATE_HALT, such that its internal state stays constant while it is read via !!INT_STATE_VAL.
+                Reads as 0 if !!INT_STATE_NUM selects a reserved instance.
+                Also see !!INTR_STATE.CS_CMD_REQ_DONE, which fires when an instance has halted.
+                '''
+          resval: 0
         }
       ]
     },

@@ -12,9 +12,12 @@
 // This wrapper hosts all power domain wrappers and the connections between them for earlgrey.
 module top_earlgrey #(
   // Auto-inferred parameters
-  // parameters for gpio
-  parameter bit GpioGpioAsyncOn = 1,
-  parameter bit GpioGpioAsHwStrapsEn = 0,
+  // parameters for gpio0
+  parameter bit Gpio0GpioAsyncOn = 1,
+  parameter bit Gpio0GpioAsHwStrapsEn = 0,
+  // parameters for gpio1
+  parameter bit Gpio1GpioAsyncOn = 1,
+  parameter bit Gpio1GpioAsHwStrapsEn = 0,
   // parameters for spi_device
   parameter spi_device_pkg::sram_type_e SpiDeviceSramType = spi_device_pkg::SramType1r1w,
   // parameters for i2c0
@@ -86,6 +89,7 @@ module top_earlgrey #(
   // parameters for rv_dm
   parameter logic [31:0] RvDmIdcodeValue = jtag_id_pkg::RV_DM_JTAG_IDCODE,
   parameter bit RvDmUseDmiInterface = 0,
+  parameter bit RvDmCheriotSupport = 1,
   parameter bit SecRvDmVolatileRawUnlockEn = 1'b0,
   parameter logic [tlul_pkg::RsvdWidth-1:0] RvDmTlulHostUserRsvdBits = '0,
   // parameters for aes
@@ -237,8 +241,7 @@ module top_earlgrey #(
   input  ast_pkg::awire_t       ast_adc_a1_a_i,
   output ast_pkg::awire_t       ast2pad_t0_a_o,
   output ast_pkg::awire_t       ast2pad_t1_a_o,
-  input  ast_pkg::clks_osc_byp_t       clk_osc_byp_pd_main_i,
-  input  ast_pkg::clks_osc_byp_t       clk_osc_byp_pd_aon_i,
+  input  ast_pkg::clks_osc_byp_t       clks_osc_byp_i,
   output ast_pkg::ast_pwst_t       ast_pwst_h_o,
   input  logic       dft_hold_tap_sel_i,
   output logic       usb_dp_pullup_en_o,
@@ -263,9 +266,6 @@ module top_earlgrey #(
   ast_pkg::ast_obs_ctrl_t       ast_obs_ctrl;
   prim_mubi_pkg::mubi4_t       ast_clk_src_sys_jen;
   prim_mubi_pkg::mubi4_t       ast_init_done;
-  logic       spi_device_sck_monitor;
-  logic       usbdev_usb_ref_pulse;
-  logic       usbdev_usb_ref_val;
   prim_mubi_pkg::mubi4_t       clkmgr_all_clk_byp_req;
   prim_mubi_pkg::mubi4_t       clkmgr_all_clk_byp_ack;
   prim_mubi_pkg::mubi4_t       clkmgr_io_clk_byp_req;
@@ -310,6 +310,10 @@ module top_earlgrey #(
   rv_core_ibex_pkg::cpu_crash_dump_t       rv_core_ibex_crash_dump;
   rv_core_ibex_pkg::cpu_pwrmgr_t       rv_core_ibex_pwrmgr;
   logic       rv_dm_ndmreset_req;
+  logic       pwrmgr_wakeups;
+  logic       i3c0_rstdet_enable;
+  i3c_pkg::i3c_rstdet_req_t       i3c0_rstdet_req;
+  i3c_pkg::i3c_rstdet_rsp_t       i3c0_rstdet_rsp;
   ast_intraip_pkg::s2p_t       ast_intraip_s2p;
   ast_intraip_pkg::p2s_t       ast_intraip_p2s;
   tlul_pkg::tl_h2d_t       pwrmgr_tl_req;
@@ -344,9 +348,12 @@ module top_earlgrey #(
   logic       cio_uart3_rx_p2d;
   logic       cio_uart3_tx_d2p;
   logic       cio_uart3_tx_en_d2p;
-  logic [31:0] cio_gpio_gpio_d2p;
-  logic [31:0] cio_gpio_gpio_en_d2p;
-  logic [31:0] cio_gpio_gpio_p2d;
+  logic [31:0] cio_gpio0_gpio_d2p;
+  logic [31:0] cio_gpio0_gpio_en_d2p;
+  logic [31:0] cio_gpio0_gpio_p2d;
+  logic [31:0] cio_gpio1_gpio_d2p;
+  logic [31:0] cio_gpio1_gpio_en_d2p;
+  logic [31:0] cio_gpio1_gpio_p2d;
   logic [3:0] cio_spi_device_sd_d2p;
   logic [3:0] cio_spi_device_sd_en_d2p;
   logic [3:0] cio_spi_device_sd_p2d;
@@ -385,6 +392,8 @@ module top_earlgrey #(
   logic       cio_i3c1_sda_d2p;
   logic       cio_i3c1_sda_en_d2p;
   logic       cio_i3c1_sda_p2d;
+  logic       cio_i3c1_rstdet_scl_p2d;
+  logic       cio_i3c1_rstdet_sda_p2d;
   logic       cio_i3c1_ctrl_sda_pu_d2p;
   logic       cio_i3c1_ctrl_sda_pu_en_d2p;
   logic [3:0] cio_spi_host0_sd_d2p;
@@ -433,8 +442,10 @@ module top_earlgrey #(
   ///////////////////////////
   earlgrey_pd_main #(
   // Auto-inferred parameters
-  .GpioGpioAsyncOn(GpioGpioAsyncOn),
-  .GpioGpioAsHwStrapsEn(GpioGpioAsHwStrapsEn),
+  .Gpio0GpioAsyncOn(Gpio0GpioAsyncOn),
+  .Gpio0GpioAsHwStrapsEn(Gpio0GpioAsHwStrapsEn),
+  .Gpio1GpioAsyncOn(Gpio1GpioAsyncOn),
+  .Gpio1GpioAsHwStrapsEn(Gpio1GpioAsHwStrapsEn),
   .SpiDeviceSramType(SpiDeviceSramType),
   .I2c0InputDelayCycles(I2c0InputDelayCycles),
   .I2c1InputDelayCycles(I2c1InputDelayCycles),
@@ -478,6 +489,7 @@ module top_earlgrey #(
   .RramCtrlRdFifoDepth(RramCtrlRdFifoDepth),
   .RvDmIdcodeValue(RvDmIdcodeValue),
   .RvDmUseDmiInterface(RvDmUseDmiInterface),
+  .RvDmCheriotSupport(RvDmCheriotSupport),
   .SecRvDmVolatileRawUnlockEn(SecRvDmVolatileRawUnlockEn),
   .RvDmTlulHostUserRsvdBits(RvDmTlulHostUserRsvdBits),
   .AesAESGCMEnable(AesAESGCMEnable),
@@ -596,9 +608,6 @@ module top_earlgrey #(
     .ast_obs_ctrl_i                    (ast_obs_ctrl             ),
     .ast_clk_src_sys_jen_i             (ast_clk_src_sys_jen      ),
     .ast_init_done_o                   (ast_init_done            ),
-    .spi_device_sck_monitor_o          (spi_device_sck_monitor   ),
-    .usbdev_usb_ref_pulse_o            (usbdev_usb_ref_pulse     ),
-    .usbdev_usb_ref_val_o              (usbdev_usb_ref_val       ),
     .clkmgr_all_clk_byp_req_i          (clkmgr_all_clk_byp_req   ),
     .clkmgr_all_clk_byp_ack_o          (clkmgr_all_clk_byp_ack   ),
     .clkmgr_io_clk_byp_req_i           (clkmgr_io_clk_byp_req    ),
@@ -643,6 +652,10 @@ module top_earlgrey #(
     .rv_core_ibex_crash_dump_o         (rv_core_ibex_crash_dump  ),
     .rv_core_ibex_pwrmgr_o             (rv_core_ibex_pwrmgr      ),
     .rv_dm_ndmreset_req_o              (rv_dm_ndmreset_req       ),
+    .pwrmgr_wakeups_o                  (pwrmgr_wakeups           ),
+    .i3c0_rstdet_enable_o              (i3c0_rstdet_enable       ),
+    .i3c0_rstdet_req_o                 (i3c0_rstdet_req          ),
+    .i3c0_rstdet_rsp_i                 (i3c0_rstdet_rsp          ),
     .ast_intraip_s2p_i                 (ast_intraip_s2p          ),
     .ast_intraip_p2s_o                 (ast_intraip_p2s          ),
     .pwrmgr_tl_req_o                   (pwrmgr_tl_req            ),
@@ -677,9 +690,12 @@ module top_earlgrey #(
     .cio_uart3_rx_p2d_i                (cio_uart3_rx_p2d         ),
     .cio_uart3_tx_d2p_o                (cio_uart3_tx_d2p         ),
     .cio_uart3_tx_en_d2p_o             (cio_uart3_tx_en_d2p      ),
-    .cio_gpio_gpio_d2p_o               (cio_gpio_gpio_d2p        ),
-    .cio_gpio_gpio_en_d2p_o            (cio_gpio_gpio_en_d2p     ),
-    .cio_gpio_gpio_p2d_i               (cio_gpio_gpio_p2d        ),
+    .cio_gpio0_gpio_d2p_o              (cio_gpio0_gpio_d2p       ),
+    .cio_gpio0_gpio_en_d2p_o           (cio_gpio0_gpio_en_d2p    ),
+    .cio_gpio0_gpio_p2d_i              (cio_gpio0_gpio_p2d       ),
+    .cio_gpio1_gpio_d2p_o              (cio_gpio1_gpio_d2p       ),
+    .cio_gpio1_gpio_en_d2p_o           (cio_gpio1_gpio_en_d2p    ),
+    .cio_gpio1_gpio_p2d_i              (cio_gpio1_gpio_p2d       ),
     .cio_spi_device_sd_d2p_o           (cio_spi_device_sd_d2p    ),
     .cio_spi_device_sd_en_d2p_o        (cio_spi_device_sd_en_d2p ),
     .cio_spi_device_sd_p2d_i           (cio_spi_device_sd_p2d    ),
@@ -718,6 +734,8 @@ module top_earlgrey #(
     .cio_i3c1_sda_d2p_o                (cio_i3c1_sda_d2p         ),
     .cio_i3c1_sda_en_d2p_o             (cio_i3c1_sda_en_d2p      ),
     .cio_i3c1_sda_p2d_i                (cio_i3c1_sda_p2d         ),
+    .cio_i3c1_rstdet_scl_p2d_i         (cio_i3c1_rstdet_scl_p2d  ),
+    .cio_i3c1_rstdet_sda_p2d_i         (cio_i3c1_rstdet_sda_p2d  ),
     .cio_i3c1_ctrl_sda_pu_d2p_o        (cio_i3c1_ctrl_sda_pu_d2p ),
     .cio_i3c1_ctrl_sda_pu_en_d2p_o     (cio_i3c1_ctrl_sda_pu_en_d2p),
     .cio_spi_host0_sd_d2p_o            (cio_spi_host0_sd_d2p     ),
@@ -751,7 +769,7 @@ module top_earlgrey #(
     .ast_clk_src_usb_o                 (ast_clk_src_usb          ),
 
     // Regular ports (auto-generated)
-    .clk_osc_byp_pd_main_i,
+    .clks_osc_byp_i,
     .rram_test_analog_io,
     .usbdev_usb_rx_d_i,
     .usbdev_usb_tx_d_o,
@@ -815,9 +833,6 @@ module top_earlgrey #(
     .ast_obs_ctrl_o                    (ast_obs_ctrl             ),
     .ast_clk_src_sys_jen_o             (ast_clk_src_sys_jen      ),
     .ast_init_done_i                   (ast_init_done            ),
-    .spi_device_sck_monitor_i          (spi_device_sck_monitor   ),
-    .usbdev_usb_ref_pulse_i            (usbdev_usb_ref_pulse     ),
-    .usbdev_usb_ref_val_i              (usbdev_usb_ref_val       ),
     .clkmgr_all_clk_byp_req_o          (clkmgr_all_clk_byp_req   ),
     .clkmgr_all_clk_byp_ack_i          (clkmgr_all_clk_byp_ack   ),
     .clkmgr_io_clk_byp_req_o           (clkmgr_io_clk_byp_req    ),
@@ -862,6 +877,10 @@ module top_earlgrey #(
     .rv_core_ibex_crash_dump_i         (rv_core_ibex_crash_dump  ),
     .rv_core_ibex_pwrmgr_i             (rv_core_ibex_pwrmgr      ),
     .rv_dm_ndmreset_req_i              (rv_dm_ndmreset_req       ),
+    .pwrmgr_wakeups_i                  (pwrmgr_wakeups           ),
+    .i3c0_rstdet_enable_i              (i3c0_rstdet_enable       ),
+    .i3c0_rstdet_req_i                 (i3c0_rstdet_req          ),
+    .i3c0_rstdet_rsp_o                 (i3c0_rstdet_rsp          ),
     .ast_intraip_s2p_o                 (ast_intraip_s2p          ),
     .ast_intraip_p2s_i                 (ast_intraip_p2s          ),
     .pwrmgr_tl_req_i                   (pwrmgr_tl_req            ),
@@ -896,9 +915,12 @@ module top_earlgrey #(
     .cio_uart3_rx_p2d_o                (cio_uart3_rx_p2d         ),
     .cio_uart3_tx_d2p_i                (cio_uart3_tx_d2p         ),
     .cio_uart3_tx_en_d2p_i             (cio_uart3_tx_en_d2p      ),
-    .cio_gpio_gpio_d2p_i               (cio_gpio_gpio_d2p        ),
-    .cio_gpio_gpio_en_d2p_i            (cio_gpio_gpio_en_d2p     ),
-    .cio_gpio_gpio_p2d_o               (cio_gpio_gpio_p2d        ),
+    .cio_gpio0_gpio_d2p_i              (cio_gpio0_gpio_d2p       ),
+    .cio_gpio0_gpio_en_d2p_i           (cio_gpio0_gpio_en_d2p    ),
+    .cio_gpio0_gpio_p2d_o              (cio_gpio0_gpio_p2d       ),
+    .cio_gpio1_gpio_d2p_i              (cio_gpio1_gpio_d2p       ),
+    .cio_gpio1_gpio_en_d2p_i           (cio_gpio1_gpio_en_d2p    ),
+    .cio_gpio1_gpio_p2d_o              (cio_gpio1_gpio_p2d       ),
     .cio_spi_device_sd_d2p_i           (cio_spi_device_sd_d2p    ),
     .cio_spi_device_sd_en_d2p_i        (cio_spi_device_sd_en_d2p ),
     .cio_spi_device_sd_p2d_o           (cio_spi_device_sd_p2d    ),
@@ -937,6 +959,8 @@ module top_earlgrey #(
     .cio_i3c1_sda_d2p_i                (cio_i3c1_sda_d2p         ),
     .cio_i3c1_sda_en_d2p_i             (cio_i3c1_sda_en_d2p      ),
     .cio_i3c1_sda_p2d_o                (cio_i3c1_sda_p2d         ),
+    .cio_i3c1_rstdet_scl_p2d_o         (cio_i3c1_rstdet_scl_p2d  ),
+    .cio_i3c1_rstdet_sda_p2d_o         (cio_i3c1_rstdet_sda_p2d  ),
     .cio_i3c1_ctrl_sda_pu_d2p_i        (cio_i3c1_ctrl_sda_pu_d2p ),
     .cio_i3c1_ctrl_sda_pu_en_d2p_i     (cio_i3c1_ctrl_sda_pu_en_d2p),
     .cio_spi_host0_sd_d2p_i            (cio_spi_host0_sd_d2p     ),
@@ -983,7 +1007,6 @@ module top_earlgrey #(
     .ast_adc_a1_a_i,
     .ast2pad_t0_a_o,
     .ast2pad_t1_a_o,
-    .clk_osc_byp_pd_aon_i,
     .ast_pwst_h_o,
     .dft_hold_tap_sel_i,
     .usb_dp_pullup_en_o,

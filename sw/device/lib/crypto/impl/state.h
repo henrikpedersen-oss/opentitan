@@ -20,25 +20,13 @@ typedef struct crypto_state {
   uint8_t self_check_state;
   uint8_t locked_state;
   uint8_t csrng_instantiated;
-  uint8_t csrng_is_default;
+  uint8_t csrng_is_manual;
   uint8_t cmvp_service_indicator;
   uint8_t cmvp_call_depth;
 } crypto_state_t;
 
 static_assert(sizeof(crypto_state_t) == 16,
               "crypto_state_t size must be 128 bits (16 bytes)");
-
-/**
- * Lock state value indicating the cryptolib is locked specifically due to an
- * entropy source health test failure.
- *
- * Unlike a hard lock (`kHardenedByteBoolTrue`), this state allows recovery
- * by calling `otcrypto_entropy_init()`, which re-executes the RNG startup
- * tests.
- */
-enum {
-  kOtcryptoLockStateEntropy = 0xd6,
-};
 
 /**
  * Initializes the state structure and stores it in the OTBN scratch registers.

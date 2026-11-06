@@ -391,6 +391,8 @@ OTTF_CONSOLE_BACKENDS = {
         "hdrs": ["ottf_console_uart.h"],
         "deps": [
             ":ottf_isrs",
+            "//hw/top/dt:api",
+            "//hw/top/dt:uart",
             "//sw/device/lib/dif:uart",
             "//sw/device/lib/dif:pinmux",
             "//sw/device/lib/dif:rv_plic",

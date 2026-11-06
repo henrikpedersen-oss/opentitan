@@ -79,15 +79,35 @@
     },
     { struct:  "app",   // kmac_pkg::app_req_t, kmac_pkg::app_rsp_t
       type:    "req_rsp",
-      name:    "kmac_data",   // kmac_data_o (req), kmac_data_i (rsp)
+      name:    "kmac_app",   // kmac_app_o (req), kmac_app_i (rsp)
       act:     "req",
       package: "kmac_pkg",  // Origin package (only needs for the requester)
+    },
+    { struct:  "app",   // kmac_pkg::app_req_t, kmac_pkg::app_rsp_t
+      type:    "req_rsp",
+      name:    "otbn_app",   // otbn_app_o (req), otbn_app_i (rsp)
+      act:     "req",
+      package: "kmac_pkg",  // Origin package (only needs for the requester)
+    },
+    { struct:  "mubi4",
+      type:    "uni",
+      name:    "sensitive_key",
+      act:     "req",
+      package: "prim_mubi_pkg",
+      default: "prim_mubi_pkg::MuBi4False",
     },
     { struct:  "keymgr_dpe_creator_root_key",
       type:    "uni",
       name:    "creator_root_key",
       act:     "rcv",
       package: "keymgr_dpe_pkg",
+    },
+    { struct:  "keymgr_dpe_creator_root_key",
+      type:    "uni",
+      name:    "secondary_root_key",
+      act:     "rcv",
+      package: "keymgr_dpe_pkg",
+      default: "keymgr_dpe_pkg::KEYMGR_DPE_SECONDARY_ROOT_KEY_DEFAULT",
     },
     { struct:  "keymgr_dpe_creator_seed",
       type:    "uni",
@@ -104,6 +124,12 @@
     { struct:  "keymgr_dpe_device_id",
       type:    "uni",
       name:    "device_id",
+      act:     "rcv",
+      package: "keymgr_dpe_pkg",
+    },
+    { struct:  "keymgr_dpe_field_entropy",
+      type:    "uni",
+      name:    "field_entropy",
       act:     "rcv",
       package: "keymgr_dpe_pkg",
     },
@@ -211,6 +237,13 @@
       randtype:  "data",
     },
 
+    { name:      "RndCnstFieldEntropySeed",
+      desc:      "Compile-time random bits as a field entropy alternative seed",
+      type:      "keymgr_dpe_pkg::seed_t"
+      randcount: "256",
+      randtype:  "data",
+    },
+
     { name:      "RndCnstNoneSeed",
       desc:      "Compile-time random bits for generation seed when no destination selected",
       type:      "keymgr_dpe_pkg::seed_t"
@@ -258,9 +291,9 @@
       expose:  "true"
     },
     { name: "NumBootStages",
-      desc: "Number of available boot stage",
+      desc: "Number of available boot stages. Supported values are 2 and 4.",
       type: "int",
-      default: "3",
+      default: "4",
       expose:  "true"
     },
     { name: "NumRomDigestInputs",
@@ -311,7 +344,7 @@
     { name: "CONFIG.SHADOW",
       desc: '''
         Various critical registers are shadowed: including operation control, reseed interval,
-        and key max version (creator, owner intermediate, owner).
+        kdf_engine and key max version (creator, owner intermediate, owner).
       '''
     }
     { name: "OP.CONFIG.REGWEN",
@@ -323,6 +356,11 @@
     { name: "RESEED.CONFIG.REGWEN",
       desc: '''
         Reseed interval is software lockable.
+      '''
+    }
+    { name: "KDF_ENGINE.CONFIG.REGWEN",
+      desc: '''
+        Kdf engine selection is software lockable.
       '''
     }
     { name: "SW_BINDING.CONFIG.REGWEN",
@@ -348,6 +386,11 @@
     { name: "ENFORCE_SW_BINDING.CTRL.MUBI",
       desc: '''
         Enforce sw binding register is multibit encoded.
+      '''
+    }
+    { name: "KDF_ENGINE.CTRL.MUBI",
+      desc: '''
+        Kdf engine selection register is multibit encoded.
       '''
     }
     { name: "LC_CTRL.INTERSIG.MUBI",
@@ -525,7 +568,12 @@
       fields: [
         { bits: "6:4",
           name: "OPERATION",
-          desc: "Key manager DPE operation selection",
+          desc: '''
+            Key manager DPE operation selection.
+
+            The remaining value (7) is invalid. Starting an operation with it
+            makes it fail with `invalid_op` in every working state.
+          ''',
           resval: "1",
           enum: [
             { value: "0",
@@ -564,7 +612,15 @@
               desc: '''
                 Loads the root key into the key manager. Can be disabled by !!LOAD_ROOT_KEY_LOCK if needed.
                 '''
-            }
+            },
+            {
+              value: "6",
+              name: "Load secondary root key",
+              desc: '''
+                Loads the secondary root key into the key manager.
+                Can be disabled by !!LOAD_SECONDARY_ROOT_KEY_LOCK if needed.
+                '''
+            },
           ],
         },
 
@@ -619,7 +675,11 @@
           name: "SLOT_SRC_SEL",
           resval: "0x0"
           desc: '''
-            The source key slot to be used for the invoked operation.
+            The source key slot to be used for the advance and generate operations.
+
+            Only slots below `NumInstHwSlot` are instantiated.
+            If this field selects a slot at or above `NumInstHwSlot`, an advance or generate operation
+            is rejected with !!ERR_CODE.INVALID_OP and no slot is modified.
           '''
         },
 
@@ -627,7 +687,12 @@
           name: "SLOT_DST_SEL",
           resval: "0x0"
           desc: '''
-            The destination key slot to be used for the advance and erase operations.
+            The destination key slot to be used for the advance, erase, load root key and load secondary root key operations.
+
+            Only slots below `NumInstHwSlot` are instantiated.
+            If this field selects a slot at or above `NumInstHwSlot`, an advance, erase,
+            load root key or load secondary root key operation is rejected with !!ERR_CODE.INVALID_OP
+            and no slot is modified.
           '''
         },
         {
@@ -641,9 +706,6 @@
           '''
         }
       ],
-      // TODO(#30682): Remove this label as soon as the RTL raises an
-      // error instead of a assertion.
-      tags: ["excl:CsrAllTests:CsrExclWrite"]
     },
 
     { name: "SIDELOAD_CLEAR",
@@ -730,6 +792,47 @@
           resval: "0x100"
           desc: '''
             Number of internal PRNG updates before a reseed is requested.
+          '''
+        },
+      ]
+    },
+
+    { name: "KDF_ENGINE_REGWEN",
+      desc: "Register write enable for KDF_ENGINE",
+      swaccess: "rw0c",
+      hwaccess: "none",
+      fields: [
+        { bits: "0",
+          name: "EN",
+          resval: "1"
+          desc: '''
+            Configuration enable for KDF_ENGINE.
+          '''
+        },
+      ]
+      // Don't let automated CSR tests write random values to this register, as it could lock
+      // writing to other registers, which the automated tests are not aware of.
+      tags: ["excl:CsrAllTests:CsrExclWrite"]
+    },
+
+    { name: "KDF_ENGINE_SHADOWED",
+      desc: "Selects the engine used to perform key derivation",
+      shadowed: "true",
+      update_err_alert: "recov_operation_err",
+      storage_err_alert: "fatal_fault_err",
+      regwen: "KDF_ENGINE_REGWEN",
+      swaccess: "rw",
+      hwaccess: "hro",
+      fields: [
+        { bits: "3:0",
+          name: "SEL",
+          mubi: true,
+          resval: false
+          desc: '''
+            Selects the engine used for key derivation.
+
+            kMultiBitBool4True selects OTBN using HKDF.
+            kMultiBitBool4False selects KMAC.
           '''
         },
       ]
@@ -1128,46 +1231,50 @@
               ''',
               resval: "0"
             },
-            { bits: "2:1",
+            { bits: "3:1",
               name: "BOOT_STAGE",
               desc: '''
                 Boot stage associated with the DPE context held in this slot.
 
-                | Value | Boot stage        |
-                |:-----:|:------------------|
-                | 0     | BootStageCreator  |
-                | 1     | BootStageOwnerInt |
-                | 2     | BootStageOwner    |
-                | 3     | BootStageRuntime  |
+                | Value | Boot stage          |
+                |:-----:|:--------------------|
+                | 0     | BootStageCreator    |
+                | 1     | BootStageCreatorInt |
+                | 2     | BootStageOwnerInt   |
+                | 3     | BootStageOwner      |
+                | 4     | BootStageRuntime    |
+
+                In the two-stage configuration (`NumBootStages` equals 2), the values 1 and 2
+                are not used.
 
                 The naming indicates the next bootstage after a successful key derivation
                 e.g. boot stage 1 means the context is the _CreatorRootKey_ and will be
-                derived into the _OwnerIntKey_.
+                derived into the _CreatorIntKey_.
               ''',
               resval: "0"
             },
-            { bits: "3",
+            { bits: "4",
               name: "ALLOW_CHILD_POLICY",
               resval: "0"
               desc: '''
                 Read the `allow_child` policy applied to the DPE context in this slot.
               '''
             },
-            { bits: "4",
+            { bits: "5",
               name: "EXPORTABLE_POLICY",
               resval: "0"
               desc: '''
                 Read the `exportable` policy applied to the DPE context in this slot.
               '''
             },
-            { bits: "5",
+            { bits: "6",
               name: "RETAIN_PARENT_POLICY",
               resval: "0"
               desc: '''
                 Read the `retain_parent` policy applied to the DPE context in this slot.
               '''
             },
-            { bits: "6",
+            { bits: "7",
               name: "ALLOW_KEYGEN_POLICY",
               resval: "0"
               desc: '''
@@ -1340,12 +1447,25 @@
         { bits: "7",
           name: "INVALID_ROOT_KEY",
           resval: "0x0"
-          desc: "OTP root key was invalid during the first advance",
+          desc: "OTP root key was invalid during the first advance or during a `load root key` operation",
         },
         { bits: "8",
           name: "INACTIVE_LC_EN",
           resval: "0x0"
           desc: "Enable signal from LC ctrl is deactivated",
+        },
+        { bits: "9",
+          name: "INVALID_SECONDARY_ROOT_KEY",
+          resval: "0x0"
+          desc: "Secondary root key was invalid during a `load secondary root key` operation",
+        },
+        { bits: "10",
+          name: "INVALID_FIELD_ENTROPY",
+          resval: "0x0"
+          desc: '''
+            Field entropy (or, if not marked valid, the netlist constant substitute) failed input checks.
+            Only evaluated when `NumBootStages` equals 4, as the field entropy is not consumed otherwise.
+          ''',
         },
       ]
     },
@@ -1368,6 +1488,24 @@
       tags: ["excl:CsrAllTests:CsrExclWrite"]
     },
 
+    { name: "LOAD_SECONDARY_ROOT_KEY_LOCK",
+      desc: "Register lock for the `load secondary root key` operation, see !!CONTROL_SHADOWED.OPERATION.",
+      swaccess: "rw1s",
+      hwaccess: "hro",
+      fields: [
+        { bits: "0",
+          name: "LOCK",
+          resval: "0"
+          desc: '''
+            Write 1 to disable the `load secondary root key` operation until the next reset.
+          '''
+        },
+      ]
+      // Don't let automated CSR tests write random values to this register, as it could lock
+      // writing to other registers, which the automated tests are not aware of.
+      tags: ["excl:CsrAllTests:CsrExclWrite"]
+    },
+
     { name: "ENFORCE_SW_BINDING",
       desc: "Enforce the software binding value as the only advance input message until the next reset",
       swaccess: "rw1s",
@@ -1382,7 +1520,7 @@
 
           Once set no hw binding value can be consumed until the next reset.
           An advance operation from a parent whose boot stage consumes hw binding values
-          (`boot_stage` 0 to 2, i.e. Creator, OwnerInt or Owner) without
+          (`boot_stage` 0 to 3, i.e. Creator, CreatorInt, OwnerInt or Owner) without
           `CONTROL_SHADOWED.SW_BINDING_ONLY` set will fail with an `invalid_op` error without
           updating the destination slot.
           Advance operations from later boot stages are not affected.
