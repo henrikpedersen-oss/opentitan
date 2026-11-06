@@ -16,11 +16,8 @@
  * seeds cover the boundary set together. Every vector left out is reported "skipped: budget" by
  * the runner, never passed.
  *
- * The SystemC model has no OTBN (decision 6: its reference is the Python ISS, which
- * `make nist-otbn-ref` runs on every vector): with `model_gaps` = 1 every vector is reported
- * skipped ("model_gap: no OTBN in the SystemC model"), and the inject-fail build then fails
- * because no vector took the corruption (eg2_nist_run). The chip runs and their `_inject_fail`
- * builds are these tests' evidence.
+ * On the SystemC model the vectors run on its OTBN (eg2_model/ip/eg2_otbn.h); `make
+ * nist-otbn-ref` runs every vector on the Python ISS as well.
  */
 
 #include <stdbool.h>
@@ -34,8 +31,8 @@ void eg2_nist_otbn_budget_init(uint32_t per_group);
 /** Whether the vector runs within the budget; else it is reported skipped (budget). */
 bool eg2_nist_otbn_take(const eg2_nist_vec_t *v);
 
-/** Skips a vector: the model gap or the budget. Returns kEg2NistSkipped. */
-eg2_nist_result_t eg2_nist_otbn_skip(const eg2_nist_vec_t *v, bool model_gap);
+/** Skips a vector left out by the budget. Returns kEg2NistSkipped. */
+eg2_nist_result_t eg2_nist_otbn_skip(const eg2_nist_vec_t *v);
 
 /** Little-endian words from a vector's field (the generator wrote the integer little endian). */
 void eg2_nist_otbn_words(const eg2_nist_vec_t *v, int field, uint32_t *words, uint32_t nwords);

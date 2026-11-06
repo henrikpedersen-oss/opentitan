@@ -149,12 +149,21 @@ run_one() {
           if (t ~ ("^" $1 "$") || i ~ ("^" $1 "$")) { $1 = ""; sub(/^ +/, ""); print; exit } }' \
         "${HERE}/needs_bench.txt")
   if [[ -n "${why}" ]]; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${name}" model-stop 0.00 - - "needs the chip bench: ${why}" "${iname}"
+    # A reason that is a ticket is not a bench need: "undocumented: ..." (the model does what the
+    # bench does, but the documents do not give the response the run checks) or "test finding: ..."
+    # (the test checks something the documents contradict) or "model gap: ..." (documented, the
+    # model does not have it yet).
+    [[ ${why} == undocumented:* || ${why} == "test finding:"* || ${why} == "model gap:"* ]] || why="needs the chip bench: ${why}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${name}" model-stop 0.00 - - "${why}" "${iname}"
     return
   fi
   # Checks a test marks as not evaluable by the model are skipped. Monte Carlo is not enabled
   # implicitly: variants.txt gives each weekly Monte Carlo setting a separately reported run.
   grep -q -a kEg2Param_model_gaps "${img}" && knobs+=(--param model_gaps=1)
+  # The USB tests run with usbdpi, the host the chip bench connects (chip_sw_usbdev_dpi_vseq).
+  [[ ${iname} == usbdev_* || ${iname} == pwrmgr_usbdev_* ]] && knobs+=(--stim usbdev.host=1)
+  # The W25Q01JV flash peer (eg2_model/ip/eg2_spi_flash.h) on spi_host0 for the flash tests.
+  [[ ${iname} == spi_host_smoketest || ${iname} == spi_host_winbond_flash_test ]] && knobs+=(--stim spi_host0.peer=flash)
   # A must-fail image stops at its first failed check, as the chip bench runs it
   # (chip_sw_eg2_base_vseq): the check it broke must be the first to fail.
   [[ ${name} == *_inject_fail* ]] && grep -q -a kEg2StopOnFail "${img}" && knobs+=(--sym kEg2StopOnFail=1)

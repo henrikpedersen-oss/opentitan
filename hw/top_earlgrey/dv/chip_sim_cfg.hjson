@@ -183,14 +183,10 @@
   en_ibex_tracer_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
   en_eg2_cosim_vcs_cov_cfg_file: "-cm_hier {top_dv_path}/cov/chip_cover.cfg+{top_dv_path}/autogen/xbar_tgl_excl.cfg+{top_autogen_path}/rstmgr/dv/cov/rstmgr_tgl_excl.cfg+{top_autogen_path}/clkmgr/dv/cov/clkmgr_tgl_excl.cfg+{top_autogen_path}/pwrmgr/dv/cov/pwrmgr_tgl_excl.cfg -cm_fsmcfg {top_dv_path}/cov/chip_fsm.cfg"
   en_eg2_cosim_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
-  en_eg2_model_vcs_cov_cfg_file: "-cm_hier {top_dv_path}/cov/chip_cover.cfg+{top_dv_path}/autogen/xbar_tgl_excl.cfg+{top_autogen_path}/rstmgr/dv/cov/rstmgr_tgl_excl.cfg+{top_autogen_path}/clkmgr/dv/cov/clkmgr_tgl_excl.cfg+{top_autogen_path}/pwrmgr/dv/cov/pwrmgr_tgl_excl.cfg -cm_fsmcfg {top_dv_path}/cov/chip_fsm.cfg"
-  en_eg2_model_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
   // Every build mode needs its coverage configuration when coverage is on (dvsim expands
   // {<mode>_<tool>_cov_cfg_file}); the EG2 periph and RNG modes use the cosim build's.
   en_eg2_periph_vcs_cov_cfg_file: "-cm_hier {top_dv_path}/cov/chip_cover.cfg+{top_dv_path}/autogen/xbar_tgl_excl.cfg+{top_autogen_path}/rstmgr/dv/cov/rstmgr_tgl_excl.cfg+{top_autogen_path}/clkmgr/dv/cov/clkmgr_tgl_excl.cfg+{top_autogen_path}/pwrmgr/dv/cov/pwrmgr_tgl_excl.cfg -cm_fsmcfg {top_dv_path}/cov/chip_fsm.cfg"
   en_eg2_periph_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
-  en_eg2_periph_model_vcs_cov_cfg_file: "-cm_hier {top_dv_path}/cov/chip_cover.cfg+{top_dv_path}/autogen/xbar_tgl_excl.cfg+{top_autogen_path}/rstmgr/dv/cov/rstmgr_tgl_excl.cfg+{top_autogen_path}/clkmgr/dv/cov/clkmgr_tgl_excl.cfg+{top_autogen_path}/pwrmgr/dv/cov/pwrmgr_tgl_excl.cfg -cm_fsmcfg {top_dv_path}/cov/chip_fsm.cfg"
-  en_eg2_periph_model_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
   en_eg2_rng_vcs_cov_cfg_file: "-cm_hier {top_dv_path}/cov/chip_cover.cfg+{top_dv_path}/autogen/xbar_tgl_excl.cfg+{top_autogen_path}/rstmgr/dv/cov/rstmgr_tgl_excl.cfg+{top_autogen_path}/clkmgr/dv/cov/clkmgr_tgl_excl.cfg+{top_autogen_path}/pwrmgr/dv/cov/pwrmgr_tgl_excl.cfg -cm_fsmcfg {top_dv_path}/cov/chip_fsm.cfg"
   en_eg2_rng_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
 
@@ -245,35 +241,11 @@
     // guess, mhpmcounter hardwiring, debug-mode traps, internal-NMI mtval, cpuctrlsts reset), and a
     // second copy drifts again. Its DPI (riscv_cosim_step with intr and more_ops, set_nmi_int with
     // mtval, set_irq_taken) is the one eg2_iss_wrapper.sv calls.
+    // The EG2 SystemC model is linked in every build (EG2_SYSMODEL, eg2_sysmodel.sv) and runs unless
+    // +eg2_sysmodel=0. libeg2sysmodel.so is built by eg2_top_verification's `make eg2sysmodel` into
+    // the directory EG2_SYSMODEL_LIB names; the library carries the rpath to its SystemC.
     {
       name: en_eg2_cosim
-      build_opts: ["+define+RVFI=1",
-                   "+define+EG2_COSIM",
-                   "+incdir+{EG2_IBEX_DV}/cosim",
-                   "+incdir+{EG2_IBEX_DV}/uvm/core_ibex/common/ibex_cosim_agent",
-                   "{EG2_IBEX_DV}/cosim/spike_cosim.cc",
-                   "{EG2_IBEX_DV}/cosim/cosim_dpi.cc",
-                   "{EG2_IBEX_DV}/uvm/core_ibex/common/ibex_cosim_agent/spike_cosim_dpi.cc",
-                   "{proj_root}/hw/top_earlgrey/dv/env/eg2_cosim_dpi.cc",
-                   "-I{EG2_IBEX_DV}/cosim",
-                   "-I{EG2_SPIKE}/include",
-                   "-I{EG2_SPIKE}/include/softfloat",
-                   "-L{EG2_SPIKE}/lib",
-                   "-Wld,-Xlinker,-rpath,-Xlinker,{EG2_SPIKE}/lib",
-                   "-lriscv", "-ldisasm", "-lfesvr", "-lfdt", "-lsoftfloat", "-ldl",
-                   "+incdir+{EG2_CHERIOT_SAIL}",
-                   "-L{EG2_CHERIOT_SAIL}",
-                   "-Wld,-Xlinker,-rpath,-Xlinker,{EG2_CHERIOT_SAIL}",
-                   "-lcheriotsail_rvfi",
-                   "-lstdc++"]
-    }
-    // en_eg2_cosim plus the EG2 SystemC model (eg2_sysmodel.sv; milestones M5 and M6 of
-    // doc/system_model/eg2_system_model_plan.md): the ISS wrapper's data accesses go to the model,
-    // which predicts loads; the scoreboard compares the UARTs' items with the model's.
-    // libeg2sysmodel.so is built by eg2_top_verification's `make eg2sysmodel` into the directory
-    // EG2_SYSMODEL_LIB names (its Makefile sets it); the library carries the rpath to its SystemC.
-    {
-      name: en_eg2_model
       build_opts: ["+define+RVFI=1",
                    "+define+EG2_COSIM",
                    "+define+EG2_SYSMODEL",
@@ -308,14 +280,6 @@
       en_build_modes: ["en_eg2_cosim"]
       build_opts: ["+define+EG2_PERIPH_SB"]
       run_opts: ["+eg2_periph_sb=1", "+eg2_test={test}", "+eg2_build=en_eg2_periph"]
-    }
-    // The same with the EG2 SystemC model built in (en_eg2_model): the UARTs' expected items come
-    // from the model's.
-    {
-      name: en_eg2_periph_model
-      en_build_modes: ["en_eg2_model"]
-      build_opts: ["+define+EG2_PERIPH_SB"]
-      run_opts: ["+eg2_periph_sb=1", "+eg2_test={test}", "+eg2_build=en_eg2_periph_model"]
     }
     // Power-aware simulation with the draft power intent (hw/top_earlgrey/syn/chip_earlgrey_asic.upf,
     // loaded at tb.dut by hw/top_earlgrey/dv/upf/tb.upf): the main domain is switched off in deep

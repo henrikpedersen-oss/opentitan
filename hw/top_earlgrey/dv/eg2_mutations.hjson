@@ -765,7 +765,7 @@
       activation: "software reads DATA_OUT_0 in CHERIoT mode"
       tests: ["chip_sw_aes_enc_cheriot"]
       // The co-simulation build takes register reads as events: only the SystemC model's load
-      // prediction (en_eg2_model) makes this an instruction-check catch.
+      // prediction (on unless +eg2_sysmodel=0) makes this an instruction-check catch.
       targets: ["insn"]
       caught_by: ["EG2_SB insn (EXPECTED )?mismatch"]
       test_checks: ["CHECK-fail"]

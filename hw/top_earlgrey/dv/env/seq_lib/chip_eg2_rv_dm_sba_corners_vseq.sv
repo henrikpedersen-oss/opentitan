@@ -37,7 +37,7 @@
 //  | revbm       | the revocation bit of a capability's base set    | read back; the core reads   |
 //  |             |   and cleared over SBA (CAP_PREP, CAP_CHECK)     |   the same word; CHERIoT:   |
 //  |             |                                                  |   tag 0 while set, 1 after  |
-//  | tag         | CHERIoT: the slot holding the capability written | tag 0 (REQ_CMS_16)          |
+//  | tag         | CHERIoT: the slot holding the capability written | tag 1 kept (REQ_CDM_06)     |
 //  |             |   over SBA with its own value                    |                             |
 //  | mem_sys     | cheriot_mem_sys TBRE_BASE_ADDR written over SBA  | RISC-V: read back; CHERIoT: |
 //  |             |                                                  |   unchanged (REQ_SOC_08)    |
@@ -315,10 +315,11 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     end_cmd(1'b0, ok);
     chk_eq("the core's view of the bitmap word after the clear", revbm_word, w0);
     if (cheriot) begin
-      // REQ_CMS_16: an SBA write over the tagged granule leaves tag 0 (expected to fail: F23).
+      // REQ_CDM_06: an SBA write over the tagged granule leaves its tag unchanged (rv_dm theory of
+      // operation, "CHERIoT Mode"; earlgrey-internal-tracker #1040).
       sba_rd(cap_slot_addr, slot_word);
       sba_wr(cap_slot_addr, slot_word);
-      send_cmd(8'h12, 1, ok);  // CAP_CHECK: written over SBA
+      send_cmd(8'h12, 0, ok);  // CAP_CHECK: written over SBA, tag 1 expected
       if (!ok) return;
       end_cmd(1'b0, ok);
     end

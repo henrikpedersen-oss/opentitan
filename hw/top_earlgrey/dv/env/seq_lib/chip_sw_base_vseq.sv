@@ -759,8 +759,8 @@ class chip_sw_base_vseq extends chip_base_vseq;
                                "addr_mask = 0x%0h"},
                               symbol, mem.name, addr, mem_addr, size, addr_mask), UVM_LOW)
 `ifdef EG2_SYSMODEL
-      // The EG2 SystemC model's memory gets the same bytes (build mode en_eg2_model).
-      eg2_sysmodel::backdoor_write(addr, data);
+      // The EG2 system model's memory gets the same bytes (eg2_sysmodel.sv).
+      eg2_sysmodel::get().backdoor_write(addr, data);
 `endif
       // So does the instruction-set model (eg2_iss_wrapper, en_eg2_cosim), which reads its own
       // copy of the memories since review R6 (2026-10-25): kEg2Param_*, kEg2Seed and the console

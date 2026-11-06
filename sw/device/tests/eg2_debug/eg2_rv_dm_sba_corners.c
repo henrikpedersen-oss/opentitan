@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * chip_eg2_rv_dm_sba_corners (EG2 verification spec REQ_CDM_06, REQ_CMS_16; "Debug Controller" /
+ * chip_eg2_rv_dm_sba_corners (EG2 verification spec REQ_CDM_06; "Debug Controller" /
  * "Corner cases"), both modes; the tag checks in CHERIoT mode.
  *
  * The bench (env/seq_lib/chip_eg2_rv_dm_sba_corners_vseq.sv) drives rv_dm's system bus access
@@ -19,13 +19,12 @@
  *                  and prints `EG2 DEBUG cap 0x<slot> 0x<base>`: the slot's address and the
  *                  capability's base, whose revocation bit the bench sets.
  *   CAP_CHECK (arg) loads the slot (CLC) and checks its tag: 0 expected with arg 1 (the bench
- *                  revoked the base over SBA, or overwrote the slot over SBA: REQ_CMS_16), 1 with
- *                  arg 0. Prints the bitmap word that covers the base as the core reads it
+ *                  set the base's revocation bit over SBA, so the core's load filter clears it),
+ *                  1 with arg 0 (not revoked, or the slot overwritten over SBA, which leaves the
+ *                  tag unchanged: REQ_CDM_06, rv_dm "CHERIoT Mode", earlgrey-internal-tracker
+ *                  #1040). Prints the bitmap word that covers the base as the core reads it
  *                  (`EG2 DEBUG revbm 0x<word>`), which the bench compares with what it wrote.
  *                  RISC-V mode: no tag check.
- *
- * EXPECTED FAILURE in CHERIoT mode: CAP_CHECK after the bench's SBA write over the slot
- * (REQ_CMS_16, ticket F23: SBA bypasses cheriot_mem_sys, so the tag stays set).
  *
  * Knobs (the vseq writes them): late_debug_sw, max_iters, idle_polls, model_iters, model_kinds,
  * model_actions, model_gaps.
@@ -123,7 +122,7 @@ static bool action(uint32_t kind, uint32_t arg) {
         LOG_INFO("EG2 DEBUG revbm 0x%08x 0x%08x", off, w);
       }
 #ifdef __CHERIOT__
-      ok = eg2_chk_eq("cap slot tag (0: revoked or written over SBA)", arg ? 0u : 1u,
+      ok = eg2_chk_eq("cap slot tag (0: revoked; 1: not revoked or written over SBA)", arg ? 0u : 1u,
                       (uint32_t)__builtin_cheri_tag_get(c)) &&
            ok;
 #else

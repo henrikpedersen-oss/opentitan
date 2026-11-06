@@ -3,14 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * chip_sw_rv_dm_sba_cheriot_mode (EG2 verification spec REQ_CDM_06, and REQ_CMS_16's SBA writer),
- * CHERIoT mode only: in a debug-enabled life-cycle state the debug module's system bus access
- * reads and writes memory that holds capabilities without any capability check, and an SBA write
- * over a stored capability leaves its tag clear (REQ_CMS_16: "any write by a non-CHERIoT host ...
- * must clear"), while a read leaves it set.
- *
- * Expected chip failure until ticket F23 is decided (status/rtl_tickets.md): xbar_main routes
- * rv_dm.sba straight to main SRAM, around cheriot_mem_sys, so an SBA write leaves the tag set.
+ * chip_sw_rv_dm_sba_cheriot_mode (EG2 verification spec REQ_CDM_06), CHERIoT mode only: in a
+ * debug-enabled life-cycle state the debug module's system bus access reads and writes memory
+ * that holds capabilities without any capability check, and leaves every tag as it was, written or
+ * not (rv_dm theory of operation, "CHERIoT Mode": "SBA bypasses the CHERIoT tag filter and does
+ * not clear tags on writes"; earlgrey-internal-tracker #1040, closed as documented).
  *
  * The software stores `n_caps` capabilities in main SRAM (`caps_`, .bss), capability i pointing
  * at word i of a plain array (`plain_`, which holds no capability; word j holds
@@ -23,8 +20,8 @@
  * bits over the capabilities' first words, their second words, both, or a plain word, checks
  * every read against its model, writes the mask of the capabilities it wrote to the scratch word
  * and ends the loop (env/seq_lib/chip_eg2_rv_dm_sba_cheriot_mode_vseq.sv). The software then
- * loads every capability (CLC) and checks its tag: clear exactly for the capabilities in the mask;
- * an untouched capability also keeps its address.
+ * loads every capability (CLC) and checks its tag: set for every capability, those in the mask
+ * too; an untouched capability also keeps its address.
  *
  * Knobs (the vseq writes them; it also draws the life-cycle state among the debug-enabled ones
  * and its timing knobs w_when_<t>):
@@ -115,9 +112,9 @@ bool eg2_test_main(void) {
   for (uint32_t i = 0; i < n; ++i) {
     const bool written = (mask >> i) & 1;
     eg2_chk_step("capability", i);
-    ok = eg2_chk_eq(written ? "tag after an SBA write (cleared, REQ_CMS_16)"
+    ok = eg2_chk_eq(written ? "tag after an SBA write (unchanged, REQ_CDM_06)"
                             : "tag without an SBA write (kept)",
-                    written ? 0 : 1, __builtin_cheri_tag_get(caps_[i])) &&
+                    1, __builtin_cheri_tag_get(caps_[i])) &&
          ok;
     if (!written) {
       ok = eg2_chk_eq("address without an SBA write", eg2_chk_addr_of(&plain_[i]),

@@ -2,10 +2,16 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The EG2 SystemC model in the chip bench (build mode en_eg2_model: EG2_COSIM and EG2_SYSMODEL;
-// doc/scoreboard/eg2_reference_model.png in eg2_top_verification). The model is
-// libeg2sysmodel.so (hw/top_earlgrey/dv/eg2_model/dpi/eg2_sysmodel.h): the devices and memories of
-// the top, without an instruction-set model. The bench drives it:
+// The EG2 system model in the chip bench (every EG2 co-simulation build: EG2_COSIM and
+// EG2_SYSMODEL; doc/scoreboard/eg2_reference_model.png in eg2_top_verification). The bench reaches
+// it through eg2_sysmodel::get(), one object chosen by factory override:
+//
+// - eg2_sysmodel: no system model; it predicts nothing, and every check that needs it is off.
+// - eg2_sysmodel_systemc: libeg2sysmodel.so (hw/top_earlgrey/dv/eg2_model/dpi/eg2_sysmodel.h), the
+//   devices and memories of the top without an instruction-set model. chip_base_test selects it
+//   unless +eg2_sysmodel=0.
+//
+// The SystemC model is driven by:
 //
 // - eg2_iss_wrapper: at the first RVFI reset item the model is built with the images the bench
 //   loaded into the chip (ROM and test ELFs, the OTP image) and the bench's backdoor symbol writes
@@ -48,36 +54,136 @@ import "DPI-C" function void eg2_sysmodel_release(chandle h);
 import "DPI-C" function int eg2_sysmodel_fault(chandle h, string name, longint unsigned now_ps);
 `endif
 
-class eg2_sysmodel;
-  localparam bit [31:0] Wfi = 32'h1050_0073;
+// No system model: nothing is predicted.
+class eg2_sysmodel extends uvm_object;
+  `uvm_object_utils(eg2_sysmodel)
 
-  protected static chandle      h;
-  protected static bit          created;
-  protected static int unsigned resets;
-  protected static string       stop_seen;
-  protected static int unsigned clk_hz[string];  // the chip's clocks as measured (watch_clocks)
-  // Backdoor writes before the model exists (the symbols cpu_init writes).
-  protected static bit [31:0]   early_addr[$];
-  protected static bit [7:0]    early_data[$];
+  protected static eg2_sysmodel inst;
 
   // For the report.
-  static int unsigned loads_predicted, loads_event, load_mismatches, stores, error_mismatches,
-                      cap_accesses, unpredicted_resets;
+  int unsigned loads_predicted, loads_event, load_mismatches, stores, error_mismatches,
+               cap_accesses, resets, unpredicted_resets;
   // +eg2_model_corrupt=load (the 100th predicted load's chip value inverted before it is compared)
   // or uart<N> (the scoreboard corrupts that UART's 10th item): checker fault injection, the run
   // must fail.
-  static string corrupt;
+  string corrupt;
 
-  static function bit active();
-    return h != null;
+  function new(string name = "eg2_sysmodel");
+    super.new(name);
+  endfunction
+
+  // The one model of the run, created at the first use (after chip_base_test's override).
+  static function eg2_sysmodel get();
+    if (inst == null) inst = eg2_sysmodel::type_id::create("eg2_sysmodel");
+    return inst;
+  endfunction
+
+  // A model is selected for this run (it may not be built yet: that is the first reset item).
+  virtual function bit enabled();
+    return 1'b0;
+  endfunction
+
+  // The model is built and running.
+  virtual function bit active();
+    return 1'b0;
   endfunction
 
   static function longint unsigned now_ps();
     return longint'($realtime / 1ps);
   endfunction
 
-  // A bench backdoor write into memory (sw_symbol_backdoor_access): the model's memory gets it.
-  static function void backdoor_write(bit [31:0] addr, bit [7:0] data[]);
+  // A bench backdoor write into memory (sw_symbol_backdoor_access).
+  virtual function void backdoor_write(bit [31:0] addr, bit [7:0] data[]);
+  endfunction
+
+  // An RVFI reset item: the chip left reset.
+  virtual function void chip_reset(chip_env_cfg cfg);
+  endfunction
+
+  // Time advances to now (the scoreboard, before it compares or gives an input).
+  virtual function void step();
+  endfunction
+
+  // One retired instruction's data access (eg2_iss_wrapper): what the model finds wrong with it.
+  virtual function string access(eg2_rvfi_item item);
+    return "";
+  endfunction
+
+  // The chip's clocks into the model.
+  virtual task watch_clocks(virtual chip_if vif);
+  endtask
+
+  // An agent's item into the model, as the chip received it (uart<N>.rx, gpio.in).
+  virtual function void give_input(string key, int unsigned value);
+  endfunction
+
+  virtual function int pending(string name);
+    return 0;
+  endfunction
+
+  virtual function string pull(string name);
+    return "";
+  endfunction
+
+  virtual function string verdict();
+    return "";
+  endfunction
+
+  // Why the model stopped following ("" while it follows).
+  virtual function string stop_reason();
+    return "";
+  endfunction
+
+  function string summary();
+    if (!enabled()) return "none (+eg2_sysmodel=0)";
+    return $sformatf({"loads %0d predicted (%0d mismatched), %0d input events; stores %0d; ",
+                      "error responses %0d mismatched; capability accesses %0d (not compared); ",
+                      "resets %0d (%0d not predicted); verdict \"%s\"; stop \"%s\""},
+                     loads_predicted, load_mismatches, loads_event, stores, error_mismatches,
+                     cap_accesses, resets, unpredicted_resets, verdict(), stop_reason());
+  endfunction
+
+`ifdef EG2_PERIPH_SB
+  // A fault the bench injects into the chip (a lockstep mismatch, cheriot_ena forced low), announced
+  // in the injection registry: a mismatch it causes on `targets` (comma-separated: "insn", a
+  // peripheral) is EXPECTED, and each of them must see one.
+  virtual function void fault(string name, string targets);
+    void'(eg2_inject_registry::announce({"eg2_sysmodel fault ", name}, targets,
+                                        "fault injected into the chip and the model"));
+  endfunction
+`endif
+
+  virtual function void close();
+  endfunction
+endclass
+
+// The SystemC model (libeg2sysmodel.so).
+class eg2_sysmodel_systemc extends eg2_sysmodel;
+  `uvm_object_utils(eg2_sysmodel_systemc)
+
+  localparam bit [31:0] Wfi = 32'h1050_0073;
+
+  protected chandle      h;
+  protected bit          created;
+  protected string       stop_seen;
+  protected int unsigned clk_hz[string];  // the chip's clocks as measured (watch_clocks)
+  // Backdoor writes before the model exists (the symbols cpu_init writes).
+  protected bit [31:0]   early_addr[$];
+  protected bit [7:0]    early_data[$];
+
+  function new(string name = "eg2_sysmodel_systemc");
+    super.new(name);
+  endfunction
+
+  virtual function bit enabled();
+    return 1'b1;
+  endfunction
+
+  virtual function bit active();
+    return h != null;
+  endfunction
+
+  virtual function void backdoor_write(bit [31:0] addr, bit [7:0] data[]);
     foreach (data[i]) begin
       if (h != null) eg2_sysmodel_backdoor_write8(h, addr + i, data[i]);
       else begin
@@ -87,8 +193,8 @@ class eg2_sysmodel;
     end
   endfunction
 
-  // An RVFI reset item: the chip left reset. The first builds the model.
-  static function void chip_reset(chip_env_cfg cfg);
+  // The first reset item builds the model.
+  virtual function void chip_reset(chip_env_cfg cfg);
     int cause;
     if (!created) begin
       // The 24-bit OTP image (chip_sim_cfg's gen_otp_images_mode keeps it as <name>.24.vmem); the
@@ -123,14 +229,11 @@ class eg2_sysmodel;
     void'(check_stop());
   endfunction
 
-  // Time advances to now (the scoreboard, before it compares or gives an input).
-  static function void step();
+  virtual function void step();
     if (h != null) eg2_sysmodel_step(h, now_ps());
   endfunction
 
-  // One retired instruction (from eg2_iss_wrapper): its data access, at the chip's time. Returns
-  // what the model finds wrong with it ("" if nothing).
-  static function string access(eg2_rvfi_item item);
+  virtual function string access(eg2_rvfi_item item);
     bit        store = item.mem_wmask != 0;
     bit [3:0]  mask  = store ? item.mem_wmask : item.mem_rmask;
     bit [31:0] data  = store ? item.mem_wdata : item.mem_rdata;
@@ -206,7 +309,7 @@ class eg2_sysmodel;
   // its error response is compared. A load's value is not compared (the instruction did not
   // complete); where the model cannot predict it, the chip's value is an input event as above. A
   // capability access's bytes become unknown, as above.
-  protected static function string trapped_access(eg2_rvfi_item item);
+  protected function string trapped_access(eg2_rvfi_item item);
     string errors;
     foreach (item.mem_acc[i]) begin
       eg2_dside_access_t a = item.mem_acc[i];
@@ -243,8 +346,7 @@ class eg2_sysmodel;
   // over a window of edges; a window with a gap or a step in it (sleep, calibration) is skipped,
   // and a frequency is given to the model when it moves by more than 0.1 %. Clocks are inputs of
   // the chip, not its state: this is an input event like a UART byte.
-
-  static task watch_clocks(virtual chip_if vif);
+  virtual task watch_clocks(virtual chip_if vif);
     fork
       measure_clock(vif, "main", 64);
       measure_clock(vif, "io_div4", 64);
@@ -252,7 +354,7 @@ class eg2_sysmodel;
     join_none
   endtask
 
-  protected static task clock_edge(virtual chip_if vif, string name);
+  protected task clock_edge(virtual chip_if vif, string name);
     case (name)
       "main":    @(posedge vif.sys_clk);
       "io_div4": @(posedge vif.io_div4_clk);
@@ -261,7 +363,7 @@ class eg2_sysmodel;
     endcase
   endtask
 
-  protected static task measure_clock(virtual chip_if vif, string name, int unsigned n);
+  protected task measure_clock(virtual chip_if vif, string name, int unsigned n);
     forever begin
       realtime t0, tp, t, p, pmin, pmax;
       clock_edge(vif, name);
@@ -288,8 +390,7 @@ class eg2_sysmodel;
     end
   endtask
 
-  // An agent's item into the model, as the chip received it (uart<N>.rx, gpio.in).
-  static function void give_input(string key, int unsigned value);
+  virtual function void give_input(string key, int unsigned value);
     if (h == null) return;
     eg2_sysmodel_step(h, now_ps());
     if (eg2_sysmodel_input(h, key, value)) begin
@@ -298,25 +399,24 @@ class eg2_sysmodel;
     void'(check_stop());
   endfunction
 
-  static function int pending(string inst);
-    return h == null ? 0 : eg2_sysmodel_pending(h, inst);
+  virtual function int pending(string name);
+    return h == null ? 0 : eg2_sysmodel_pending(h, name);
   endfunction
 
-  static function string pull(string inst);
-    return h == null ? "" : eg2_sysmodel_pull(h, inst);
+  virtual function string pull(string name);
+    return h == null ? "" : eg2_sysmodel_pull(h, name);
   endfunction
 
-  static function string verdict();
+  virtual function string verdict();
     return h == null ? "" : eg2_sysmodel_verdict(h);
   endfunction
 
-  // Why the model stopped following ("" while it follows).
-  static function string stop_reason();
+  virtual function string stop_reason();
     return h == null ? "" : eg2_sysmodel_stop_reason(h);
   endfunction
 
   // Reports the model's stop once; always "" (no error: from then on nothing is a prediction).
-  protected static function string check_stop();
+  protected function string check_stop();
     string why = eg2_sysmodel_stop_reason(h);
     if (why != "" && stop_seen == "") begin
       stop_seen = why;
@@ -326,22 +426,10 @@ class eg2_sysmodel;
     return "";
   endfunction
 
-  static function string summary();
-    return $sformatf({"loads %0d predicted (%0d mismatched), %0d input events; stores %0d; ",
-                      "error responses %0d mismatched; capability accesses %0d (not compared); ",
-                      "resets %0d (%0d not predicted); verdict \"%s\"; stop \"%s\""},
-                     loads_predicted, load_mismatches, loads_event, stores, error_mismatches,
-                     cap_accesses, resets, unpredicted_resets, verdict(), stop_reason());
-  endfunction
-
 `ifdef EG2_PERIPH_SB
-  // A fault the bench injects into the chip (a lockstep mismatch, cheriot_ena forced low) told to
-  // the model as an input event (eg2_sysmodel_fault), and announced in the injection registry: a
-  // mismatch it causes on `targets` (comma-separated: "insn", a peripheral) is EXPECTED, and each
-  // of them must see one.
-  static function void fault(string name, string targets);
-    void'(eg2_inject_registry::announce({"eg2_sysmodel fault ", name}, targets,
-                                        "fault injected into the chip and the model"));
+  // The fault also goes into the model as an input event (eg2_sysmodel_fault).
+  virtual function void fault(string name, string targets);
+    super.fault(name, targets);
     if (h == null) return;
     if (eg2_sysmodel_fault(h, name, now_ps())) begin
       `uvm_fatal("EG2_SYSMODEL", $sformatf("the model knows no fault %s", name))
@@ -350,7 +438,7 @@ class eg2_sysmodel;
   endfunction
 `endif
 
-  static function void close();
+  virtual function void close();
     if (h != null) eg2_sysmodel_release(h);
     h = null;
   endfunction

@@ -19,3 +19,7 @@ rv_dm_ndm_reset_req_dev                   hw/top_earlgrey/data/otp/img_dev.24.vm
 rv_dm_ndm_reset_req_test_unlocked1        hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem
 rv_dm_ndm_reset_req_when_cpu_halted_dev   hw/top_earlgrey/data/otp/img_dev.24.vmem
 rv_dm_ndm_reset_req_when_cpu_halted_test_unlocked1 hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem
+rv_dm_control_status_dev                  hw/top_earlgrey/data/otp/img_dev.24.vmem
+rv_dm_control_status_test_unlocked1       hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem
+rv_dm_dtm_dev                             hw/top_earlgrey/data/otp/img_dev.24.vmem
+rv_dm_dtm_test_unlocked1                  hw/top_earlgrey/data/otp/img_test_unlocked1.24.vmem

@@ -75,8 +75,8 @@
 //
 // Each step's outcome goes to eg2_scoreboard as an eg2_rvfi_exp_item (expected side). Built only
 // with EG2_COSIM (build mode en_eg2_cosim); otherwise the wrapper is present but off. With
-// EG2_SYSMODEL too (build mode en_eg2_model) each data access also goes to the EG2 SystemC model
-// (eg2_sysmodel.sv), which predicts the loads it can; its findings fail the instruction.
+// the system model on (eg2_sysmodel.sv; unless +eg2_sysmodel=0) each data access also goes to it
+// as well, and it predicts the loads it can; its findings fail the instruction.
 //
 // Plusargs: +sb_corrupt=insn.rd (corrupts one register result before it is checked, from the 100th
 // instruction), +sb_corrupt=insn.cheriot_rd (the same from the 100th CHERIoT-mode instruction, so
@@ -503,7 +503,7 @@ class eg2_iss_wrapper extends uvm_component;
     eg2_rvfi_item item;
     if (!enabled) return;
 `ifdef EG2_SYSMODEL
-    eg2_sysmodel::watch_clocks(cfg.chip_vif);
+    eg2_sysmodel::get().watch_clocks(cfg.chip_vif);
 `endif
     fetch_rules_reset();
     fork
@@ -557,7 +557,7 @@ class eg2_iss_wrapper extends uvm_component;
       sail_active = 1'b0;
       restart(item.boot_addr);
 `ifdef EG2_SYSMODEL
-      if (cosim != null) eg2_sysmodel::chip_reset(cfg);
+      if (cosim != null) eg2_sysmodel::get().chip_reset(cfg);
 `endif
       return;
     end
@@ -719,7 +719,7 @@ class eg2_iss_wrapper extends uvm_component;
       check_spike_left(exp);
     end
 `ifdef EG2_SYSMODEL
-    model_check(exp, eg2_sysmodel::access(item));
+    model_check(exp, eg2_sysmodel::get().access(item));
 `endif
     stepped++;
     exp_port.write(exp);
@@ -1592,7 +1592,7 @@ class eg2_iss_wrapper extends uvm_component;
     // every byte of the claimed bus stores against the bytes CHERIoT-Sail stored.
     if (!item.trap && !bus_err) check_bus_stores(exp, item, claimed);
 `ifdef EG2_SYSMODEL
-    model_check(exp, eg2_sysmodel::access(item));
+    model_check(exp, eg2_sysmodel::get().access(item));
 `endif
     sail_prev_trap = item.trap;
     sail_prev_skip = item.nmi || item.nmi_int || item.debug_req;
@@ -1777,7 +1777,7 @@ class eg2_iss_wrapper extends uvm_component;
     cosim = null;
     if (sail_active) cheriot_sail_cosim_cleanup();
 `ifdef EG2_SYSMODEL
-    eg2_sysmodel::close();
+    eg2_sysmodel::get().close();
 `endif
   endfunction
 `else
@@ -2270,9 +2270,27 @@ class eg2_iss_wrapper extends uvm_component;
       // A start while a sweep the model knows of has not been seen to end: the earlier sweep is
       // checked now (its end not read by software), then this start is judged.
       if (tbre_active) tbre_check_complete("the next start");
+      // The tagged regions a sweep may start in: main SRAM, secure SRAM and RRAM (RFC CHERIoT Memory
+      // Subsystem, "Unified Meta SRAM Address Map", Figure 2: secure SRAM has its own tags and
+      // revocation bitmap; REQ_CMS_05, REQ_CMS_09). cheriot_mem_sys's programmer's guide names only
+      // main SRAM and the NVM: a documentation finding (rtl_tickets.md, 2026-11-05).
+      // For a sweep, main and secure SRAM are one region when secure SRAM follows main SRAM in the
+      // address map: top_earlgrey.hjson sets cheriot_mem_sys's MainSramTopAddr to the end of secure
+      // SRAM, and the guide says a sweep "reaching past the top of its region ends there"
+      // (programmers_guide.md step 3). A sweep started in main SRAM runs on into secure SRAM and
+      // ends at the top of secure SRAM (decision 2026-11-06; rtl_tickets.md asks the guide to say so).
       if (tbre_base >= SramMainRam &&
           tbre_base - SramMainRam < top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES) begin
         top = SramMainRam + top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES;
+        if (top == top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR) begin
+          top = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR +
+                top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_SIZE_BYTES;
+        end
+      end else if (tbre_base >= top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR &&
+                   tbre_base - top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR <
+                   top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_SIZE_BYTES) begin
+        top = top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_BASE_ADDR +
+              top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_SEC_RAM_SIZE_BYTES;
       end else if (tbre_base >= RramHost &&
                    tbre_base - RramHost < top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) begin
         top = RramHost + top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES;

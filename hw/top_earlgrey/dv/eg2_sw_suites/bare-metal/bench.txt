@@ -76,8 +76,19 @@ uart_tx_rx_test_cheriot@uart_tx_rx_idx1_cheriot  --stim uart1.rx={sym:kExpUartRx
 uart_tx_rx_test_cheriot@uart_tx_rx_idx2_cheriot  --stim uart2.rx={sym:kExpUartRxData:64}{rep:55:65}
 uart_tx_rx_test_cheriot@uart_tx_rx_idx3_cheriot  --stim uart3.rx={sym:kExpUartRxData:64}{rep:55:65}
 # The host-driven UART tests: the host picks the UART.
-uart_loopback_test       --sym uart_idx=0:1
-uart_baud_rate_test      --sym uart_idx=0:1
+# The FPGA/silicon host programs (sw/host/tests/chip/...), done by the model (host.program,
+# eg2_model/ip/eg2_test_hosts.h).
+uart_loopback_test       --stim host.program=uart_loopback@0us
+uart_baud_rate_test      --stim host.program=uart_baud_rate@0us
+example_sival            --stim host.program=example_sival@0us
+example_mem_ujcmd_test   --stim host.program=example_mem_ujcmd@0us
+# chip_sw_spi_host_tx_rx_vseq: the SPI device agent's spi_device_seq plays each received word
+# back on the next one (byte_order 0), the model's echo peer on spi_host0 (kSPIHostIdx 0).
+spi_host_tx_rx_test          --stim spi_host0.peer=echo
+spi_host_tx_rx_test_cheriot  --stim spi_host0.peer=echo
+# chip_sw_spi_device_tpm_vseq's SPI host agent on tpm_csb.
+spi_device_tpm_tx_rx_test          --stim host.program=spi_tpm@0us
+spi_device_tpm_tx_rx_test_cheriot  --stim host.program=spi_tpm@0us
 # OTBN runs at its real speed while the CPU polls its STATUS (RSA-4096 decryption takes about 145
 # million OTBN cycles): RSA key generation, signatures and the pairwise consistency test need more
 # than the default 200 million instructions.
@@ -107,22 +118,10 @@ keymgr_dpe_sideload_hmac_test_cheriot  --stim hmac.sideload_expect=kData:sideloa
 # 32-byte KMAC128 digest of kKmacMessage with the generated 256-bit key and writes the result.
 keymgr_dpe_sideload_kmac_test          --stim kmac.sideload_expect=kKmacMessage:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20Kmac%20from%20the%20CreatorRootKey
 keymgr_dpe_sideload_kmac_test_cheriot  --stim kmac.sideload_expect=kKmacMessage:sideload_digest_result@log:KeymgrDpe%20generated%20HW%20output%20for%20Kmac%20from%20the%20CreatorRootKey
-# AES-KW masks with rv_core_ibex RND_DATA, which the model supplies through EDN: run its vectors
-# rather than the image's model-gap path that skips them (a NIST test that compares no vector is
-# not a pass).
-eg2_nist_aes_kw                      --param model_gaps=0
-eg2_nist_aes_kw_cheriot              --param model_gaps=0
-eg2_nist_aes_kw_inject_fail          --param model_gaps=0
-eg2_nist_aes_kw_cheriot_inject_fail  --param model_gaps=0
-# The OTBN NIST tests run on the model's C++ OTBN (crypto-engines/otbn/sw/systemc-model/eg2_otbn.h)
-# rather than through the image's model-gap path, which skips every vector; the vector budget still
-# skips some (sw-suite-nist-ref runs all of them on otbnsim).
-eg2_nist_otbn_ecdh                   --param model_gaps=0
-eg2_nist_otbn_ecdh_inject_fail       --param model_gaps=0
-eg2_nist_otbn_ecdsa                  --param model_gaps=0
-eg2_nist_otbn_ecdsa_inject_fail      --param model_gaps=0
-eg2_nist_otbn_rsa                    --param model_gaps=0
-eg2_nist_otbn_rsa_inject_fail        --param model_gaps=0
+# The NIST tests (eg2_nist_aes_kw, eg2_nist_otbn_*) have no model_gaps knob any more (removed
+# 2026-11-04): they always run their vectors, AES-KW masked with rv_core_ibex RND_DATA through EDN,
+# the OTBN ones on the model's C++ OTBN; the vector budget still skips some (sw-suite-nist-ref runs
+# all of them on otbnsim). No options needed.
 # sysrst_ctrl's pads (chip_sw_sysrst_ctrl_*_vseq), as the bench drives them at the test's phase
 # synchronisations (sw_test_status InTest, InWfi; a value list gives each synchronisation its
 # value, an empty item none). sysrst_ctrl.in is in PIN_IN_VALUE's order (pwrb key0 key1 key2 lid
@@ -241,6 +240,32 @@ rv_dm_access_after_wakeup_dev  --stim debugger.dmactive=1@log:Software%20Setup.+
 rv_dm_access_after_wakeup_rma  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
 rv_dm_access_after_wakeup_rma_cheriot  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
 rv_dm_access_after_wakeup_test_unlocked1  --stim debugger.dmactive=1@log:Software%20Setup.+5us --stim debugger.dmi_write=0x20:0x1234abcd@log:Software%20Setup.+6us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Software%20Setup.+7us --stim sym.kSoftwareBarrierDv=1@log:Software%20Setup.+8us --stim sysrst_ctrl.in=0xce@log:Entering%20normal%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20normal%20sleep.+5us --stim debugger.dmi_expect=0x20:0x1234abcd@log:Waking%20up%20from%20normal%20sleep.+6us --stim sym.kSoftwareBarrierDv=2@log:Waking%20up%20from%20normal%20sleep.+7us --stim sysrst_ctrl.in=0xce@log:Entering%20deep%20sleep.+10us --stim sysrst_ctrl.in=0xcf@log:Waking%20up%20from%20deep%20sleep.+5us --stim debugger.dmactive=1@log:Waking%20up%20from%20deep%20sleep.+6us --stim debugger.dmi_write=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+7us --stim debugger.dmi_expect=0x20:0x5a5a0f0f@log:Waking%20up%20from%20deep%20sleep.+8us --stim sym.kSoftwareBarrierDv=3@log:Waking%20up%20from%20deep%20sleep.+9us
+# Debug Transport Module (sw/host/tests/chip/rv_dm/src/dtm.rs, OpenOCD with opentitanlib on FPGA and
+# silicon), as jtag.* keys through the modelled RISC-V TAP and DTM (eg2_model/ip/eg2_jtag_host.h):
+# PINMUX_TAP_RISCV straps, OpenOCD's init (IDCODE against -expected-id, dtmcs version 1, dmactive),
+# hartinfo 0x212380, data0 and data1 written with random values and read back. The steps start at
+# the test ROM's first log line, 2 us apart (20 us while the core is halted); jtag.checks counts them so that none is skipped.
+rv_dm_dtm_dev --stim jtag.strap=10@0us --stim jtag.checks=11@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x12:0x212380@log:kBuildInfo*+8us --stim jtag.dmi_rw_random=0x04:1@log:kBuildInfo*+10us --stim jtag.dmi_rw_random=0x05:2@log:kBuildInfo*+12us
+rv_dm_dtm_rma --stim jtag.strap=10@0us --stim jtag.checks=11@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x12:0x212380@log:kBuildInfo*+8us --stim jtag.dmi_rw_random=0x04:1@log:kBuildInfo*+10us --stim jtag.dmi_rw_random=0x05:2@log:kBuildInfo*+12us
+rv_dm_dtm_test_unlocked1 --stim jtag.strap=10@0us --stim jtag.checks=11@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x12:0x212380@log:kBuildInfo*+8us --stim jtag.dmi_rw_random=0x04:1@log:kBuildInfo*+10us --stim jtag.dmi_rw_random=0x05:2@log:kBuildInfo*+12us
+# Control and status (sw/host/tests/chip/rv_dm/src/control_status.rs): after OpenOCD's init, dmstatus
+# anyhavereset (the power-on reset) then ackhavereset, all ones written to hartsel read back 0 (one
+# hart), the hart running, haltreq until allhalted, resumereq until allresumeack (opentitanlib's
+# wait_halt and wait_resume poll dmstatus). Spec 0.13.2 3.12.2 and 3.12.1; debug-system.md.
+rv_dm_control_status_dev --stim jtag.strap=10@0us --stim jtag.checks=18@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:kBuildInfo*+8us --stim jtag.dmi_write=0x10:0x10000001@log:kBuildInfo*+10us --stim jtag.dmi_write=0x10:0x03ffffc1@log:kBuildInfo*+12us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:kBuildInfo*+14us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+16us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:kBuildInfo*+18us --stim jtag.dmi_write=0x10:0x80000001@log:kBuildInfo*+20us --stim jtag.dmi_wait=0x11:0x300/0x300@log:kBuildInfo*+40us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+60us --stim jtag.dmi_write=0x10:0x40000001@log:kBuildInfo*+80us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:kBuildInfo*+82us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+102us
+rv_dm_control_status_rma --stim jtag.strap=10@0us --stim jtag.checks=18@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:kBuildInfo*+8us --stim jtag.dmi_write=0x10:0x10000001@log:kBuildInfo*+10us --stim jtag.dmi_write=0x10:0x03ffffc1@log:kBuildInfo*+12us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:kBuildInfo*+14us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+16us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:kBuildInfo*+18us --stim jtag.dmi_write=0x10:0x80000001@log:kBuildInfo*+20us --stim jtag.dmi_wait=0x11:0x300/0x300@log:kBuildInfo*+40us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+60us --stim jtag.dmi_write=0x10:0x40000001@log:kBuildInfo*+80us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:kBuildInfo*+82us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+102us
+rv_dm_control_status_test_unlocked1 --stim jtag.strap=10@0us --stim jtag.checks=18@0us --stim jtag.idcode_expect=0x10021cdf@log:kBuildInfo*+2us --stim jtag.dtmcs_expect=0x1/0xf@log:kBuildInfo*+4us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+6us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:kBuildInfo*+8us --stim jtag.dmi_write=0x10:0x10000001@log:kBuildInfo*+10us --stim jtag.dmi_write=0x10:0x03ffffc1@log:kBuildInfo*+12us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:kBuildInfo*+14us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+16us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:kBuildInfo*+18us --stim jtag.dmi_write=0x10:0x80000001@log:kBuildInfo*+20us --stim jtag.dmi_wait=0x11:0x300/0x300@log:kBuildInfo*+40us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+60us --stim jtag.dmi_write=0x10:0x40000001@log:kBuildInfo*+80us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:kBuildInfo*+82us --stim jtag.dmi_write=0x10:0x1@log:kBuildInfo*+102us
+# chip_eg2_rv_dm_control_status_vseq (eg2_rv_dm_control_status, both modes) through the JTAG host
+# (ip/eg2_jtag_host.h): after the software's "EG2 DEBUG ready 0x<done> 0x<scratch>", OpenOCD's init,
+# havereset then ackhavereset, hartsel all ones reads 0, one halt (allhalted, not running) and resume
+# (allresumeack, running, not halted), then the test's magic word 0x600d0003 to done over SBA. In
+# CHERIoT mode the halt follows Ibex debug.rst "Debug Mode in CHERIoT" (PCC to depcc, mtcc; dret
+# restores it); the RTL's ticket F13 (the base debug ROM faults in CHERIoT mode) is the RTL's.
+# model_gaps=0: eg2sim has the debug module, JTAG and SBA the skip was written for.
+eg2_rv_dm_control_status --param model_gaps=0 --stim jtag.strap=10@0us --stim jtag.checks=22@0us --stim jtag.idcode_expect=0x10021cdf@log:EG2%20DEBUG%20ready*+5us --stim jtag.dtmcs_expect=0x1/0xf@log:EG2%20DEBUG%20ready*+10us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+15us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:EG2%20DEBUG%20ready*+20us --stim jtag.dmi_write=0x10:0x10000001@log:EG2%20DEBUG%20ready*+25us --stim jtag.dmi_write=0x10:0x03ffffc1@log:EG2%20DEBUG%20ready*+30us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:EG2%20DEBUG%20ready*+35us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+40us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:EG2%20DEBUG%20ready*+45us --stim jtag.dmi_write=0x10:0x80000001@log:EG2%20DEBUG%20ready*+50us --stim jtag.dmi_wait=0x11:0x300/0x300@log:EG2%20DEBUG%20ready*+70us --stim jtag.dmi_expect=0x11:0x0/0xc00@log:EG2%20DEBUG%20ready*+90us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+95us --stim jtag.dmi_write=0x10:0x40000001@log:EG2%20DEBUG%20ready*+100us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:EG2%20DEBUG%20ready*+105us --stim jtag.dmi_expect=0x11:0xc00/0xf00@log:EG2%20DEBUG%20ready*+125us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+130us --stim debugger.sba_write={1}:0x600d0003@log:EG2%20DEBUG%20ready*+135us
+eg2_rv_dm_control_status_cheriot --param model_gaps=0 --stim jtag.strap=10@0us --stim jtag.checks=22@0us --stim jtag.idcode_expect=0x10021cdf@log:EG2%20DEBUG%20ready*+5us --stim jtag.dtmcs_expect=0x1/0xf@log:EG2%20DEBUG%20ready*+10us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+15us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:EG2%20DEBUG%20ready*+20us --stim jtag.dmi_write=0x10:0x10000001@log:EG2%20DEBUG%20ready*+25us --stim jtag.dmi_write=0x10:0x03ffffc1@log:EG2%20DEBUG%20ready*+30us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:EG2%20DEBUG%20ready*+35us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+40us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:EG2%20DEBUG%20ready*+45us --stim jtag.dmi_write=0x10:0x80000001@log:EG2%20DEBUG%20ready*+50us --stim jtag.dmi_wait=0x11:0x300/0x300@log:EG2%20DEBUG%20ready*+70us --stim jtag.dmi_expect=0x11:0x0/0xc00@log:EG2%20DEBUG%20ready*+90us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+95us --stim jtag.dmi_write=0x10:0x40000001@log:EG2%20DEBUG%20ready*+100us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:EG2%20DEBUG%20ready*+105us --stim jtag.dmi_expect=0x11:0xc00/0xf00@log:EG2%20DEBUG%20ready*+125us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+130us --stim debugger.sba_write={1}:0x600d0003@log:EG2%20DEBUG%20ready*+135us
+eg2_rv_dm_control_status_inject_fail --param model_gaps=0 --stim jtag.strap=10@0us --stim jtag.checks=22@0us --stim jtag.idcode_expect=0x10021cdf@log:EG2%20DEBUG%20ready*+5us --stim jtag.dtmcs_expect=0x1/0xf@log:EG2%20DEBUG%20ready*+10us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+15us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:EG2%20DEBUG%20ready*+20us --stim jtag.dmi_write=0x10:0x10000001@log:EG2%20DEBUG%20ready*+25us --stim jtag.dmi_write=0x10:0x03ffffc1@log:EG2%20DEBUG%20ready*+30us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:EG2%20DEBUG%20ready*+35us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+40us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:EG2%20DEBUG%20ready*+45us --stim jtag.dmi_write=0x10:0x80000001@log:EG2%20DEBUG%20ready*+50us --stim jtag.dmi_wait=0x11:0x300/0x300@log:EG2%20DEBUG%20ready*+70us --stim jtag.dmi_expect=0x11:0x0/0xc00@log:EG2%20DEBUG%20ready*+90us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+95us --stim jtag.dmi_write=0x10:0x40000001@log:EG2%20DEBUG%20ready*+100us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:EG2%20DEBUG%20ready*+105us --stim jtag.dmi_expect=0x11:0xc00/0xf00@log:EG2%20DEBUG%20ready*+125us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+130us --stim debugger.sba_write={1}:0x600d0003@log:EG2%20DEBUG%20ready*+135us
+eg2_rv_dm_control_status_cheriot_inject_fail --param model_gaps=0 --stim jtag.strap=10@0us --stim jtag.checks=22@0us --stim jtag.idcode_expect=0x10021cdf@log:EG2%20DEBUG%20ready*+5us --stim jtag.dtmcs_expect=0x1/0xf@log:EG2%20DEBUG%20ready*+10us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+15us --stim jtag.dmi_expect=0x11:0x40000/0x40000@log:EG2%20DEBUG%20ready*+20us --stim jtag.dmi_write=0x10:0x10000001@log:EG2%20DEBUG%20ready*+25us --stim jtag.dmi_write=0x10:0x03ffffc1@log:EG2%20DEBUG%20ready*+30us --stim jtag.dmi_expect=0x10:0x0/0x03ffffc0@log:EG2%20DEBUG%20ready*+35us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+40us --stim jtag.dmi_expect=0x11:0xc00/0xc00@log:EG2%20DEBUG%20ready*+45us --stim jtag.dmi_write=0x10:0x80000001@log:EG2%20DEBUG%20ready*+50us --stim jtag.dmi_wait=0x11:0x300/0x300@log:EG2%20DEBUG%20ready*+70us --stim jtag.dmi_expect=0x11:0x0/0xc00@log:EG2%20DEBUG%20ready*+90us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+95us --stim jtag.dmi_write=0x10:0x40000001@log:EG2%20DEBUG%20ready*+100us --stim jtag.dmi_wait=0x11:0x30000/0x30000@log:EG2%20DEBUG%20ready*+105us --stim jtag.dmi_expect=0x11:0xc00/0xf00@log:EG2%20DEBUG%20ready*+125us --stim jtag.dmi_write=0x10:0x1@log:EG2%20DEBUG%20ready*+130us --stim debugger.sba_write={1}:0x600d0003@log:EG2%20DEBUG%20ready*+135us
 # NDM reset (chip_rv_dm_ndm_reset_vseq with chip_jtag_base_vseq's debug_mode_en and ndm_reset_off):
 # after "wait for ndm reset" the debugger sets dmactive, then ndmreset, and clears it once the chip
 # has reset. The havereset checks around it are the FPGA harness's (sw/host/tests/chip/rv_dm/src/
@@ -291,3 +316,68 @@ rram_ctrl_lc_rw_en_test  --stim otp.lc_state=TestLocked2@1cyc --stim otp.write=0
 # gpio.in drives the rising then falling thermometer pattern, one value after each WFI.
 gpio_test  --stim gpio.pad_expect=0x1:0xffffffff/0x2:0xffffffff/0x4:0xffffffff/0x8:0xffffffff/0x10:0xffffffff/0x20:0xffffffff/0x40:0xffffffff/0x80:0xffffffff/0x100:0xffffffff/0x200:0xffffffff/0x400:0xffffffff/0x800:0xffffffff/0x1000:0xffffffff/0x2000:0xffffffff/0x4000:0xffffffff/0x8000:0xffffffff/0x10000:0xffffffff/0x20000:0xffffffff/0x40000:0xffffffff/0x80000:0xffffffff/0x100000:0xffffffff/0x200000:0xffffffff/0x400000:0xffffffff/0x800000:0xffffffff/0x1000000:0xffffffff/0x2000000:0xffffffff/0x4000000:0xffffffff/0x8000000:0xffffffff/0x10000000:0xffffffff/0x20000000:0xffffffff/0x40000000:0xffffffff/0x80000000:0xffffffff/0:0xffffffff/0xffffffff:0xffffffff/0xfffffffe:0xffffffff/0xfffffffd:0xffffffff/0xfffffffb:0xffffffff/0xfffffff7:0xffffffff/0xffffffef:0xffffffff/0xffffffdf:0xffffffff/0xffffffbf:0xffffffff/0xffffff7f:0xffffffff/0xfffffeff:0xffffffff/0xfffffdff:0xffffffff/0xfffffbff:0xffffffff/0xfffff7ff:0xffffffff/0xffffefff:0xffffffff/0xffffdfff:0xffffffff/0xffffbfff:0xffffffff/0xffff7fff:0xffffffff/0xfffeffff:0xffffffff/0xfffdffff:0xffffffff/0xfffbffff:0xffffffff/0xfff7ffff:0xffffffff/0xffefffff:0xffffffff/0xffdfffff:0xffffffff/0xffbfffff:0xffffffff/0xff7fffff:0xffffffff/0xfeffffff:0xffffffff/0xfdffffff:0xffffffff/0xfbffffff:0xffffffff/0xf7ffffff:0xffffffff/0xefffffff:0xffffffff/0xdfffffff:0xffffffff/0xbfffffff:0xffffffff/0x7fffffff:0xffffffff/0xffffffff:0xffffffff/0:0xffffffff@log:Starting%20GPIO%20output%20test --stim gpio.in=0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f,0xff,0x1ff,0x3ff,0x7ff,0xfff,0x1fff,0x3fff,0x7fff,0xffff,0x1ffff,0x3ffff,0x7ffff,0xfffff,0x1fffff,0x3fffff,0x7fffff,0xffffff,0x1ffffff,0x3ffffff,0x7ffffff,0xfffffff,0x1fffffff,0x3fffffff,0x7fffffff,0xffffffff,0xfffffffe,0xfffffffc,0xfffffff8,0xfffffff0,0xffffffe0,0xffffffc0,0xffffff80,0xffffff00,0xfffffe00,0xfffffc00,0xfffff800,0xfffff000,0xffffe000,0xffffc000,0xffff8000,0xffff0000,0xfffe0000,0xfffc0000,0xfff80000,0xfff00000,0xffe00000,0xffc00000,0xff800000,0xff000000,0xfe000000,0xfc000000,0xf8000000,0xf0000000,0xe0000000,0xc0000000,0x80000000,0x0@wfi+1cyc
 gpio_test_cheriot  --stim gpio.pad_expect=0x1:0xffffffff/0x2:0xffffffff/0x4:0xffffffff/0x8:0xffffffff/0x10:0xffffffff/0x20:0xffffffff/0x40:0xffffffff/0x80:0xffffffff/0x100:0xffffffff/0x200:0xffffffff/0x400:0xffffffff/0x800:0xffffffff/0x1000:0xffffffff/0x2000:0xffffffff/0x4000:0xffffffff/0x8000:0xffffffff/0x10000:0xffffffff/0x20000:0xffffffff/0x40000:0xffffffff/0x80000:0xffffffff/0x100000:0xffffffff/0x200000:0xffffffff/0x400000:0xffffffff/0x800000:0xffffffff/0x1000000:0xffffffff/0x2000000:0xffffffff/0x4000000:0xffffffff/0x8000000:0xffffffff/0x10000000:0xffffffff/0x20000000:0xffffffff/0x40000000:0xffffffff/0x80000000:0xffffffff/0:0xffffffff/0xffffffff:0xffffffff/0xfffffffe:0xffffffff/0xfffffffd:0xffffffff/0xfffffffb:0xffffffff/0xfffffff7:0xffffffff/0xffffffef:0xffffffff/0xffffffdf:0xffffffff/0xffffffbf:0xffffffff/0xffffff7f:0xffffffff/0xfffffeff:0xffffffff/0xfffffdff:0xffffffff/0xfffffbff:0xffffffff/0xfffff7ff:0xffffffff/0xffffefff:0xffffffff/0xffffdfff:0xffffffff/0xffffbfff:0xffffffff/0xffff7fff:0xffffffff/0xfffeffff:0xffffffff/0xfffdffff:0xffffffff/0xfffbffff:0xffffffff/0xfff7ffff:0xffffffff/0xffefffff:0xffffffff/0xffdfffff:0xffffffff/0xffbfffff:0xffffffff/0xff7fffff:0xffffffff/0xfeffffff:0xffffffff/0xfdffffff:0xffffffff/0xfbffffff:0xffffffff/0xf7ffffff:0xffffffff/0xefffffff:0xffffffff/0xdfffffff:0xffffffff/0xbfffffff:0xffffffff/0x7fffffff:0xffffffff/0xffffffff:0xffffffff/0:0xffffffff@log:Starting%20GPIO%20output%20test --stim gpio.in=0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f,0xff,0x1ff,0x3ff,0x7ff,0xfff,0x1fff,0x3fff,0x7fff,0xffff,0x1ffff,0x3ffff,0x7ffff,0xfffff,0x1fffff,0x3fffff,0x7fffff,0xffffff,0x1ffffff,0x3ffffff,0x7ffffff,0xfffffff,0x1fffffff,0x3fffffff,0x7fffffff,0xffffffff,0xfffffffe,0xfffffffc,0xfffffff8,0xfffffff0,0xffffffe0,0xffffffc0,0xffffff80,0xffffff00,0xfffffe00,0xfffffc00,0xfffff800,0xfffff000,0xffffe000,0xffffc000,0xffff8000,0xffff0000,0xfffe0000,0xfffc0000,0xfff80000,0xfff00000,0xffe00000,0xffc00000,0xff800000,0xff000000,0xfe000000,0xfc000000,0xf8000000,0xf0000000,0xe0000000,0xc0000000,0x80000000,0x0@wfi+1cyc
+#
+# Revocation-bitmap errors (chip_sw_eg2_revbm_errors_vseq): the model's bench takes the steps
+# revbm_err_arm/_end and revbm_hold_reset/_end (eg2_model ip/eg2_mem.h, cheriot_mem_sys's corerevbm
+# port), so the runs give up model_gaps; the must-fail image inverts the bench's revocation check.
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_intg               --param model_gaps=0
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_mem_err            --param model_gaps=0
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_reset_ndm          --param model_gaps=0
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_reset_por          --param model_gaps=0
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_reset_wdog         --param model_gaps=0
+eg2_revbm_errors_cheriot@cheriot_revbm_errors_bus_err            --param model_gaps=0
+eg2_revbm_errors_cheriot_inject_fail@cheriot_revbm_errors_inject_fail        --param model_gaps=0 --stim bench.inject_fail=1@0us
+eg2_revbm_errors_cheriot_inject_fail@cheriot_revbm_errors_reset_inject_fail  --param model_gaps=0 --stim bench.inject_fail=1@0us
+#
+# TBRE faults (chip_sw_eg2_tbre_fault_vseq): tbre_fault_arm/_end are the model's (eg2_model
+# ip/eg2_mem.h, the engine's error rules of cheriot_mem_sys "Error Handling").
+eg2_tbre_fault_cheriot@cheriot_tbre_fault_bm_err      --param model_gaps=0
+eg2_tbre_fault_cheriot@cheriot_tbre_fault_bm_intg     --param model_gaps=0
+eg2_tbre_fault_cheriot@cheriot_tbre_fault_word_intg   --param model_gaps=0
+#
+# RRAM countermeasure faults (chip_sw_eg2_rram_sec_cm_vseq, scenario 2): the model's bench takes the
+# software's `EG2 RRAM seccm fi arm` line (eg2_model ip/eg2_mem.h, Eg2RramCtrl::cm_fault).
+eg2_rram_sec_cm@rram_sec_cm_ctr_redun  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_ctr_redun_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_ctrl_fsm_sparse  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_ctrl_fsm_sparse_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_fifo_ctr_redun  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_fifo_ctr_redun_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_phy_arbiter_ctrl_redun  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_phy_arbiter_ctrl_redun_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_phy_host_grant_ctrl_consistency  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_phy_host_grant_ctrl_consistency_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_phy_rd_rsp_ctrl_integrity  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_phy_rd_rsp_ctrl_integrity_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_phy_rsp_ctrl_consistency  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_phy_rsp_ctrl_consistency_cheriot  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_phy_wr_fsm_sparse  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_phy_wr_fsm_sparse_cheriot  --param model_gaps=0
+eg2_rram_sec_cm_inject_fail@rram_sec_cm_inject_fail  --param model_gaps=0
+eg2_rram_sec_cm_cheriot_inject_fail@rram_sec_cm_cheriot_inject_fail  --param model_gaps=0
+eg2_rram_sec_cm@rram_sec_cm_mem_readback  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_mem_readback_cheriot  --param model_gaps=0
+#
+# OpenTitan's chip-test sequences, done by the model (eg2_model/eg2_bench_seq.h), 2026-11-05.
+# chip_sw_all_escalation_resets_vseq picks one IP's fatal alert, writes its number into
+# kExpectedAlertNumber and, once software logs "Ready for fault injection", injects a fault into a
+# countermeasure of that IP. The model takes one IP per image: aes (its fault also sets
+# STATUS.ALERT_FATAL_FAULT, aes.hjson) and, in CHERIoT mode, rv_timer (no status field).
+all_escalation_resets_test          --sym kExpectedAlertNumber=43:1 --stim alert.fatal_fault=aes.fatal_fault@log:Ready%20for%20fault%20injection
+all_escalation_resets_test_cheriot  --sym kExpectedAlertNumber=11:1 --stim alert.fatal_fault=rv_timer.fatal_fault@log:Ready%20for%20fault%20injection
+# chip_sw_sleep_pin_mio_dio_val_vseq: in low power, every pad the software logged a retention type
+# for is checked three times (no external pull, pull-down, pull-up), then the bench ends the run
+# (eg2_periph_sys.h Eg2Pinmux sleep_pad_check, from pinmux "Retention Logic").
+sleep_pin_mio_dio_val_test          --stim pinmux.sleep_pad_check=1@lowpower+20us
+sleep_pin_mio_dio_val_test_cheriot  --stim pinmux.sleep_pad_check=1@lowpower+20us
+# chip_sw_eg2_rram_sec_cm_vseq scenario 0, the row swap: the model swaps the two RRAM rows on the
+# software's "EG2 RRAM seccm swap" line (ip/eg2_mem.h Eg2RramCtrl::swap_fault).
+eg2_rram_sec_cm@rram_sec_cm_mem_addr_infection  --param model_gaps=0
+eg2_rram_sec_cm_cheriot@rram_sec_cm_mem_addr_infection_cheriot  --param model_gaps=0
+# chip_sw_ast_clk_rst_inputs_vseq: cpu_init writes the sample counts, the wake-up time and the two
+# channel windows (128..255, 512..639) into the image; during each sleep it forces every ADC
+# conversion to a value inside the window (a fixed in-window value here: 192, 576).
+ast_clk_rst_inputs  --sym kNumLowPowerSamples=3:1 --sym kNumNormalPowerSamples=3:1 --sym kWakeUpTimeInUs=80:1 --sym kChannel0MaxLowByte=255:1 --sym kChannel0MaxHighByte=0:1 --sym kChannel0MinLowByte=128:1 --sym kChannel0MinHighByte=0:1 --sym kChannel1MaxLowByte=127:1 --sym kChannel1MaxHighByte=2:1 --sym kChannel1MinLowByte=0:1 --sym kChannel1MinHighByte=2:1 --stim adc_ctrl.chan0=192 --stim adc_ctrl.chan1=576
+# chip_sw_alert_handler_lpg_sleep_mode_alerts runs the same sequence: the alert's IP is aon_timer
+# (always-on, so it stays clocked through the test's normal sleep).
+alert_handler_lpg_sleep_mode_alerts_test  --sym kExpectedAlertNumber=31:1 --stim alert.fatal_fault=aon_timer.fatal_fault@log:Ready%20for%20fault%20injection

@@ -9,8 +9,10 @@
 // MUST_FAIL_TESTS) and is in no regression list. chip_sw_eg2_rand_cap_ops, _rand_mem[_cheriot]
 // and _rand_traps[_cheriot] keep their entries in chip_smoketests.hjson (eg2_cheriot_suite).
 //
-// Expected to fail on this RTL and boot flow (rtl_tickets.md): chip_cheriot_sba_tag_clear (F23:
-// SBA writes bypass cheriot_mem_sys), chip_sw_cheriot_meta_init_after_reset (F11: no boot code
+// chip_cheriot_sba_tag_clear checks REQ_CDM_06: an SBA write leaves the tag unchanged (#1040,
+// closed as documented in rv_dm's theory of operation, "CHERIoT Mode").
+// Expected to fail on this RTL and boot flow (rtl_tickets.md):
+// chip_sw_cheriot_meta_init_after_reset (F11: no boot code
 // initialises the meta SRAM), chip_sw_cheriot_periph_lock (F29: no boot stage locks the
 // REQ_SOC_08 registers before the switch; +eg2_param_lock_first=1 checks the rest meanwhile).
 {

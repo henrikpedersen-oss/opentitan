@@ -28,8 +28,11 @@
  * The SystemC model has no revocation load filter (eg2_mpact_cpu.h "Not modelled"): with
  * `model_gaps` the revoked capabilities' tags are not checked (the others are).
  *
- * Built with EG2_REVOCATION_INJECT_FAIL, the first marked granule's bitmap bit is expected clear: the
- * run must fail with `MISMATCH bitmap bit #0`.
+ * Built with EG2_REVOCATION_INJECT_FAIL, the first capability whose tag is checked is expected with
+ * the other tag: the run must fail with `MISMATCH tag #<n>`. The check broken is one made after
+ * eg2_ms_revbm_clear(), so the failure report runs with no granule marked: broken while the marks
+ * were set, the report's own capability loads (based at the heap base, which edge_marks marks) were
+ * revoked by the load barrier and the run trapped before reporting (dv_tickets.md, 4 Nov).
  */
 
 #include "sw/device/lib/testing/eg2/eg2_test.h"
@@ -200,14 +203,7 @@ bool eg2_test_main(void) {
   for (uint32_t i = 0; i < n_marked; ++i) {
     uint32_t w, b;
     (void)eg2_ms_revbm_bit(eg2_ms_read32(kMarks + 4 * i), &w, &b);
-    uint32_t exp_bit = 1;
-#ifdef EG2_REVOCATION_INJECT_FAIL
-    if (i == 0) {
-      eg2_inject_armed("bitmap bit");
-    }
-    exp_bit = i == 0 ? 0 : 1;
-#endif
-    eg2_check(&tally, "bitmap bit", i, (eg2_ms_revbm_read(w) >> b) & 1, exp_bit);
+    eg2_check(&tally, "bitmap bit", i, (eg2_ms_revbm_read(w) >> b) & 1, 1);
   }
   volatile uint32_t *tags = eg2_mem(kMarks + 4 * kMaxMarked, 4 * kMaxCaps);
   reload(n_caps, tags);
@@ -215,6 +211,9 @@ bool eg2_test_main(void) {
 
   // The expected tags. The window's first and last granules were marked for the outside ones' sake
   // too: a capability based there is revoked as well.
+#ifdef EG2_REVOCATION_INJECT_FAIL
+  bool injected = false;
+#endif
   for (uint32_t i = 0; i < n_caps; ++i) {
     ++tally.planned;
     uint32_t kind = eg2_ms_read32(kExp + 4 * i);
@@ -228,6 +227,13 @@ bool eg2_test_main(void) {
     bool revoked = marked && kind != kKindSealing;
     uint32_t exp = revoked ? 0 : 1;
     if (!(gaps && revoked)) {
+#ifdef EG2_REVOCATION_INJECT_FAIL
+      if (!injected) {
+        injected = true;
+        eg2_inject_armed("tag");
+        exp ^= 1u;
+      }
+#endif
       if (!eg2_check(&tally, "tag", i, tags[i], exp)) {
         eg2_put_kv("  kind", kind);
         eg2_put_kv(" base", base);

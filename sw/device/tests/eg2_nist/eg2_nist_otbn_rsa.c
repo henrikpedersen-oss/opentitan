@@ -19,8 +19,7 @@
  * every value checked.
  *
  * Knobs: `per_group` vectors of each group (modulus, operation, expected result) drawn with the
- * seed among the boundary vectors; `random_vectors` more; `sign`; `model_gaps` 1 in eg2sim (no
- * OTBN).
+ * seed among the boundary vectors; `random_vectors` more; `sign`.
  *
  * With EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail
  * ("NIST ... mismatch" or a reversed verdict).
@@ -41,8 +40,7 @@ EG2_TEST_CONFIG();
   X(per_group, 1, 0, 64)        \
   X(boundary_vectors, 8, 0, 1024) \
   X(random_vectors, 0, 0, 64)   \
-  X(sign, 0, 0, 1)              \
-  X(model_gaps, 0, 0, 1)
+  X(sign, 0, 0, 1)
 EG2_TEST_PARAMS(NIST_OTBN_RSA_PARAMS);
 
 enum {
@@ -50,15 +48,12 @@ enum {
 };
 
 static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
-  if (EG2_PARAM(model_gaps)) {
-    return eg2_nist_otbn_skip(v, true);
-  }
   if ((v->flags & kEg2NistSign) && !EG2_PARAM(sign)) {
     return eg2_nist_skip(v, "RSA signing off (knob sign = 0; about 8 minutes per signature on "
                             "the ISS, far longer on the chip bench)");
   }
   if (!eg2_nist_otbn_take(v)) {
-    return eg2_nist_otbn_skip(v, false);
+    return eg2_nist_otbn_skip(v);
   }
   rsa_size_t size = v->param == 2048 ? kRsaSize2048 : kRsaSize3072;
   uint32_t nw = v->param == 2048 ? kRsa2048NumWords : kRsa3072NumWords;
@@ -104,8 +99,8 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 bool eg2_test_main(void) {
   // The crypto library's OTBN and hardening code take random words from rv_core_ibex's RND: the
   // entropy complex in auto mode first, as eg2_nist_aes_kw.c, not the test ROM's one boot-time EDN
-  // generate, which more vectors can exhaust (review 2026-10-26). Not in eg2sim (model_gaps).
-  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+  // generate, which more vectors can exhaust (review 2026-10-26).
+  if (!status_ok(entropy_testutils_auto_mode_init())) {
     eg2_puts("NIST otbn_rsa: entropy complex not in auto mode\r\n");
     return false;
   }

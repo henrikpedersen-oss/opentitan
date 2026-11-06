@@ -1115,8 +1115,11 @@ static status_t phase_start_resume(usbdev_suspend_ctx_t *ctx) {
         timeout_set(ctx, TimeoutPhysConfig);
       } else {
         // It should take only a few bus frames even with the older, slower DPI
-        // behavior.
-        timeout_frames_set(ctx, 8u);
+        // behavior. After a Bus Reset the host may still be driving the reset:
+        // the wake module reports it within a few us, and USB 2.0 7.1.7.5
+        // requires it to last at least 10 ms (10 frames) before enumeration.
+        timeout_frames_set(
+            ctx, ctx->test_state == kSuspendStateBusReset ? 8u + 10u : 8u);
       }
 
       if (verbose) {

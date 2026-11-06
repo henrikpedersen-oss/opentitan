@@ -126,7 +126,7 @@ class chip_sw_eg2_rram_program_tag_vseq extends chip_sw_eg2_cms16_vseq;
   `uvm_object_new
 endclass
 
-// chip_cheriot_sba_tag_clear (REQ_CMS_16; expected to fail on this RTL, rtl_tickets F23): the
+// chip_cheriot_sba_tag_clear (REQ_CDM_06: an SBA write leaves the tag unchanged; #1040): the
 // bench's SBA writes (bench op sba_fill, width drawn there).
 class chip_sw_eg2_sba_tag_clear_vseq extends chip_sw_eg2_cms16_vseq;
   `uvm_object_utils(chip_sw_eg2_sba_tag_clear_vseq)

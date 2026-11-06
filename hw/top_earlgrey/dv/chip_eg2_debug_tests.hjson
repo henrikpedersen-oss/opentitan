@@ -152,7 +152,7 @@
       run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=100_000_000"]
       run_timeout_mins: 480
     }
-    // REQ_CDM_06, REQ_CMS_16: CHERIoT mode only. Expected to fail on the tag check until ticket F23.
+    // REQ_CDM_06: CHERIoT mode only. SBA writes leave tags unchanged (#1040, documented in rv_dm).
     {
       name: chip_sw_rv_dm_sba_cheriot_mode
       uvm_test_seq: chip_eg2_rv_dm_sba_cheriot_mode_vseq

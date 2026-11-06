@@ -132,6 +132,9 @@ status_t spi_flash_testutils_write_status(dif_spi_host_t *spih, uint8_t opcode,
   };
   TRY(dif_spi_host_transaction(spih, /*csid=*/0, transaction,
                                ARRAYSIZE(transaction)));
+  // A status-register write keeps the flash busy for tW (W25Q01JV: 10 ms typical, 15 ms max),
+  // and the flash ignores every instruction but Read Status until BUSY clears.
+  TRY(spi_flash_testutils_wait_until_not_busy(spih));
   return OK_STATUS();
 }
 

@@ -65,6 +65,8 @@ class eg2_scoreboard extends uvm_scoreboard;
   uvm_tlm_analysis_fifo #(uart_item) uart_rx_fifo[NUM_UARTS];
   protected string       uart_act[NUM_UARTS][$];
   protected int unsigned uart_compared[NUM_UARTS];
+  // +eg2_model_corrupt=uart<N> applied (check_phase: requested but never applied is an error).
+  protected bit uart_corrupt_applied;
   protected int unsigned uart_mismatched[NUM_UARTS];
   // The model's items the chip had not sent when the run ended (a byte still on the line).
   localparam int unsigned UartInFlight = 2;
@@ -194,10 +196,12 @@ class eg2_scoreboard extends uvm_scoreboard;
                   (item.data inside {[8'h20:8'h7e]}) ? string'(item.data) : ".");
       end
 `ifdef EG2_SYSMODEL
-      uart_act[idx].push_back($sformatf("%02h %s", item.data,
-                                        (item.data inside {[8'h20:8'h7e]}) ? string'(item.data)
-                                                                          : "."));
-      compare_uart(idx);
+      if (eg2_sysmodel::get().enabled()) begin
+        uart_act[idx].push_back($sformatf("%02h %s", item.data,
+                                          (item.data inside {[8'h20:8'h7e]}) ? string'(item.data)
+                                                                            : "."));
+        compare_uart(idx);
+      end
 `endif
     end
   endtask
@@ -210,7 +214,7 @@ class eg2_scoreboard extends uvm_scoreboard;
 `ifdef EG2_PERIPH_SB
       if (periph_mode) continue;  // eg2_uart_sb gives the model its input
 `endif
-      eg2_sysmodel::give_input($sformatf("uart%0d.rx", idx), item.data);
+      eg2_sysmodel::get().give_input($sformatf("uart%0d.rx", idx), item.data);
     end
   endtask
 
@@ -218,15 +222,18 @@ class eg2_scoreboard extends uvm_scoreboard;
   // follows the chip's; its item can come a little after the chip's).
   protected function void compare_uart(int idx);
     string inst = $sformatf("uart%0d", idx);
-    if (!eg2_sysmodel::active() || eg2_sysmodel::stop_reason() != "") return;
-    eg2_sysmodel::step();
-    while (uart_act[idx].size() > 0 && eg2_sysmodel::pending(inst) > 0) begin
+    if (!eg2_sysmodel::get().active() || eg2_sysmodel::get().stop_reason() != "") return;
+    eg2_sysmodel::get().step();
+    while (uart_act[idx].size() > 0 && eg2_sysmodel::get().pending(inst) > 0) begin
       string act = uart_act[idx].pop_front();
-      string exp = eg2_sysmodel::pull(inst);
+      string exp = eg2_sysmodel::get().pull(inst);
       uart_compared[idx]++;
-      if (eg2_sysmodel::corrupt == inst && uart_compared[idx] == 10) begin
-        act = "00 .";  // +eg2_model_corrupt=uart<N>: the run must fail
-        `uvm_info(`gfn, $sformatf("+eg2_model_corrupt=%s: item 10 corrupted", inst), UVM_LOW)
+      // +eg2_model_corrupt=uart<N>: the first compared item is corrupted (every image that uses the
+      // UART prints at least one byte), so the run must fail (REQ_STE_03).
+      if (eg2_sysmodel::get().corrupt == inst && uart_compared[idx] == 1) begin
+        act = "00 .";
+        uart_corrupt_applied = 1'b1;
+        `uvm_info(`gfn, $sformatf("+eg2_model_corrupt=%s: item 1 corrupted", inst), UVM_LOW)
       end
       if (act != exp) begin
         uart_mismatched[idx]++;
@@ -240,9 +247,9 @@ class eg2_scoreboard extends uvm_scoreboard;
   protected function void check_uart_end(int idx);
     string inst = $sformatf("uart%0d", idx);
     int    left;
-    if (!eg2_sysmodel::active()) return;
+    if (!eg2_sysmodel::get().active()) return;
     compare_uart(idx);
-    if (eg2_sysmodel::stop_reason() != "") begin
+    if (eg2_sysmodel::get().stop_reason() != "") begin
       if (uart_act[idx].size() > 0) begin
         `uvm_info(`gfn, $sformatf("EG2_SB %s: %0d items after the model stopped, not compared",
                                   inst, uart_act[idx].size()), UVM_LOW)
@@ -253,10 +260,10 @@ class eg2_scoreboard extends uvm_scoreboard;
       `uvm_error(`gfn, $sformatf("EG2_SB %s: the chip sent %0d items the model does not (first \"%s\")",
                                  inst, uart_act[idx].size(), uart_act[idx][0]))
     end
-    left = eg2_sysmodel::pending(inst);
+    left = eg2_sysmodel::get().pending(inst);
     if (left > UartInFlight) begin
       `uvm_error(`gfn, $sformatf("EG2_SB %s: the model sent %0d items the chip did not (first \"%s\")",
-                                 inst, left, eg2_sysmodel::pull(inst)))
+                                 inst, left, eg2_sysmodel::get().pull(inst)))
     end else if (left > 0) begin
       `uvm_info(`gfn, $sformatf("EG2_SB %s: %0d model items still in flight at the end", inst,
                                 left), UVM_LOW)
@@ -268,6 +275,11 @@ class eg2_scoreboard extends uvm_scoreboard;
   // In an EG2 periph run the end checks come in the check phase, so that a deliberate corruption
   // they detect is counted before eg2_periph_env grades the injections; the UARTs are not here.
   function void check_phase(uvm_phase phase);
+    // A requested UART corruption that never happened would let a must-fail run pass silently.
+    if (eg2_sysmodel::get().corrupt.substr(0, 3) == "uart" && !uart_corrupt_applied) begin
+      `uvm_error(`gfn, $sformatf("+eg2_model_corrupt=%s requested but never applied (no item compared)",
+                                 eg2_sysmodel::get().corrupt))
+    end
     int unsigned n_rvfi = rvfi_count;
     super.check_phase(phase);
     if (!periph_mode) return;
@@ -320,11 +332,13 @@ class eg2_scoreboard extends uvm_scoreboard;
     foreach (uart_count[i]) table_s = {table_s, $sformatf("\n  uart%0d  %0d", i, uart_count[i])};
 `ifdef EG2_SYSMODEL
     foreach (uart_act[i]) check_uart_end(i);
-    foreach (uart_compared[i]) begin
-      table_s = {table_s, $sformatf("\n  uart%0d  %0d compared with the SystemC model, %0d mismatched",
-                                    i, uart_compared[i], uart_mismatched[i])};
+    if (eg2_sysmodel::get().enabled()) begin
+      foreach (uart_compared[i]) begin
+        table_s = {table_s, $sformatf("\n  uart%0d  %0d compared with the SystemC model, %0d mismatched",
+                                      i, uart_compared[i], uart_mismatched[i])};
+      end
     end
-    table_s = {table_s, "\n  model  ", eg2_sysmodel::summary()};
+    table_s = {table_s, "\n  model  ", eg2_sysmodel::get().summary()};
 `endif
     `uvm_info(`gfn, {"EG2_SB counts (items seen per monitor):", table_s}, UVM_LOW)
 

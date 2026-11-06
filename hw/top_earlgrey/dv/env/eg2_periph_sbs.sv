@@ -96,6 +96,7 @@ class eg2_uart_sb extends eg2_periph_sb_base #(uart_item);
 `ifdef EG2_SYSMODEL
   function void start_of_simulation_phase(uvm_phase phase);
     super.start_of_simulation_phase(phase);
+    if (!eg2_sysmodel::get().enabled()) return;
     // The model predicts the UARTs (eg2_sysmodel.sv): its items are the expected ones.
     exp_external = 1'b1;
     source = {"the SystemC model's ", inst, " items (eg2_sysmodel; this instance's TL-UL items are ",
@@ -108,14 +109,14 @@ class eg2_uart_sb extends eg2_periph_sb_base #(uart_item);
       forever begin
         uart_item it;
         model_rx_fifo.get(it);
-        eg2_sysmodel::give_input($sformatf("%s.rx", inst), it.data);
+        eg2_sysmodel::get().give_input($sformatf("%s.rx", inst), it.data);
       end
     join_none
   endtask
 
   // The model's items as far as it has come (its time follows the chip's).
   virtual function void pull_model();
-    if (!eg2_sysmodel::active()) begin
+    if (!eg2_sysmodel::get().active()) begin
       if (exp_external) begin
         // No model in this run after all (it is built at the first RVFI reset item, and not in
         // secure-boot runs): back to the TL-UL items, those kept so far first.
@@ -126,12 +127,12 @@ class eg2_uart_sb extends eg2_periph_sb_base #(uart_item);
       return;
     end
     ext_held_q.delete();
-    if (eg2_sysmodel::stop_reason() != "") begin
+    if (eg2_sysmodel::get().stop_reason() != "") begin
       // The model stopped following (a feature it does not model yet): from here nothing is a
       // prediction; said in the log and the verdict, never compared against the TL-UL items.
       if (!unpredictable) begin
         unpredictable = 1'b1;
-        unpredictable_why = {"the SystemC model stopped: ", eg2_sysmodel::stop_reason()};
+        unpredictable_why = {"the SystemC model stopped: ", eg2_sysmodel::get().stop_reason()};
         log.comment($sformatf("%0t: from here NOT PREDICTED: %s (%0d items not compared)", $realtime,
                               unpredictable_why, act_q.size()));
         act_q.delete();
@@ -139,10 +140,10 @@ class eg2_uart_sb extends eg2_periph_sb_base #(uart_item);
       end
       return;
     end
-    eg2_sysmodel::step();
-    while (eg2_sysmodel::pending(inst) > 0) begin
+    eg2_sysmodel::get().step();
+    while (eg2_sysmodel::get().pending(inst) > 0) begin
       entry_t   e;
-      string    line = eg2_sysmodel::pull(inst);
+      string    line = eg2_sysmodel::get().pull(inst);
       bit [7:0] b;
       void'($sscanf(line, "%h", b));
       e.it = uart_item::type_id::create("model");

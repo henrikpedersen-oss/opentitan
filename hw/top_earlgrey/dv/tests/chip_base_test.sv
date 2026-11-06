@@ -20,6 +20,13 @@ class chip_base_test extends cip_base_test #(
     string sw_images_plusarg;
     string use_otp_image_plusarg;
     bit    use_jtag_dmi;
+`ifdef EG2_SYSMODEL
+    bit    use_sysmodel = 1'b1;
+
+    // The system model (eg2_sysmodel.sv): the SystemC one unless +eg2_sysmodel=0.
+    void'($value$plusargs("eg2_sysmodel=%b", use_sysmodel));
+    if (use_sysmodel) eg2_sysmodel::type_id::set_type_override(eg2_sysmodel_systemc::get_type());
+`endif
 
     super.build_phase(phase);
 

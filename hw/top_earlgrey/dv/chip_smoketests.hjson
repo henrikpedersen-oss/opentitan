@@ -189,21 +189,20 @@
       run_opts: ["+sb_corrupt=uart0.count"]
     }
     {
-      // The framework tests with the EG2 SystemC model in the bench (build mode en_eg2_model,
-      // eg2_sysmodel.sv): loads predicted by the model, the UARTs' items compared with its items.
-      // libeg2sysmodel.so first: eg2_top_verification's `make eg2sysmodel`.
+      // The framework tests with the EG2 SystemC model (eg2_sysmodel.sv, on in every co-simulation
+      // build): loads predicted by the model, the UARTs' items compared with its items.
       name: chip_sw_eg2_status_smoketest_model
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
-      build_mode: "en_eg2_model"
+      build_mode: "en_eg2_cosim"
     }
     {
       name: chip_sw_eg2_dif_smoketest_model
       uvm_test_seq: chip_sw_eg2_base_vseq
       sw_images: ["//sw/device/tests:eg2_dif_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
-      build_mode: "en_eg2_model"
+      build_mode: "en_eg2_cosim"
     }
     {
       // Must FAIL with `EG2_SB insn mismatch ... model: load`: the 100th predicted load's chip
@@ -213,7 +212,7 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
-      build_mode: "en_eg2_model"
+      build_mode: "en_eg2_cosim"
       run_opts: ["+eg2_model_corrupt=load"]
     }
     {
@@ -223,7 +222,7 @@
       uvm_test_seq: chip_sw_eg2_status_smoketest_vseq
       sw_images: ["//sw/device/tests:eg2_status_smoketest:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
-      build_mode: "en_eg2_model"
+      build_mode: "en_eg2_cosim"
       run_opts: ["+eg2_model_corrupt=uart0"]
     }
     {

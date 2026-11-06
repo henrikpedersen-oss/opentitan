@@ -19,12 +19,6 @@
  * `aes_kwp` refuses although SP 800-38F wraps them with a single block-cipher call (a finding
  * for the crypto library owners).
  *
- * `model_gaps` 1 (eg2sim only) skips every vector: the crypto library hardens its AES driver
- * with `ibex_rnd32_read`, which waits for rv_core_ibex's RND_STATUS.RND_DATA_VALID, and the
- * SystemC model never sets it (the EDN-fed random word of rv_core_ibex is not modelled). The
- * model run then checks nothing of this test: the chip runs and their `_inject_fail` builds are
- * its evidence.
- *
  * With EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail
  * ("NIST ... mismatch").
  */
@@ -49,8 +43,7 @@ EG2_TEST_CONFIG();
 
 #define NIST_AES_KW_PARAMS(X) \
   X(boundary_vectors, 8, 0, 1024) \
-  X(random_vectors, 8, 0, 512) \
-  X(model_gaps, 0, 0, 1)
+  X(random_vectors, 8, 0, 512)
 EG2_TEST_PARAMS(NIST_AES_KW_PARAMS);
 
 enum {
@@ -62,9 +55,6 @@ enum {
 static const uint32_t kZeroShare[8] = {0};
 
 static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
-  if (EG2_PARAM(model_gaps)) {
-    return eg2_nist_skip(v, "model_gap: rv_core_ibex RND_STATUS never valid in the SystemC model");
-  }
   uint32_t klen = eg2_nist_len(v, kEg2NistKey);
   uint32_t nin = eg2_nist_len(v, kEg2NistIn), nout = eg2_nist_len(v, kEg2NistOut);
   bool unwrap = (v->flags & kEg2NistDecrypt) != 0;
@@ -230,16 +220,13 @@ bool eg2_test_main(void) {
   // (drivers/aes.c: "the caller must ensure the entropy complex is up"; upstream's functests call
   // otcrypto_init). The test ROM leaves EDN0 in boot-time mode, one generate of 4095 blocks
   // (edn.hjson BOOT_GEN_CMD) and then no more words, so wait_rnd_valid can spin for ever: the
-  // 2026-10-26 runs (regr-vlt, Xcelium 8 h) printed nothing after the parameters. The SystemC
-  // model skips every vector (model_gaps) and models no entropy complex.
-  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+  // 2026-10-26 runs (regr-vlt, Xcelium 8 h) printed nothing after the parameters.
+  if (!status_ok(entropy_testutils_auto_mode_init())) {
     eg2_puts("NIST aes_kw: entropy complex not in auto mode\r\n");
     return false;
   }
-  if (!EG2_PARAM(model_gaps)) {
-    report_waits();
-    report_begin_steps();
-    report_driver();
-  }
+  report_waits();
+  report_begin_steps();
+  report_driver();
   return eg2_nist_run("aes_kw", run_vector, EG2_PARAM(boundary_vectors), EG2_PARAM(random_vectors), EG2_NIST_INJECT);
 }

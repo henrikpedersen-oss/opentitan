@@ -3,24 +3,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * chip_cheriot_sba_tag_clear (EG2 spec "Memory subsystem in CHERIoT mode"; REQ_CMS_16).
+ * chip_cheriot_sba_tag_clear (EG2 spec "Debug module in CHERIoT mode"; REQ_CDM_06).
  *
- * No write by a host other than the core's CSC leaves a tag set: an SBA write over a tagged
- * granule leaves tag 0, or is unreachable in CHERIoT mode (RFC CHERIoT Memory Subsystem
- * "Lockstepped CHERIoT Subsystem": "any write by a non-CHERIoT host ... must clear").
- *
- * EXPECTED TO FAIL on this RTL: rv_dm's system bus access reaches main and sec SRAM straight from
- * xbar_main, around cheriot_mem_sys's tag filter, so an SBA write leaves the overwritten
- * granule's tag set (rtl_tickets.md F23; decisions.md open item 11: block SBA in CHERIoT mode,
- * route it through the tag filter, or relax REQ_CMS_16 and REQ_CDM_06). The check is the
- * requirement's, not the RTL's.
+ * In a debug-enabled state an SBA write over a tagged granule leaves its tag unchanged: the debug
+ * module's system bus access bypasses cheriot_mem_sys's tag filter (rv_dm theory of operation,
+ * "CHERIoT Mode": "SBA bypasses the CHERIoT tag filter and does not clear tags on writes";
+ * earlgrey-internal-tracker #1040, closed as documented). REQ_CMS_16 leaves SBA out for this
+ * reason; REQ_CDM_05 keeps SBA away outside the debug-enabled states. The test name is the old one.
  *
  * `n_caps` capabilities in sec SRAM's arena B (`range_class`: one granule, a partial granule (one
  * word of a granule; the bench may write narrower), many granules, the whole arena), as many in
  * arena A outside the range. A bench step (`sba_fill <addr> <bytes>`) has the chip bench write
  * the range over JTAG and SBA, at a width it draws (8, 16 or 32 bits), with data of its own; it
- * answers with sberror (0 expected). Then every capability is reloaded: in a granule the bench
- * wrote any byte of, tag 0; outside, tag 1 and the words as stored.
+ * answers with sberror (0 expected). Then every capability is reloaded: tag 1 everywhere, in a
+ * granule the bench wrote any byte of as well; outside it, also the words as stored.
  *
  * Without a bench (the SystemC model) the step is skipped, and so are the written granules' checks
  * (`model_gaps`).
@@ -91,7 +87,7 @@ bool eg2_test_main(void) {
     uint32_t a = kEg2ArenaB + 8 * i;
     if (a + 8 > lo && a < hi) {
       if (bench) {
-        eg2_check(&tally, "written tag", i, eg2_ms_tag(a), 0);
+        eg2_check(&tally, "written tag (unchanged, REQ_CDM_06)", i, eg2_ms_tag(a), 1);
       }
     } else {
       eg2_check(&tally, "outside tag (arena B)", i, eg2_ms_tag(a), 1);

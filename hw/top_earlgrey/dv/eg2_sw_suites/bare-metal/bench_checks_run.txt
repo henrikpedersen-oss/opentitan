@@ -2,3 +2,9 @@
 # from the "pass (bench checks not run)" count. One test image per line.
 sysrst_ctrl_outputs_test
 sysrst_ctrl_outputs_test_cheriot
+eg2_rv_dm_control_status
+eg2_rv_dm_control_status_cheriot
+eg2_rv_dm_control_status_cheriot_inject_fail
+eg2_rv_dm_control_status_inject_fail
+sleep_pin_mio_dio_val_test
+sleep_pin_mio_dio_val_test_cheriot

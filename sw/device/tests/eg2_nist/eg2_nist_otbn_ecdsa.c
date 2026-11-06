@@ -19,7 +19,7 @@
  *
  * Knobs: `per_group` vectors of each group (curve, operation, expected result) drawn with the
  * seed among the boundary vectors; `random_vectors` more from the pool; `sign` 0 leaves the
- * signing vectors out (reported skipped); `model_gaps` 1 in eg2sim, which has no OTBN.
+ * signing vectors out (reported skipped).
  *
  * With EG2_NIST_INJECT_FAIL the first expected value is corrupted and the run must fail
  * ("NIST ... mismatch").
@@ -40,8 +40,7 @@ EG2_TEST_CONFIG();
   X(per_group, 1, 0, 64)          \
   X(boundary_vectors, 8, 0, 1024) \
   X(random_vectors, 0, 0, 64)     \
-  X(sign, 1, 0, 1)                \
-  X(model_gaps, 0, 0, 1)
+  X(sign, 1, 0, 1)
 EG2_TEST_PARAMS(NIST_OTBN_ECDSA_PARAMS);
 
 /** The verdict as a byte, so eg2_nist_expect compares (and can corrupt) it. */
@@ -143,14 +142,11 @@ static eg2_nist_result_t run_p384(const eg2_nist_vec_t *v, bool corrupt) {
 }
 
 static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
-  if (EG2_PARAM(model_gaps)) {
-    return eg2_nist_otbn_skip(v, true);
-  }
   if ((v->flags & kEg2NistSign) && !EG2_PARAM(sign)) {
     return eg2_nist_skip(v, "signing off (knob sign = 0)");
   }
   if (!eg2_nist_otbn_take(v)) {
-    return eg2_nist_otbn_skip(v, false);
+    return eg2_nist_otbn_skip(v);
   }
   return v->param == 256 ? run_p256(v, corrupt) : run_p384(v, corrupt);
 }
@@ -158,8 +154,8 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
 bool eg2_test_main(void) {
   // The crypto library's OTBN and hardening code take random words from rv_core_ibex's RND: the
   // entropy complex in auto mode first, as eg2_nist_aes_kw.c, not the test ROM's one boot-time EDN
-  // generate, which more vectors can exhaust (review 2026-10-26). Not in eg2sim (model_gaps).
-  if (!EG2_PARAM(model_gaps) && !status_ok(entropy_testutils_auto_mode_init())) {
+  // generate, which more vectors can exhaust (review 2026-10-26).
+  if (!status_ok(entropy_testutils_auto_mode_init())) {
     eg2_puts("NIST otbn_ecdsa: entropy complex not in auto mode\r\n");
     return false;
   }

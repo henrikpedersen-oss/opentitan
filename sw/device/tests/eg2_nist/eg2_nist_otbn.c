@@ -69,8 +69,8 @@ bool eg2_nist_otbn_take(const eg2_nist_vec_t *v) {
   return take;
 }
 
-eg2_nist_result_t eg2_nist_otbn_skip(const eg2_nist_vec_t *v, bool model_gap) {
-  return eg2_nist_skip(v, model_gap ? "model_gap: no OTBN in the SystemC model" : "budget");
+eg2_nist_result_t eg2_nist_otbn_skip(const eg2_nist_vec_t *v) {
+  return eg2_nist_skip(v, "budget");
 }
 
 void eg2_nist_otbn_words(const eg2_nist_vec_t *v, int field, uint32_t *words, uint32_t nwords) {

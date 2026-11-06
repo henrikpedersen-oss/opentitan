@@ -422,6 +422,10 @@ bool test_main(void) {
             rst_info == kDifRstmgrResetInfoEscalation,
         "Wrong reset reason %02X", rst_info);
 
+  // The retention-SRAM counters need ret_sram_testutils_init first (it sets the
+  // area pointer every counter function checks); init_test_components calls it
+  // again, which is harmless.
+  ret_sram_testutils_init();
   if (rst_info == kDifRstmgrResetInfoPor) {
     CHECK_STATUS_OK(ret_sram_testutils_counter_clear(kCounterTestSteps));
     CHECK_STATUS_OK(ret_sram_testutils_counter_clear(kCounterMaxWakeups));
