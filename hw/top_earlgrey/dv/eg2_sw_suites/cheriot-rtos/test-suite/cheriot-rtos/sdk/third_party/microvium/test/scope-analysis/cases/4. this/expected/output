@@ -1,0 +1,118 @@
+[this module slot] 'thisModule'; [global slot] 'thisModule'
+
+module with entry 'moduleEntry' {
+  [no closure scope]; [0 var declarations]
+
+  bindings { function 'foo' # binding_1 @ local[0] }
+
+  references { '#this' @ root-level `this` }
+
+  prologue { func 'foo' -> local[0] }
+
+  block {
+    sameInstanceCountAsParent: true; [no closure scope]
+
+    bindings {  }
+
+    prologue {  }
+
+    epilogue {  }
+
+    references { '#this' @ root-level `this` }
+  }
+
+  function foo as 'foo' {
+    [closure scope with 2 slots: embedded-closure:anonymous, this]
+    [0 var declarations]
+
+    bindings { this '#this' # binding_2 @ scoped[!1] }
+
+    No references
+
+    prologue { ScopeNew(2); arg[0] as this -> scoped[+1] }
+
+    block {
+      sameInstanceCountAsParent: true; [no closure scope]
+
+      bindings {  }
+
+      prologue {  }
+
+      epilogue {  }
+
+      references {
+        '#this' @ binding_2 using relative slot index 1
+      }
+
+      embedded closure function '<anonymous>' as 'anonymous' {
+        [no closure scope]; [0 var declarations]
+
+        bindings {  }
+
+        No references
+
+        prologue {  }
+
+        block {
+          sameInstanceCountAsParent: true
+          [no closure scope]
+
+          bindings {  }
+
+          prologue {  }
+
+          epilogue {  }
+
+          references {
+            '#this' @ binding_2 using relative slot index 1
+          }
+        }
+      }
+    }
+  }
+
+  function '<anonymous>' as 'anonymous1' {
+    [no closure scope]; [0 var declarations]
+
+    bindings {  }
+
+    No references
+
+    prologue {  }
+
+    block {
+      sameInstanceCountAsParent: true; [no closure scope]
+
+      bindings { function 'bar' # binding_3 @ local[0] }
+
+      prologue { func 'bar' -> local[0] }
+
+      epilogue { Pop(1) }
+
+      references { '#this' @ root-level `this` }
+
+      function bar as 'bar' {
+        [no closure scope]; [0 var declarations]
+
+        bindings { this '#this' # binding_4 @ arg[0] }
+
+        No references
+
+        prologue {  }
+
+        block {
+          sameInstanceCountAsParent: true
+          [no closure scope]
+
+          bindings {  }
+
+          prologue {  }
+
+          epilogue {  }
+
+          references { '#this' @ binding_4 }
+        }
+      }
+    }
+  }
+}

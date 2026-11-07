@@ -1,0 +1,18 @@
+# Copyright Microsoft and CHERIoT Contributors.
+# SPDX-License-Identifier: MIT
+
+@mmio@
+
+SECTIONS
+{
+	# We link either rwdata or rocode first depending on board config
+	INCLUDE @firmware_low_ldscript@
+	INCLUDE @firmware_high_ldscript@
+}
+
+# No symbols should be exported
+VERSION {
+	VERSION_1 {
+		local: *;
+	};
+};

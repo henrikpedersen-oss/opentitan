@@ -1,0 +1,13 @@
+library("string")
+	set_default(false)
+	add_files(
+		"strcmp.c",
+		"strlen.c",
+		"strnlen.c",
+		"strncpy.c",
+		"strstr.cc",
+		"strchr.c",
+		"strlcpy.c",
+		"memchr.c",
+		"memrchr.c"
+	)

@@ -1,0 +1,6 @@
+# xmake state and output
+.xmake/
+build/
+# make -C boot/sim_boot_stub
+/boot/sim_boot_stub/sim_boot_stub
+/boot/sim_boot_stub/sim_sram_boot_stub

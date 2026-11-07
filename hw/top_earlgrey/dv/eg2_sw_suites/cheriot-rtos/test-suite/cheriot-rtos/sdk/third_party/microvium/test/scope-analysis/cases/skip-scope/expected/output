@@ -1,0 +1,88 @@
+[this module slot] 'thisModule'; [global slot] 'thisModule'
+
+module with entry 'moduleEntry' {
+  [no closure scope]; [0 var declarations]
+
+  bindings { function 'foo' # binding_1 @ local[0] }
+
+  No references
+
+  prologue { func 'foo' -> local[0] }
+
+  function foo as 'foo' {
+    [closure scope with 2 slots: embedded-closure:bar, x]
+    [0 var declarations]
+
+    bindings { this '#this' # binding_2 @ arg[0] }
+
+    No references
+
+    prologue { ScopeNew(2) }
+
+    block {
+      sameInstanceCountAsParent: true; [no closure scope]
+
+      bindings {
+        let 'x' # binding_3 @ scoped[!1];
+        function 'bar' # binding_4 @ local[0]
+      }
+
+      prologue { func 'bar' -> local[0] [embedded closure] }
+
+      epilogue { Pop(1) }
+
+      No references
+
+      embedded closure function bar as 'bar' {
+        [closure scope with 2 slots: embedded-closure:baz, parent-reference]
+        [0 var declarations]
+
+        bindings { this '#this' # binding_5 @ arg[0] }
+
+        No references
+
+        prologue { ScopePush(2) }
+
+        block {
+          sameInstanceCountAsParent: true
+          [no closure scope]
+
+          bindings { function 'baz' # binding_6 @ local[0] }
+
+          prologue {
+            func 'baz' -> local[0] [embedded closure]
+          }
+
+          epilogue { Pop(1) }
+
+          No references
+
+          embedded closure function baz as 'baz' {
+            [no closure scope]; [0 var declarations]
+
+            bindings { this '#this' # binding_7 @ arg[0] }
+
+            No references
+
+            prologue {  }
+
+            block {
+              sameInstanceCountAsParent: true
+              [no closure scope]
+
+              bindings {  }
+
+              prologue {  }
+
+              epilogue {  }
+
+              references {
+                x @ binding_3 using relative slot index 3
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

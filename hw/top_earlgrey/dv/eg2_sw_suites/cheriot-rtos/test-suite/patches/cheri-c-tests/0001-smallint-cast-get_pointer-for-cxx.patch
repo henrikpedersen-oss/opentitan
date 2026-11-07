@@ -1,0 +1,27 @@
+clang_purecap_smallint.c: cast get_pointer() for the C++ build
+
+Local change in the superproject's cheri-c-tests checkout (uncommitted there). The RTOS test SoC
+firmware (sw/tests/cheri_c_tests/test_clang_purecap_smallint.cc) includes this file from C++,
+which has no implicit void* -> char* conversion. Applied by the superproject's cheriot-rtos-patch
+target (by hand before 2026-10-14).
+
+diff --git a/clang-purecap/clang_purecap_smallint.c b/clang-purecap/clang_purecap_smallint.c
+index 8e72111..3502327 100644
+--- a/clang-purecap/clang_purecap_smallint.c
++++ b/clang-purecap/clang_purecap_smallint.c
+@@ -62,7 +62,14 @@ BEGIN_TEST(clang_purecap_smallint)
+ 	assert_eq(__builtin_cheri_address_get(p.ptr) & 7, 0); // must be aligned
+ 	p = set_int(p, 4);
+ 	assert_eq(get_int(p), 4);
+-	char *ptr = get_pointer(p);
++	// LOCAL PATCH (lowRISC) -- reapply after any cheri-c-tests submodule update.
++	// The RTOS test SoC firmware compiles this file as C++ (firmware/cheri_c_tests/
++	// test_clang_purecap_smallint.cc includes it), and C++ has no implicit
++	// void* -> char* conversion, so the bare call is an error there. The cast
++	// cannot live in the wrapper: get_pointer is defined in this file, so a
++	// function-like macro would rewrite the definition as well as the call.
++	// Semantically a no-op for the C build.
++	char *ptr = (char *)get_pointer(p);
+ 	assert_eq_cap(ptr, str);
+ 	assert_eq(ptr[0], '1');
+ END_TEST

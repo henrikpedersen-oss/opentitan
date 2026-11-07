@@ -1,0 +1,31 @@
+{
+  "base": "sonata-1.1",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/devices/perf",
+      "value": {
+        "start": 0x80500000,
+        "length": 0x1000
+      }
+    },
+    {
+      "op": "add",
+      "path": "/interrupts/0",
+      "value": {
+        "name": "PerfDmaInterrupt",
+        "number": 30,
+        "priority": 3
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/driver_includes",
+      "value": [
+        "${sdk}/include/platform/sunburst",
+        "${sdk}/include/platform/ibex",
+        "${sdk}/include/platform/generic-riscv"
+      ]
+    }
+  ]
+}

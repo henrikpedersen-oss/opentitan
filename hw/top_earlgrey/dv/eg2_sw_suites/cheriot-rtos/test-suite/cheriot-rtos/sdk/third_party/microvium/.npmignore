@@ -1,0 +1,17 @@
+.vscode/**/*
+doc/**/*
+lib/**/*
+native-vm-vs-project/**/*
+node_modules/**/*
+scripts/**/*
+test/**/*
+dist/**/*.map
+.gitignore
+.mocharc.json
+cli.ts
+lib.ts
+*.stackdump
+trace.*
+thoughts/**/*
+.thoughts/**/*
+temp-proj

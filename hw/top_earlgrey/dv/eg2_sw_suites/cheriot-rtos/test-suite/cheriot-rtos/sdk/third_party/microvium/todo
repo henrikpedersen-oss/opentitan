@@ -1,0 +1,44 @@
+# To do
+
+  - Finish refactoring of version numbers to major and minor.
+  - String comparison with `<` and `>`. https://github.com/coder-mike/microvium/issues/67
+  - Support for string prototype methods. https://github.com/coder-mike/microvium/issues/65
+  - Duplicate `var` declaration in a function aren't coalesced. https://github.com/coder-mike/microvium/issues/66
+
+  - Modules don't seem to work with `.mjs`
+  - I'm not sure why I can't do `import fs from 'fs'`
+  - JS access to Microvium C code and port file
+  - `vmImport` should have an argument to provide a separate compile-time implementation.
+  - `Microvium.onRestore` event (or `Promise`, like `await Microvium.restored`)
+  - `process.env` and `process.argv`
+  - Fix numeric object properties like `obj['123']`
+  - Promises
+  - Async-await
+  - `for-of` for arrays (can throw if non-array - just transform to normal `for`)
+  - Make all port definitions optional with `ifndef...`
+  - FFI library and glue generator, where microvium.c and the port file are part of the generated glue.
+  - Runtime measurement of RAM usage
+  - JSON parse/stringify library
+
+  - All the TODOs in the code (technical debt)
+  - Improve test coverage of C VM
+  - Some amount of the builtin JS library (e.g. `Array.map`, etc)
+  - Dynamic stack size (expand as needed), so I don't need to keep quoting the stack size as part of the size.
+  - Job loop?
+  - Add a hash ID to the bytecode file and make a way to create a crash dump to diagnose errors
+
+  - Try out computed jump for the main loop and see if it improves performance and/or code size. See [computed-jump-loop.md](doc/ideas/computed-jump-loop.md).
+
+  - Optional chaining (`x?.y`, `x?[y]`, `new x?.()`) -- will only be a compiler front-end change.
+  - Nullish coalescing `??` (probably by transpiler plugin https://babeljs.io/docs/en/babel-plugin-proposal-nullish-coalescing-operator)
+  - Class inheritance
+  - Start integrating test262
+  - Iterators
+  - [Handled-promise](https://github.com/tc39/proposal-eventual-send)
+  - Top-level await (compile-time await)
+  - Variadic calls
+  - Symbol type
+  - Virtual types and BigInt
+  - RegExp
+  - Proxy
+  - The rest of the builtins, e.g. Regexp, Date, Map, Set, etc., as optional libraries.

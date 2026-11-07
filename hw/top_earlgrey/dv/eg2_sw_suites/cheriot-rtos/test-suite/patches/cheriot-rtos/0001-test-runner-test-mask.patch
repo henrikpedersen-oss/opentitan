@@ -1,0 +1,59 @@
+tests/test-runner.cc: CHERIOT_TEST_MASK / CHERIOT_TEST_ONLY test selection
+
+Local change (ibex_cheriot_verification), carried from the sonata-software/cheriot-rtos checkout
+it was first made in. Build with -DCHERIOT_TEST_MASK=<m> to run only the tests of the "All tests"
+list whose bit is set in m (bit 0 = test 1), or -DCHERIOT_TEST_ONLY=<n> for test n alone. The
+others print "<name> skipped (test <n>)". Without either define the runner is unchanged.
+Applied to the cheriot-rtos submodule's working tree by the root Makefile (cheriot-rtos-patch),
+idempotently; the submodule is ignore = dirty in .gitmodules.
+
+diff --git a/tests/test-runner.cc b/tests/test-runner.cc
+index ccd4bcc..2743eb6 100644
+--- a/tests/test-runner.cc
++++ b/tests/test-runner.cc
+@@ -31,11 +31,35 @@ namespace
+ #endif
+ 		return cycles;
+ 	}
++#if defined(CHERIOT_TEST_ONLY) && !defined(CHERIOT_TEST_MASK)
++#	define CHERIOT_TEST_MASK (1u << ((CHERIOT_TEST_ONLY)-1))
++#endif
++#ifdef CHERIOT_TEST_MASK
++	/**
++	 * Local change (ibex_cheriot_verification): build with -DCHERIOT_TEST_MASK=<m> to run only
++	 * the tests of the "All tests" list below whose bit is set in m (bit 0 = test 1), or with
++	 * -DCHERIOT_TEST_ONLY=<n> for test n alone (e.g. 11, "Stacks exhaustion in the switcher").
++	 * Used to isolate a failure: a mask of a prefix plus the failing test bisects which earlier
++	 * test it depends on. Depth 0 is the outer "All tests" call; each test is a depth-1 call.
++	 * Without either define the runner is unchanged.
++	 */
++	int testDepth = 0;
++	int testIndex = 0;
++#endif
++
+ 	/**
+ 	 * Call `fn` and log a message informing the user how long it took.
+ 	 */
+ 	void run_timed(const char *msg, auto &&fn)
+ 	{
++#ifdef CHERIOT_TEST_MASK
++		if (testDepth == 1 && !((CHERIOT_TEST_MASK >> (++testIndex - 1)) & 1u))
++		{
++			debug_log("{} skipped (test {})", msg, testIndex);
++			return;
++		}
++		testDepth++;
++#endif
+ 		bool failed      = false;
+ 		int  startCycles = rdcycle();
+ 		if constexpr (std::is_same_v<std::invoke_result_t<decltype(fn)>, void>)
+@@ -57,6 +81,9 @@ namespace
+ 		{
+ 			debug_log("{} finished in {} cycles", msg, cycles - startCycles);
+ 		}
++#ifdef CHERIOT_TEST_MASK
++		testDepth--;
++#endif
+ 	}
+ } // namespace
+ 
