@@ -43,6 +43,9 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
   protected int unsigned n_cmderr_clears;
   protected int unsigned n_sberror_whole;  // sbcs writes whose sberror field was made all-or-nothing
   protected int unsigned n_cmd_changed;    // commands whose aarsize (transfer 0) or postincrement was changed
+  protected int unsigned n_sbcs_no_autoinc;  // sbcs writes whose sbautoincrement was cleared
+  protected bit          dm_inactive;        // the last dmcontrol write cleared dmactive
+  protected int unsigned n_reactivated;      // sbdata0 writes preceded by setting dmactive again
 
   `uvm_object_new
 
@@ -85,10 +88,29 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
       `uvm_info(`gfn, $sformatf({"known RTL findings masked: cmderr cleared before %0d commands or ",
                                  "buffer accesses (a command runs while cmderr is not 0); %0d sbcs ",
                                  "writes clear all of sberror or none (sberror is cleared as a whole); ",
-                                 "%0d commands with aarsize 2 for transfer 0 or no aarpostincrement"},
-                                n_cmderr_clears, n_sberror_whole, n_cmd_changed), UVM_NONE)
+                                 "%0d commands with aarsize 2 for transfer 0 or no aarpostincrement; ",
+                                 "%0d sbcs writes without sbautoincrement; %0d sbdata0 writes after ",
+                                 "setting dmactive again"},
+                                n_cmderr_clears, n_sberror_whole, n_cmd_changed, n_sbcs_no_autoinc,
+                                n_reactivated),
+                UVM_NONE)
     end
-    disable fork;
+    // No "disable fork": it also killed the SBA device sequence the base sequence forks in
+    // pre_start (same process), and dut_shutdown then waited for it until the phase timeout
+    // (2026-11-07). emulate_core has stopped by itself above.
+  endtask
+
+  // Where the end of the test spends its time (2026-11-07: seed 8 reached the phase timeout after its
+  // body ended).
+  virtual task post_start();
+    `uvm_info(`gfn, "post_start: begin", UVM_LOW)
+    super.post_start();
+    `uvm_info(`gfn, "post_start: end", UVM_LOW)
+  endtask
+  virtual task dut_shutdown();
+    `uvm_info(`gfn, "dut_shutdown: stopping the SBA device sequence", UVM_LOW)
+    super.dut_shutdown();
+    `uvm_info(`gfn, "dut_shutdown: done", UVM_LOW)
   endtask
 
   // ---- The debugger ----
@@ -142,6 +164,14 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
     if (mask_known && v[14:12] != 0 && v[14:12] != 3'b111) begin
       v[14:12] = 3'b111;
       n_sberror_whole++;
+    end
+    // rv_dm increments sbaddress after an access that ended in an error (finding "sbaddress is
+    // incremented after a failed access"; Debug spec 3.12.23: only after a successful one); once the
+    // addresses differ, every later access differs. With the known findings masked the debugger does
+    // not use sbautoincrement (rv_dm_autoincr_sba_tl_access covers it).
+    if (mask_known && v[16]) begin
+      v[16] = 1'b0;
+      n_sbcs_no_autoinc++;
     end
     return v;
   endfunction
@@ -197,6 +227,14 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
     if (mask_known && (r.get_name() == "command" || (autoexec_on && is_buffer(r.get_name())))) begin
       clear_cmderr();
     end
+    // rv_dm starts a bus write for an sbdata0 write while dmactive is 0 (finding "SBA write while
+    // dmactive is 0"; Debug spec 3.12.2: the module ignores it). With the known findings masked the
+    // debugger sets dmactive again first.
+    if (mask_known && dm_inactive && r.get_name() == "sbdata0") begin
+      csr_wr(.ptr(jtag_dmi_ral.dmcontrol), .value(32'h1), .predict(1'b0), .blocking(1'b1));
+      dm_inactive = 1'b0;
+      n_reactivated++;
+    end
     case (r.get_name())
       "dmcontrol":  v = dmcontrol_value();
       "command":    v = command_value();
@@ -206,6 +244,7 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
       default:      v = $urandom();
     endcase
     if (r.get_name() == "abstractauto") autoexec_on = (v & 32'hffff_0fff) != 0;
+    if (r.get_name() == "dmcontrol") dm_inactive = !v[0];
     csr_wr(.ptr(r), .value(v), .predict(1'b0), .blocking(1'b1));
   endtask
 

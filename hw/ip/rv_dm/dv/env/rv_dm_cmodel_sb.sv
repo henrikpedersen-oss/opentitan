@@ -76,6 +76,8 @@ class rv_dm_cmodel_sb extends uvm_component;
   protected bit          resume_pending;  // resumereq written, the core has not written Resuming yet
   protected bit          resumeack_known; // resumereq written with haltreq since the last real one
   protected int unsigned n_known_resumeack;
+  protected int unsigned n_known_haltsum_unavail, n_known_sbcs_inactive, n_known_sbdata1;
+  protected bit          dm_inactive;  // the last dmcontrol write cleared dmactive
   protected bit          last_sba_write;  // the last access the model started was a write
   // last_sba_write at the pending read's request: a read of sbdata0 with sbreadondata starts the next
   // bus read at the request, before its response is compared (2026-11-07, random_cheriot seed 8).
@@ -230,6 +232,7 @@ class rv_dm_cmodel_sb extends uvm_component;
         // rv_dm clears resumeack for resumereq written with haltreq (PULP dm_csrs.sv, the rising
         // edge of the stored resumereq); the Debug spec ignores that resumereq (3.12.2). From then
         // until the next resume request that counts, resumeack is the finding's.
+        dm_inactive = !it.wdata[0];
         if (it.wdata[0] && it.wdata[30] && it.wdata[31]) resumeack_known = 1'b1;
         else if (!it.wdata[0] || (it.wdata[30] && !it.wdata[31])) resumeack_known = 1'b0;
       end
@@ -298,6 +301,26 @@ class rv_dm_cmodel_sb extends uvm_component;
         if (it.addr == 'h11 && resumeack_known && (it.rdata[17:16] != d[17:16])) begin
           n_known_resumeack++;
           m[17:16] = '0;
+        end
+        // rv_dm's haltsum0-3 count a halted hart that is unavailable as halted (PULP dm_csrs.sv
+        // uses the raw halted bits); the Debug spec does not count it (haltsum0-3).
+        // While dmactive is 0, rv_dm reads sbcs's constant fields (sbversion, sbasize, sbaccess8-128)
+        // as 0 (PULP dm_csrs.sv sets them only out of reset); the Debug spec has the module's
+        // reset values then (3.12.2), which for those read-only fields are the constants.
+        if (it.addr == 'h38 && dm_inactive && ((it.rdata[31:0] ^ d) & 32'he000_0fff) != 0) begin
+          n_known_sbcs_inactive++;
+          m &= ~32'he000_0fff;
+        end
+        // rv_dm keeps a written sbdata1 although its bus is 32 bits wide (PULP stores sbdata[63:32]);
+        // the Debug spec has sbdata1 only with 64- or 128-bit accesses (3.12.24).
+        if (it.addr == 'h3d && it.rdata[31:0] != d) begin
+          n_known_sbdata1++;
+          m = '0;
+        end
+        if (it.addr inside {'h40, 'h13, 'h34, 'h35} && cfg.rv_dm_vif.unavailable[0] === 1'b1 &&
+            it.rdata[0] && !d[0]) begin
+          n_known_haltsum_unavail++;
+          m[0] = 1'b0;
         end
       end
       compare($sformatf("DMI read 0x%02h", it.addr), it.rdata[31:0] & m, d & m);
@@ -499,11 +522,13 @@ class rv_dm_cmodel_sb extends uvm_component;
                                "debug memory errors %0d, debug memory reads during a DMI crossing %0d; ",
                                "known RTL findings masked: haltreq/resumereq read-back %0d, ",
                                "sbdata0 after a write %0d, sbcs reserved bits %0d, busy while a resume is pending %0d, ",
-                               "resumeack cleared by an ignored resumereq %0d"},
+                               "resumeack cleared by an ignored resumereq %0d, ",
+                               "haltsum of an unavailable hart %0d, sbcs while dmactive is 0 %0d, sbdata1 stored %0d"},
                               n_dmi_cmp, n_mem_cmp, n_sba_cmp, n_out_cmp, n_mismatch,
                               n_not_predicted, n_gated, n_dtm_not_ok, n_untrusted, n_mem_err, n_mem_in_cdc,
                               n_known_haltreq,
-                              n_known_sbdata, n_known_sbcs, n_known_busy_resume, n_known_resumeack),
+                              n_known_sbdata, n_known_sbcs, n_known_busy_resume, n_known_resumeack,
+                              n_known_haltsum_unavail, n_known_sbcs_inactive, n_known_sbdata1),
               UVM_NONE)
     if (h != null) eg2_dm_cmodel_pkg::eg2_dm_release(h);
     h = null;

@@ -148,6 +148,8 @@ class Eg2DmCore {
       *v = (uint32_t(havereset_) * 3u << 18) | (uint32_t(resumeack_) * 3u << 16) |
            (uint32_t(unavail_) * 3u << 12) | (uint32_t(run) * 3u << 10) |
            (uint32_t(h) * 3u << 8) | (1u << 7) | 2u;
+      if (rmask && havereset_unknown_) *rmask &= ~(3u << 18);
+      if (rmask && resumeack_unknown_) *rmask &= ~(3u << 16);
     } else if (addr == kHartinfo) {
       *v = (2u << 20) | (1u << 16) | (kDataCount << 12) | kMemData;
     } else if (addr == kAbstractcs) {
@@ -258,6 +260,10 @@ class Eg2DmCore {
     sb_pending_ = false;
     if (error) {
       sberror_ = 2;
+      // A read places "the result" in sbdata (Debug spec 3.12.23); what that is for a failed read
+      // no document says (rv_dm keeps the error response's data): not predicted until sbdata0 is
+      // written or a read succeeds.
+      if (!sb_req_.write) sbdata_known_ = 0;
       return;
     }
     if (!sb_req_.write) {
@@ -288,6 +294,7 @@ class Eg2DmCore {
     } else if (off == kMemResuming) {
       mem_halted_ = false;
       resumeack_ = true;
+      resumeack_unknown_ = false;
       flags_ &= ~2u;
     } else if (off == kMemException) {
       set_cmderr(3);
@@ -357,6 +364,7 @@ class Eg2DmCore {
     haltreq_ = ndmreset_ = 0;
     cmderr_ = 0;
     cmderr_alt_ = 0;
+    havereset_unknown_ = resumeack_unknown_ = false;
     busy_ = false;
     abstractauto_ = command_ = 0;
     flags_ = 0;
@@ -391,10 +399,19 @@ class Eg2DmCore {
     // The harts are in reset while ndmreset is set (Debug spec 3.12.2: it resets them): neither
     // halted nor running a command, and no go or resume pending for them. The block bench's core
     // stays off the debug memory meanwhile (rv_dm_cmodel_random_vseq; rv_dm blocks it then).
-    if (binding_ == Binding::kMemory && ndm && full_en_) hart_reset_mem();
+    if (binding_ == Binding::kMemory && ndm && full_en_) {
+      hart_reset_mem();
+      // When havereset is set for an NDM reset, and what the reset does to resumeack, no document
+      // says (finding "What sets havereset"; rv_dm sets havereset when the system acknowledges the
+      // reset, which a block bench may or may not do): neither is predicted until known again.
+      havereset_unknown_ = resumeack_unknown_ = true;
+    } else if (((v >> 28) & 1) && !ndm) {
+      havereset_unknown_ = false;  // ackhavereset without a reset in the same write: 0 now
+    }
     // resumereq: ignored while haltreq is set (spec 3.12.2); it clears resumeack.
     if (((v >> 30) & 1) && !haltreq_) {
       resumeack_ = false;
+      resumeack_unknown_ = false;
       if (!full_en_ || !halted()) return;
       if (binding_ == Binding::kDirect) {
         hart_->resume();
@@ -528,6 +545,7 @@ class Eg2DmCore {
   bool dmi_en_ = false, full_en_ = false, unavail_ = false, cheriot_ = false;
   bool dmactive_ = false, havereset_ = true, resumeack_ = false, busy_ = false;
   bool mem_halted_ = false, going_seen_ = false;
+  bool havereset_unknown_ = false, resumeack_unknown_ = false;  // after an NDM reset (write_dmcontrol)
   uint32_t cmderr_alt_ = 0;  // the other cmderr value two applicable errors allow (0: none)
   uint32_t haltreq_ = 0, ndmreset_ = 0, cmderr_ = 0, abstractauto_ = 0, command_ = 0, flags_ = 0;
   uint32_t sbreadonaddr_ = 0, sbaccess_ = 2, sbautoinc_ = 0, sbreadondata_ = 0, sberror_ = 0;
