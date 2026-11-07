@@ -87,7 +87,9 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
     return eg2_nist_result(ok);
   }
   hardened_bool_t success = kHardenedBoolFalse;
-  if (!status_ok(aes_kwp_unwrap(kek, in, nin, &success, out))) {
+  // Since the upstream merge aes_kwp_unwrap also returns the plaintext's length (aes_kwp.h).
+  size_t nplain = 0;
+  if (!status_ok(aes_kwp_unwrap(kek, in, nin, &success, out, &nplain))) {
     return eg2_nist_result(eg2_nist_error(v, "aes_kwp_unwrap returned an error"));
   }
   if (v->flags & kEg2NistFail) {
@@ -107,6 +109,9 @@ static eg2_nist_result_t run_vector(const eg2_nist_vec_t *v, bool corrupt) {
   }
   if (success != kHardenedBoolTrue) {
     return eg2_nist_result(eg2_nist_error(v, "valid vector refused by aes_kwp_unwrap"));
+  }
+  if (nplain != nout) {
+    return eg2_nist_result(eg2_nist_error(v, "aes_kwp_unwrap returned a plaintext length other than the vector's"));
   }
   return eg2_nist_result(eg2_nist_expect(v, kEg2NistOut, (const uint8_t *)out, nout, corrupt));
 }

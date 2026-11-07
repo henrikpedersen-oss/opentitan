@@ -55,6 +55,8 @@ import "DPI-C" function int eg2_sysmodel_fault(chandle h, string name, longint u
 `endif
 
 // No system model: nothing is predicted.
+typedef class eg2_iss_wrapper;
+
 class eg2_sysmodel extends uvm_object;
   `uvm_object_utils(eg2_sysmodel)
 
@@ -276,6 +278,8 @@ class eg2_sysmodel_systemc extends eg2_sysmodel;
     d1 = 0;
     e1 = 0;
     if (n0 < n) predicted &= eg2_sysmodel_read(h, word0 + 4, n - n0, d1, e1);
+    // A bench mailbox (eg2_iss_wrapper::backdoor_mailbox): the chip's value is an input event.
+    if (predicted && eg2_iss_wrapper::is_mailbox(item.mem_addr)) predicted = 1'b0;
     model = (d0 | (n0 < n ? d1 << (8 * n0) : 0)) & bytes;
     err   = e0 | e1;
     if (err != int'(item.mem_error)) begin

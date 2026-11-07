@@ -317,6 +317,59 @@
       name: rv_dm_stress_all_with_rand_reset
       reseed: 20
     }
+    // rv_dm against the debug module reference model (env/rv_dm_cmodel_sb.sv, the C++ model
+    // hw/top_earlgrey/dv/eg2_model/ip/eg2_dm_core.h). The random tests have no other checker
+    // (+en_scb=0); the others run an existing sequence with the model checking next to the
+    // scoreboard. _inject_fail corrupts one prediction: it must fail. +rv_dm_cmodel_mask_known=1 counts
+    // the RTL findings already filed instead of failing on them (rv_dm_cmodel_sb.sv).
+    {
+      name: rv_dm_cmodel_random
+      uvm_test_seq: rv_dm_cmodel_random_vseq
+      run_opts: ["+en_scb=0", "+rv_dm_cmodel=1", "+rv_dm_cmodel_mask_known=1"]
+      reseed: 20
+    }
+    {
+      name: rv_dm_cmodel_random_cheriot
+      uvm_test_seq: rv_dm_cmodel_random_vseq
+      build_mode: cheriot
+      run_opts: ["+en_scb=0", "+rv_dm_cmodel=1", "+rv_dm_cmodel_mask_known=1"]
+      reseed: 20
+    }
+    {
+      name: rv_dm_cmodel_random_inject_fail
+      uvm_test_seq: rv_dm_cmodel_random_vseq
+      run_opts: ["+en_scb=0", "+rv_dm_cmodel=1", "+rv_dm_cmodel_corrupt=1"]
+      reseed: 1
+    }
+    {
+      name: rv_dm_cmodel_smoke
+      uvm_test_seq: rv_dm_smoke_vseq
+      run_opts: ["+rv_dm_cmodel=1", "+rv_dm_cmodel_mask_known=1"]
+      reseed: 5
+    }
+    {
+      name: rv_dm_cmodel_halt_resume_whereto
+      uvm_test_seq: rv_dm_halt_resume_whereto_vseq
+      run_opts: ["+rv_dm_cmodel=1", "+rv_dm_cmodel_mask_known=1"]
+      reseed: 5
+    }
+    {
+      name: rv_dm_cmodel_stress_all
+      uvm_test_seq: rv_dm_stress_all_vseq
+      run_opts: ["+rv_dm_cmodel=1", "+rv_dm_cmodel_mask_known=1"]
+      reseed: 10
+    }
+  ]
+
+  // The CHERIoT build: rv_dm with CheriotSupport (tb.sv), the model in CHERIoT mode when cheriot_ena
+  // is MuBi4True. Its coverage configs are the default build's (common_sim_cfg looks them up by mode).
+  cheriot_xcelium_cov_cfg_file: "{default_xcelium_cov_cfg_file}"
+  cheriot_vcs_cov_cfg_file: "{default_vcs_cov_cfg_file}"
+  build_modes: [
+    {
+      name: cheriot
+      build_opts: ["+define+RV_DM_CHERIOT_SUPPORT=1"]
+    }
   ]
 
   // List of regressions.
@@ -328,6 +381,11 @@
               "rv_dm_jtag_dtm_csr_rw",
               "rv_dm_jtag_dmi_csr_hw_reset",
               "rv_dm_jtag_dmi_csr_rw"]
+    }
+    {
+      name: cmodel
+      tests: ["rv_dm_cmodel_random", "rv_dm_cmodel_random_cheriot", "rv_dm_cmodel_random_inject_fail",
+              "rv_dm_cmodel_smoke", "rv_dm_cmodel_halt_resume_whereto", "rv_dm_cmodel_stress_all"]
     }
   ]
 }

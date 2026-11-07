@@ -43,6 +43,10 @@ class eg2_scoreboard extends uvm_scoreboard;
   protected string       history[$];
   localparam int unsigned HistoryLen = 8;
   protected int unsigned uart_count[NUM_UARTS];
+  // Chip UART items sent while the instruction model was stopped (debug-mode entry, a bench
+  // fault): the system model, fed by it, has no prediction for them (chip_rv_dm_control_status,
+  // 2026-11-07: the software's verdict after a debug session was counted as unpredicted).
+  protected int unsigned uart_unchecked[NUM_UARTS];
   protected bit          en_log = 1'b1;
   protected int          rvfi_log;
   protected int          uart_log[NUM_UARTS];
@@ -197,10 +201,14 @@ class eg2_scoreboard extends uvm_scoreboard;
       end
 `ifdef EG2_SYSMODEL
       if (eg2_sysmodel::get().enabled()) begin
-        uart_act[idx].push_back($sformatf("%02h %s", item.data,
-                                          (item.data inside {[8'h20:8'h7e]}) ? string'(item.data)
-                                                                            : "."));
-        compare_uart(idx);
+        if (iss != null && iss.model_stopped()) begin
+          uart_unchecked[idx]++;
+        end else begin
+          uart_act[idx].push_back($sformatf("%02h %s", item.data,
+                                            (item.data inside {[8'h20:8'h7e]}) ? string'(item.data)
+                                                                              : "."));
+          compare_uart(idx);
+        end
       end
 `endif
     end
@@ -249,6 +257,10 @@ class eg2_scoreboard extends uvm_scoreboard;
     int    left;
     if (!eg2_sysmodel::get().active()) return;
     compare_uart(idx);
+    if (uart_unchecked[idx] > 0) begin
+      `uvm_info(`gfn, $sformatf("EG2_SB %s: %0d items while the instruction model was stopped, not compared",
+                                inst, uart_unchecked[idx]), UVM_LOW)
+    end
     if (eg2_sysmodel::get().stop_reason() != "") begin
       if (uart_act[idx].size() > 0) begin
         `uvm_info(`gfn, $sformatf("EG2_SB %s: %0d items after the model stopped, not compared",
@@ -275,12 +287,14 @@ class eg2_scoreboard extends uvm_scoreboard;
   // In an EG2 periph run the end checks come in the check phase, so that a deliberate corruption
   // they detect is counted before eg2_periph_env grades the injections; the UARTs are not here.
   function void check_phase(uvm_phase phase);
+    // Declarations first: a declaration after a statement does not compile (Xcelium BADDCL; the
+    // EG2 periph build, 2026-11-07).
+    int unsigned n_rvfi = rvfi_count;
     // A requested UART corruption that never happened would let a must-fail run pass silently.
     if (eg2_sysmodel::get().corrupt.substr(0, 3) == "uart" && !uart_corrupt_applied) begin
       `uvm_error(`gfn, $sformatf("+eg2_model_corrupt=%s requested but never applied (no item compared)",
                                  eg2_sysmodel::get().corrupt))
     end
-    int unsigned n_rvfi = rvfi_count;
     super.check_phase(phase);
     if (!periph_mode) return;
     if (sb_corrupt == "rvfi.count") begin

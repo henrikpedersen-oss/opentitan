@@ -21,6 +21,9 @@ class rv_dm_env_cfg extends cip_base_env_cfg #(.RAL_T(rv_dm_regs_reg_block));
   // might need to turn it off.
   bit sba_tl_tx_requires_debug = 1'b1;
 
+  // Also check rv_dm against the debug module reference model (rv_dm_cmodel_sb): +rv_dm_cmodel=1.
+  bit en_cmodel = 1'b0;
+
   // A handle to a clock interface for the LC domain. We don't actually use the clock itself, but
   // use the unsynchronised reset signal.
   virtual clk_rst_if clk_lc_rst_vif;
@@ -53,6 +56,7 @@ class rv_dm_env_cfg extends cip_base_env_cfg #(.RAL_T(rv_dm_regs_reg_block));
 
   virtual function void initialize(bit inherit_ral_models = 1'b0);
     list_of_alerts = rv_dm_env_pkg::LIST_OF_ALERTS;
+    void'($value$plusargs("rv_dm_cmodel=%b", en_cmodel));
     tl_intg_alert_name = "fatal_fault";
 
     // Request a second RAL model for debug memory and associated collateral, by adding mem_ral_name

@@ -25,10 +25,10 @@
  *     every reload's tag as the bitmap gives, the swept slots' tags after the sweep, the sweep
  *     clean with the epoch +2, and at least one timer interrupt taken during the window.
  *  3. tbre_done with a timer interrupt pending: with mstatus.MIE clear, rv_timer's interrupt and a
- *     short sweep's tbre_done (PLIC source 189) both become pending; then MIE is set. Check: both
+ *     short sweep's tbre_done (its PLIC source, kEg2MsTbreIrq) both become pending; then MIE is set. Check: both
  *     taken once, the external interrupt first and the timer second (the Ibex manual, "Interrupts":
  *     the external interrupt has priority over the timer interrupt; RISC-V privileged
- *     specification 3.1.9), and the PLIC claim returns source 189.
+ *     specification 3.1.9), and the PLIC claim returns tbre_done's source.
  *  4. An NMI during a sweep: a sweep over the whole of sec SRAM, and the watchdog's bark (aon_timer,
  *     `nmi_bark` ticks, rv_core_ibex NMI_ENABLE.wdog) during it. Check: one NMI, taken through MTCC
  *     (the test's handler) with mcause 0x8000001F (REQ_CIB_05), while TBRE_STATUS.busy was set; the
@@ -63,6 +63,7 @@ EG2_TEST_CONFIG();
   X(n_rounds, 0, 0, 64)          \
   X(period, 0, 0, 100000)        \
   X(nmi_bark, 0, 0, 1000)        \
+  X(parts, 15, 1, 15)            \
   X(model_gaps, 0, 0, 1)
 EG2_TEST_PARAMS(REVOCATION_IRQ_PARAMS);
 
@@ -447,12 +448,21 @@ bool eg2_test_main(void) {
   eg2_ms_tbre_clear();
   ctx_init();
   handler_install();
-  for (uint32_t r = 0; r < n_rounds; ++r) {
-    part1(r);
+  uint32_t parts = EG2_PARAM(parts);
+  eg2_put_kv("EG2 revocation_irq parts", parts);
+  eg2_puts("\r\n");
+  if (parts & 1u) {
+    for (uint32_t r = 0; r < n_rounds; ++r) {
+      part1(r);
+    }
   }
-  part2();
-  part3();
-  if (!gaps) {
+  if (parts & 2u) {
+    part2();
+  }
+  if (parts & 4u) {
+    part3();
+  }
+  if ((parts & 8u) && !gaps) {
     part4();
   }
   handler_remove();

@@ -382,6 +382,11 @@ class chip_sw_eg2_sec_partial_reset_vseq extends chip_sw_eg2_boot_sec_base_vseq;
     wait_sym("kEg2PartialResetBusy", 0, 1, found, cfg.sw_test_timeout_ns, 200);
     if (!found) return;
     announce(`gfn, "lockstep", $sformatf("shadow core reset held %0d cycles", hold));
+    // The forced reset puts the shadow core out of step with the bus on purpose: its own protocol
+    // assertions (NoMemResponseWithoutPendingAccess: a response to an access the reset dropped)
+    // then fail as a consequence of the bench's fault, not of the design (2026-11-07). They stay
+    // off for the rest of the run, which ends on the lockstep alert's verdict.
+    $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.u_core.gen_lockstep.u_ibex_lockstep.u_shadow_core");
     if (!uvm_hdl_force({Lockstep, ".rst_shadow_n"}, 1'b0)) begin
       `uvm_fatal(`gfn, "cannot force the lockstep's rst_shadow_n")
     end

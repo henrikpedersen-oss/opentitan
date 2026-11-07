@@ -1,0 +1,3 @@
+// reason: CBPAHI (combinational path through several units drives an output) is HAL's design-style rule, not a correctness check: OpenTitan's IPs drive outputs combinationally by design (TL-UL adapters, prim FIFOs and syncs, PULP dm_csrs/dm_mem ready/valid paths), its lint flows (AscentLint, Verilator, Verible) do not ask for registered outputs, and the timing of these paths is synthesis' (Genus, rv_dm: positive slack) owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// 100 hits in rv_dm, 2026-11-07 (rv_dm.sv 9, tlul 28, PULP 34, prim 29). Each line below is one HAL argument.
+-NOCHECK CBPAHI

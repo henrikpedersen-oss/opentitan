@@ -280,7 +280,7 @@ class Eg2SysrstCtrl : public Eg2IpModel {
       dbgf(1, "ULP_CTL.ulp_enable %u", value(ulp_ctl_) & 1);
     } else if (r == wkup_status_ && !(value(wkup_status_) & 1) && (old & 1)) {
       // Cleared by software: the wake-up request is withdrawn.
-      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(0);
+      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(kEg2WakeSysrstCtrl);
     } else if ((r == invert_ || r == out_ctl_ || r == out_val_ || r == allowed_ ||
                 r == ec_rst_ctl_ || r == key_ctl_ || r == key_deb_) &&
                value(r) != old) {
@@ -474,7 +474,7 @@ class Eg2SysrstCtrl : public Eg2IpModel {
   }
   void event() {
     set_value(wkup_status_, 1);
-    eg2_request_wakeup(sys_, 0);
+    eg2_request_wakeup(sys_, kEg2WakeSysrstCtrl);
   }
   // After a reset of the block: no timer runs, the actions are released, the pre-conditions are
   // timed from now.
@@ -485,7 +485,7 @@ class Eg2SysrstCtrl : public Eg2IpModel {
     for (unsigned i = 0; i < kNumCombo; ++i) {
       pre_since_[i] = pre_held(i) ? sys_.now_ps() : Eg2System::kNever;
     }
-    if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(0);
+    if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(kEg2WakeSysrstCtrl);
     update();
   }
   void update() {
@@ -804,8 +804,8 @@ class Eg2AdcCtrl : public Eg2IpModel {
       wkup_ = wkup;
       dbgf(1, "wake-up request %s", wkup ? "raised" : "withdrawn");
       if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) {
-        if (wkup) pm->wakeup(1);
-        else pm->wakeup_clear(1);
+        if (wkup) pm->wakeup(kEg2WakeAdcCtrl);
+        else pm->wakeup_clear(kEg2WakeAdcCtrl);
       }
     }
     log_.state(uint32_t(intr) | (uint32_t(wkup) << 1));
@@ -1018,8 +1018,8 @@ class Eg2Pinmux : public Eg2IpModel {
     if (want == req_) return;
     req_ = want;
     if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) {
-      if (want) pm->wakeup(2);
-      else pm->wakeup_clear(2);
+      if (want) pm->wakeup(kEg2WakePinmuxPin);
+      else pm->wakeup_clear(kEg2WakePinmuxPin);
     }
   }
   void plan() {

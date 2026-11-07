@@ -262,7 +262,11 @@ class chip_sw_eg2_rand_vseq extends chip_sw_eg2_base_vseq;
     item.autoincrement = 0;
     item.readonaddr = !write;
     item.readondata = 0;
-    if (write) item.wdata.push_back(data << (8 * (addr % 4)));
+    // sbdata0 holds a narrow access's data in its low bits (RISC-V Debug spec 0.13.2, 3.12.23); the
+    // debug module moves it onto the bus lanes of the address (PULP dm_sba.sv). Shifting it here as
+    // well put it twice as far: a 16-bit write at offset 2 or a byte write at offsets 1-3 wrote
+    // zeros (chip_cheriot_sba_tag_clear, 2026-11-07).
+    if (write) item.wdata.push_back(data);
     cfg.debugger.sba_access(item);
     result = 32'(item.is_err);
     // The instruction-set model reads its own memory since review R6 (2026-10-25): it gets the

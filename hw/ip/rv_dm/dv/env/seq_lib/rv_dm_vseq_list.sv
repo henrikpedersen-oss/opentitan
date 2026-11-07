@@ -34,3 +34,4 @@
 `include "rv_dm_buffered_enable_vseq.sv"
 `include "rv_dm_sparse_lc_gate_fsm_vseq.sv"
 `include "rv_dm_scanmode_vseq.sv"
+`include "rv_dm_cmodel_random_vseq.sv"

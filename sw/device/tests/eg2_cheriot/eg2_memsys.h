@@ -28,6 +28,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include <stdint.h>
 
 #include "sw/device/lib/testing/eg2/eg2_dev.h"
@@ -67,8 +69,9 @@ enum {
   kEg2MsRramArea = 0x30100000u,
   kEg2MsRramAreaSize = 0x8000u,
   kEg2MsRramPage = 512,
-  // tbre_done's PLIC source.
-  kEg2MsTbreIrq = 189,
+  // tbre_done's PLIC source, from the generated top (not a number: the upstream merge moved it
+  // from 189 to 221, 2026-11-07).
+  kEg2MsTbreIrq = kTopEarlgreyPlicIrqIdCheriotMemSysTbreDone,
 };
 
 /** The meta SRAM byte offset of the tag of the granule at `addr`, 0xffffffff if untagged. */

@@ -38,29 +38,39 @@ struct Eg2OtpPart {
   bool hw_digest;      // the digest is computed by the DAI DIGEST command, never written
   bool has_digest;     // LIFE_CYCLE has none
   const char *read_lock;  // the READ_LOCK CSR, or nullptr
+  bool zer;            // zeroizable: a zeroization marker (8 bytes) after the digest
 };
 
+// Offsets and sizes from the generated otp_ctrl_reg_pkg.sv (<Part>Offset, <Part>Size; upstream
+// merge 2026-11-05: OWNER_SW_CFG on moved, the SECRET* partitions gained a zeroization marker, so
+// their digest is 16 bytes from their end). Copy them again if the map is regenerated.
 inline constexpr Eg2OtpPart kEg2OtpParts[] = {
-    {"VENDOR_TEST", 0x000, 64, false, false, true, "VENDOR_TEST_READ_LOCK"},
-    {"CREATOR_SW_CFG", 0x040, 416, false, false, true, "CREATOR_SW_CFG_READ_LOCK"},
-    {"OWNER_SW_CFG", 0x1E0, 680, false, false, true, "OWNER_SW_CFG_READ_LOCK"},
-    {"ROT_CREATOR_AUTH_CODESIGN", 0x488, 472, false, false, true,
-     "ROT_CREATOR_AUTH_CODESIGN_READ_LOCK"},
-    {"ROT_CREATOR_AUTH_STATE", 0x660, 40, false, false, true, "ROT_CREATOR_AUTH_STATE_READ_LOCK"},
-    {"HW_CFG0", 0x688, 72, false, true, true, nullptr},
-    {"HW_CFG1", 0x6D0, 16, false, true, true, nullptr},
-    {"SECRET0", 0x6E0, 40, true, true, true, nullptr},
-    {"SECRET1", 0x708, 88, true, true, true, nullptr},
-    {"SECRET2", 0x760, 88, true, true, true, nullptr},
-    {"LIFE_CYCLE", 0x7B8, 88, false, false, false, nullptr},
+    {"VENDOR_TEST", 0x000, 64, false, false, true, "VENDOR_TEST_READ_LOCK", false},
+    {"CREATOR_SW_CFG", 0x040, 400, false, false, true, "CREATOR_SW_CFG_READ_LOCK", false},
+    {"OWNER_SW_CFG", 0x1D0, 672, false, false, true, "OWNER_SW_CFG_READ_LOCK", false},
+    {"ROT_CREATOR_AUTH_CODESIGN", 0x470, 472, false, false, true,
+     "ROT_CREATOR_AUTH_CODESIGN_READ_LOCK", false},
+    {"ROT_CREATOR_AUTH_STATE", 0x648, 40, false, false, true, "ROT_CREATOR_AUTH_STATE_READ_LOCK",
+     false},
+    {"HW_CFG0", 0x670, 72, false, true, true, nullptr, false},
+    {"HW_CFG1", 0x6B8, 16, false, true, true, nullptr, false},
+    {"SECRET0", 0x6C8, 48, true, true, true, nullptr, true},
+    {"SECRET1", 0x6F8, 96, true, true, true, nullptr, true},
+    {"SECRET2", 0x758, 96, true, true, true, nullptr, true},
+    {"LIFE_CYCLE", 0x7B8, 88, false, false, false, nullptr, false},
 };
 inline constexpr int kEg2OtpNumParts = 11;
 inline constexpr int kEg2OtpSecret0 = 7, kEg2OtpSecret1 = 8, kEg2OtpSecret2 = 9;
 inline constexpr int kEg2OtpLifeCycle = 10;
 inline constexpr uint32_t kEg2OtpSize = 0x810;
 // Items other models read (otp_ctrl_mmap.md).
-inline constexpr uint32_t kEg2OtpDeviceId = 0x688, kEg2OtpManufState = 0x6A8;
-inline constexpr uint32_t kEg2OtpEnSramIfetch = 0x6D0;
+inline constexpr uint32_t kEg2OtpDeviceId = 0x670, kEg2OtpManufState = 0x690;
+inline constexpr uint32_t kEg2OtpEnSramIfetch = 0x6B8;
+inline constexpr uint32_t kEg2OtpCreatorRootKeyShare0 = 0x768, kEg2OtpCreatorRootKeyShare1 = 0x788;
+// The digest of a partition: its last 8 bytes, or the 8 before its zeroization marker.
+inline constexpr uint32_t eg2_otp_digest_off(const Eg2OtpPart &pt) {
+  return pt.off + pt.size - (pt.zer ? 16 : 8);
+}
 inline constexpr uint32_t kEg2OtpLcTransitionCnt = 0x7B8, kEg2OtpLcState = 0x7E8;
 
 // ---- Life-cycle encodings ----
@@ -200,7 +210,7 @@ class Eg2OtpCtrl : public Eg2IpModel {
       set_dword(off + 8 * w, scramble(v, p));
     }
     const Eg2OtpPart &pt = kEg2OtpParts[p];
-    set_dword(pt.off + pt.size - 8, 1);
+    set_dword(eg2_otp_digest_off(pt), 1);
   }
 
   std::vector<uint8_t> lc_token(uint32_t off) {
@@ -267,8 +277,8 @@ class Eg2OtpCtrl : public Eg2IpModel {
   bool creator_root_key(std::vector<uint8_t> *key) {
     key->assign(32, 0);
     for (unsigned w = 0; w < 4; ++w) {
-      uint64_t s0 = descramble(dword(0x770 + 8 * w), kEg2OtpSecret2);
-      uint64_t s1 = descramble(dword(0x790 + 8 * w), kEg2OtpSecret2);
+      uint64_t s0 = descramble(dword(kEg2OtpCreatorRootKeyShare0 + 8 * w), kEg2OtpSecret2);
+      uint64_t s1 = descramble(dword(kEg2OtpCreatorRootKeyShare1 + 8 * w), kEg2OtpSecret2);
       for (unsigned b = 0; b < 8; ++b) (*key)[8 * w + b] = uint8_t((s0 ^ s1) >> (8 * b));
     }
     return locked_[kEg2OtpSecret2];
@@ -304,7 +314,7 @@ class Eg2OtpCtrl : public Eg2IpModel {
     if (otp().size() < kEg2OtpSize) otp().resize(kEg2OtpSize, 0);
     for (int p = 0; p < kEg2OtpNumParts; ++p) {
       const Eg2OtpPart &pt = kEg2OtpParts[p];
-      uint64_t dg = pt.has_digest ? dword(pt.off + pt.size - 8) : 0;
+      uint64_t dg = pt.has_digest ? dword(eg2_otp_digest_off(pt)) : 0;
       locked_[p] = dg != 0;
       if (digest_reg_[p] >= 0) {
         set_value(uint16_t(digest_reg_[p]), uint32_t(dg));
@@ -321,7 +331,7 @@ class Eg2OtpCtrl : public Eg2IpModel {
     return -1;
   }
   bool is_digest(int p, uint32_t a) const {
-    return kEg2OtpParts[p].has_digest && a >= kEg2OtpParts[p].off + kEg2OtpParts[p].size - 8;
+    return kEg2OtpParts[p].has_digest && a >= eg2_otp_digest_off(kEg2OtpParts[p]);
   }
   bool wide(int p, uint32_t a) const { return kEg2OtpParts[p].secret || is_digest(p, a); }
   bool read_locked_csr(int p) const {
@@ -454,7 +464,7 @@ class Eg2OtpCtrl : public Eg2IpModel {
     int p = part_of(a);
     if (p < 0 || !kEg2OtpParts[p].hw_digest || locked_[p]) return kAccessError;
     const Eg2OtpPart &pt = kEg2OtpParts[p];
-    uint32_t da = pt.off + pt.size - 8;
+    uint32_t da = eg2_otp_digest_off(pt);
     if (dword(da)) return kAccessError;  // already computed; locks at the next reset
     uint64_t h = 0xcbf29ce484222325ull;
     for (uint32_t i = pt.off; i < da; ++i) h = (h ^ otp()[i]) * 0x100000001b3ull;

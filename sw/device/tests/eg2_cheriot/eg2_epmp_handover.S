@@ -111,7 +111,7 @@ eg2_late_pre:
   csrw pmpaddr3, t0
   li   t0, NAPOT(TOP_RV_TIMER_BASE_ADDR, TOP_RV_TIMER_SIZE_BYTES)
   csrw pmpaddr4, t0
-  li   t0, NAPOT(TOP_GPIO_BASE_ADDR, TOP_GPIO_SIZE_BYTES)
+  li   t0, NAPOT(TOP_GPIO0_BASE_ADDR, TOP_GPIO0_SIZE_BYTES)
   csrw pmpaddr5, t0
   li   t0, NAPOT(TOP_AON_TIMER_BASE_ADDR, TOP_AON_TIMER_SIZE_BYTES)
   csrw pmpaddr6, t0

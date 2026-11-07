@@ -114,6 +114,7 @@
 #include <vector>
 
 #include "../eg2_ip_model.h"
+#include "eg2_dm_core.h"
 #include "eg2_mem_otp.h"
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
@@ -150,108 +151,54 @@ class Eg2RvDm : public Eg2IpModel {
  public:
   // DMI register addresses (spec 3.12; debug-system.md "Debug Module Registers").
   enum : uint32_t {
-    kData0 = 0x04, kDmcontrol = 0x10, kDmstatus = 0x11, kHartinfo = 0x12, kAbstractcs = 0x16,
-    kCommand = 0x17, kAbstractauto = 0x18, kProgbuf0 = 0x20, kSbcs = 0x38, kSbaddress0 = 0x39,
-    kSbdata0 = 0x3c, kHaltsum0 = 0x40
+    kData0 = Eg2DmCore::kData0, kDmcontrol = Eg2DmCore::kDmcontrol,
+    kDmstatus = Eg2DmCore::kDmstatus, kHartinfo = Eg2DmCore::kHartinfo,
+    kAbstractcs = Eg2DmCore::kAbstractcs, kCommand = Eg2DmCore::kCommand,
+    kAbstractauto = Eg2DmCore::kAbstractauto, kProgbuf0 = Eg2DmCore::kProgbuf0,
+    kSbcs = Eg2DmCore::kSbcs, kSbaddress0 = Eg2DmCore::kSbaddress0,
+    kSbdata0 = Eg2DmCore::kSbdata0, kHaltsum0 = Eg2DmCore::kHaltsum0
   };
-  static constexpr unsigned kDataCount = 2, kProgbufSize = 8;
+  static constexpr unsigned kDataCount = Eg2DmCore::kDataCount;
+  static constexpr unsigned kProgbufSize = Eg2DmCore::kProgbufSize;
   static constexpr uint32_t kDisRvDmLateDebug = 0x6D1;  // OTP HW_CFG1 (otp_ctrl_mmap.md)
 
+  // The debug module itself is Eg2DmCore (eg2_dm_core.h), bound directly to the core model; its
+  // data and program buffer words live in rv_dm.mem's registers, where the core model reads them.
   Eg2RvDm(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
-      : Eg2IpModel(n, d, base) {
+      : Eg2IpModel(n, d, base), dm_(Eg2DmCore::Binding::kDirect), hart_(sys_) {
     late_en_ = reg("LATE_DEBUG_ENABLE");
+    dm_.set_hart(&hart_);
+    dm_.set_store([this](bool pb, unsigned i) { return mem_get(word_name(pb, i)); },
+                  [this](bool pb, unsigned i, uint32_t v) { mem_set(word_name(pb, i), v); });
+    dm_.set_bus([this](const Eg2DmCore::SbaRequest &r) {
+      uint8_t b[4] = {uint8_t(r.wdata), uint8_t(r.wdata >> 8), uint8_t(r.wdata >> 16),
+                      uint8_t(r.wdata >> 24)};
+      bool ok = sys_.sba && sys_.sba(r.write, r.addr, r.size, b);
+      uint32_t rd = 0;
+      for (unsigned i = 0; i < r.size; ++i) rd |= uint32_t(b[i]) << (8 * i);
+      dm_.sba_complete(rd, !ok);
+    });
     host_ = std::make_unique<Eg2DebugHost>(*this);
   }
 
   // ---- The DMI (the debugger's side) ----
   // A read: false if life cycle gates the DMI (the value is then 0 by the assumption above).
   bool dmi_read(uint32_t addr, uint32_t *v) {
-    *v = 0;
-    if (!dmi_enabled()) return false;
+    refresh();
+    bool ok = dm_.dmi_read(addr, v);
     update_req();
-    if (addr >= kData0 && addr < kData0 + kDataCount) {
-      *v = mem_get("DATAADDR_" + std::to_string(addr - kData0));
-      if (abstract_busy_) set_busy_error();
-      else autoexec_access(addr);
-    } else if (addr >= kProgbuf0 && addr < kProgbuf0 + kProgbufSize) {
-      *v = mem_get("PROGRAM_BUFFER_" + std::to_string(addr - kProgbuf0));
-      if (abstract_busy_) set_busy_error();
-      else autoexec_access(addr);
-    } else if (addr == kDmcontrol) {
-      *v = (ndmreset_ << 1) | uint32_t(dmactive_);  // haltreq is WARZ (debug-system.md)
-    } else if (addr == kDmstatus) {
-      // Debug Spec 0.13.2 dmstatus: running means "not halted and not unavailable". Earl Grey's
-      // top_earlgrey.gen.hjson leaves rv_dm.unavailable at its default 0, including during NDM
-      // reset, so the DM continues to report the selected hart as running while reset is held.
-      bool h = hart_halted(), run = !h;
-      *v = (uint32_t(havereset_) * 0x3u << 18) | (uint32_t(resumeack_) * 0x3u << 16) |
-           (uint32_t(run) * 0x3u << 10) | (uint32_t(h) * 0x3u << 8) | (1u << 7) | 2u;
-    } else if (addr == kHartinfo) {
-      *v = (2u << 20) | (1u << 16) | (kDataCount << 12) | 0x380u;
-    } else if (addr == kAbstractcs) {
-      *v = (kProgbufSize << 24) | (uint32_t(abstract_busy_) << 12) | (cmderr_ << 8) | kDataCount;
-    } else if (addr == kCommand) {
-      *v = 0;  // write-only (spec 3.12.7: reads return 0)
-    } else if (addr == kAbstractauto) {
-      *v = abstractauto_;
-    } else if (addr == kSbcs) {
-      *v = (1u << 29) | (sbreadonaddr_ << 20) | (sbaccess_ << 17) | (sbautoinc_ << 16) |
-           (sbreadondata_ << 15) | (sberror_ << 12) | (32u << 5) | 0x7u;
-    } else if (addr == kSbaddress0) {
-      *v = sbaddress_;
-    } else if (addr == kSbdata0) {
-      *v = sbdata_;
-      if (dmactive_ && sbreadondata_ && !sberror_) sba_access(false);
-    } else if (addr == kHaltsum0) {
-      *v = hart_halted() ? 1u : 0u;
-    }
-    return true;
+    return ok;
   }
 
   // A write: false if life cycle gates the DMI (nothing happens).
   bool dmi_write(uint32_t addr, uint32_t v) {
-    if (!dmi_enabled()) return false;
-    if (addr == kDmcontrol) {
-      write_dmcontrol(v);
-    } else if (!dmactive_) {
-      // While dmactive is 0 the debug module is held in reset: only dmactive can be written.
-    } else if (addr >= kData0 && addr < kData0 + kDataCount) {
-      if (abstract_busy_) set_busy_error();
-      else {
-        mem_set("DATAADDR_" + std::to_string(addr - kData0), v);
-        autoexec_access(addr);
-      }
-    } else if (addr >= kProgbuf0 && addr < kProgbuf0 + kProgbufSize) {
-      if (abstract_busy_) set_busy_error();
-      else {
-        mem_set("PROGRAM_BUFFER_" + std::to_string(addr - kProgbuf0), v);
-        autoexec_access(addr);
-      }
-    } else if (addr == kAbstractcs) {
-      cmderr_ &= ~((v >> 8) & 7);
-    } else if (addr == kCommand) {
-      last_cmd_ = v;
-      // Debug Spec 0.13.2 abstractcs.cmderr: a command written while busy sets busy only when
-      // cmderr is 0; no abstract-command error overwrites an earlier one.
-      if (abstract_busy_) set_busy_error();
-      else if (!cmderr_) run_command(v);
-    } else if (addr == kAbstractauto) {
-      abstractauto_ = v & ((((1u << kProgbufSize) - 1) << 16) | ((1u << kDataCount) - 1));
-    } else if (addr == kSbcs) {
-      sberror_ &= ~((v >> 12) & 7);
-      sbreadonaddr_ = (v >> 20) & 1;
-      sbaccess_ = (v >> 17) & 7;
-      sbautoinc_ = (v >> 16) & 1;
-      sbreadondata_ = (v >> 15) & 1;
-    } else if (addr == kSbaddress0) {
-      sbaddress_ = v;
-      if (sbreadonaddr_ && !sberror_) sba_access(false);
-    } else if (addr == kSbdata0) {
-      sbdata_ = v;
-      if (!sberror_) sba_access(true);
-    }
+    refresh();
+    bool was_active = dm_.dmactive();
+    uint32_t ndm = dm_.ndmreset_field();
+    bool ok = dm_.dmi_write(addr, v);
+    if (ok && addr == kDmcontrol) apply_dmcontrol(was_active, ndm);
     update_req();
-    return true;
+    return ok;
   }
 
   // ---- Life cycle gating ----
@@ -274,19 +221,41 @@ class Eg2RvDm : public Eg2IpModel {
 
   void on_reset(Eg2ResetCause c) override {
     Eg2IpModel::on_reset(c);
-    havereset_ = true;  // every reset of the chip resets the core
-    resumeack_ = false;
     if (c != Eg2ResetCause::kNdm) {
-      dm_reset();
+      dm_.reset();  // every reset of the chip resets the core, and this one the debug module
+      sys_.release_core("rv_dm");
       latch_otp();
+    } else {
+      dm_.hart_reset();
     }
+    refresh();
     update_req();
   }
 
  protected:
-  void reg_write(uint16_t, uint32_t, uint32_t, uint32_t) override { update_req(); }
+  void reg_write(uint16_t, uint32_t, uint32_t, uint32_t) override {
+    refresh();
+    update_req();
+  }
 
  private:
+  // The core model as Eg2DmCore's direct binding sees it.
+  class HartPort : public Eg2DmHart {
+   public:
+    explicit HartPort(Eg2System &s) : s_(s) {}
+    bool halted() const override { return s_.hart && s_.hart->debug_mode(); }
+    int access_register(uint32_t regno, bool write, uint32_t *value) override {
+      return s_.hart->access_register(regno, write, value);
+    }
+    int exec_progbuf() override { return s_.hart->exec_progbuf(kProgbufAddr); }
+    void resume() override { s_.hart->resume(); }
+
+   private:
+    Eg2System &s_;
+  };
+  // The program buffer in the debug memory (rv_dm.hjson PROGRAM_BUFFER at 0x360).
+  static constexpr uint32_t kProgbufAddr = TOP_EARLGREY_RV_DM_MEM_BASE_ADDR + 0x360;
+
   const Eg2LcCtrl *lc_ctrl() const {
     return dynamic_cast<const Eg2LcCtrl *>(sys_.model("lc_ctrl.regs"));
   }
@@ -296,6 +265,9 @@ class Eg2RvDm : public Eg2IpModel {
     // rv_dm theory_of_operation.md "Late Debug Enable Mechanism" samples that value at reset.
     auto *o = dynamic_cast<Eg2OtpCtrl *>(sys_.model("otp_ctrl.core"));
     dis_late_debug_ = o && o->byte(kDisRvDmLateDebug) == 0x96;  // kMuBi8True
+  }
+  static std::string word_name(bool pb, unsigned i) {
+    return (pb ? "PROGRAM_BUFFER_" : "DATAADDR_") + std::to_string(i);
   }
   uint32_t mem_get(const std::string &r) const {
     Eg2IpModel *m = mem();
@@ -310,153 +282,34 @@ class Eg2RvDm : public Eg2IpModel {
     m->set_modelled(uint16_t(i));
   }
 
-  // The debug module's reset (dmactive 0, or a reset of the sys tree): its registers take their
-  // reset values; the program buffer and data registers are rv_dm.mem's, reset with that block.
-  void dm_reset() {
-    dmactive_ = false;
-    haltreq_ = ndmreset_ = 0;
-    cmderr_ = 0;
-    abstract_busy_ = false;
-    abstractauto_ = last_cmd_ = 0;
-    sbreadonaddr_ = sbautoinc_ = sbreadondata_ = sberror_ = 0;
-    sbaccess_ = 2;
-    sbaddress_ = sbdata_ = 0;
-    sys_.release_core("rv_dm");
+  void refresh() {
+    dm_.set_enables(dmi_enabled(), fully_enabled());
+    dm_.set_cheriot(sys_.hart && sys_.hart->cheriot_mode());
   }
-
-  void write_dmcontrol(uint32_t v) {
-    bool active = v & 1;
-    if (!active) {
-      if (dmactive_) {
-        for (unsigned i = 0; i < kProgbufSize; ++i) mem_set("PROGRAM_BUFFER_" + std::to_string(i), 0);
-        for (unsigned i = 0; i < kDataCount; ++i) mem_set("DATAADDR_" + std::to_string(i), 0);
-      }
-      dm_reset();
-      return;
-    }
-    bool was_active = dmactive_;
-    dmactive_ = true;
-    if (!was_active) return;  // the write that activates the module sets only dmactive
-    haltreq_ = v >> 31;
-    if ((v >> 28) & 1) havereset_ = false;  // ackhavereset
-    uint32_t ndm = (v >> 1) & 1;
-    if (ndm != ndmreset_) {
-      ndmreset_ = ndm;
-      if (fully_enabled()) {
-        if (ndm) {
-          sys_.request_reset(Eg2ResetCause::kNdm, "rv_dm ndmreset (non-debug-module reset)");
-          sys_.hold_core("rv_dm", "ndmreset asserted: the chip is held in the NDM reset");
-        } else {
-          sys_.release_core("rv_dm");
-        }
-      }
-    }
-    // resumereq: the halted core resumes once; ignored while haltreq is set (spec 3.12.2).
-    if (((v >> 30) & 1) && !haltreq_) {
-      resumeack_ = false;
-      if (hart_halted() && fully_enabled()) {
-        sys_.hart->resume();
-        resumeack_ = true;
-      }
-    }
-  }
-
   // rv_dm's debug_req_o: haltreq, while the module is active and debug is enabled.
-  void update_req() { sys_.debug_req = dmactive_ && haltreq_ && fully_enabled() && sys_.hart; }
+  void update_req() { sys_.debug_req = dm_.debug_req() && sys_.hart; }
 
-  void run_command(uint32_t cmd) {
-    uint32_t type = cmd >> 24;
-    if (type != 0) {
-      cmderr_ = 2;  // Quick Access, Access Memory: not supported
+  // The chip's side of dmcontrol: ndmreset resets the chip and holds the core while it is set; a
+  // debug module reset (dmactive 0) releases it.
+  void apply_dmcontrol(bool was_active, uint32_t old_ndm) {
+    if (!dm_.dmactive()) {
+      sys_.release_core("rv_dm");
       return;
     }
-    if (!hart_halted() || !fully_enabled()) {
-      cmderr_ = 4;  // halt/resume: the hart is not halted
-      return;
+    uint32_t ndm = dm_.ndmreset_field();
+    if (!was_active || ndm == old_ndm || !fully_enabled()) return;
+    if (ndm) {
+      sys_.request_reset(Eg2ResetCause::kNdm, "rv_dm ndmreset (non-debug-module reset)");
+      sys_.hold_core("rv_dm", "ndmreset asserted: the chip is held in the NDM reset");
+    } else {
+      sys_.release_core("rv_dm");
     }
-    uint32_t size = (cmd >> 20) & 7, regno = cmd & 0xffff;
-    bool postinc = (cmd >> 19) & 1, postexec = (cmd >> 18) & 1, transfer = (cmd >> 17) & 1,
-         write = (cmd >> 16) & 1;
-    if (transfer) {
-      if (size != 2) {
-        cmderr_ = 2;  // only 32-bit register access
-        return;
-      }
-      uint32_t data = mem_get("DATAADDR_0");
-      int err = sys_.hart->access_register(regno, write, &data);
-      if (err) {
-        cmderr_ = uint32_t(err);
-        return;
-      }
-      if (!write) mem_set("DATAADDR_0", data);
-    }
-    if (postexec) {
-      int err = sys_.hart->exec_progbuf(kProgbufAddr);
-      if (err == 1) {
-        // Debug Spec 0.13.2 Program Buffer: if execution does not terminate, busy stays set.
-        // The finite instruction guard used to identify that condition is a model assumption.
-        abstract_busy_ = true;
-        return;
-      }
-      if (err) {
-        cmderr_ = uint32_t(err);
-        return;
-      }
-    }
-    if (postinc && transfer) last_cmd_ = (cmd & ~0xffffu) | ((regno + 1) & 0xffff);
-  }
-  // The program buffer in the debug memory (rv_dm.hjson PROGRAM_BUFFER at 0x360).
-  static constexpr uint32_t kProgbufAddr = TOP_EARLGREY_RV_DM_MEM_BASE_ADDR + 0x360;
-  void autoexec_access(uint32_t addr) {
-    if (!dmactive_ || cmderr_ || abstract_busy_) return;
-    bool data = addr >= kData0 && addr < kData0 + kDataCount &&
-                ((abstractauto_ >> (addr - kData0)) & 1);
-    bool pb = addr >= kProgbuf0 && addr < kProgbuf0 + kProgbufSize &&
-              ((abstractauto_ >> (16 + addr - kProgbuf0)) & 1);
-    if (data || pb) run_command(last_cmd_);
   }
 
-  // Debug Spec 0.13.2 abstractcs.cmderr: busy is written only if cmderr currently contains 0.
-  void set_busy_error() {
-    if (!cmderr_) cmderr_ = 1;
-  }
-
-  void sba_access(bool write) {
-    if (!fully_enabled()) {
-      sberror_ = 7;
-      return;
-    }
-    // top_earlgrey xbar_main.hjson connects rv_dm.sba to every target in CHERIoT mode. Its
-    // "not supported" warning is about writes bypassing the SRAM capability-tag filter, not a
-    // bus error; ordinary SBA reads and writes therefore still reach the selected target.
-    if (sbaccess_ > 2) {
-      sberror_ = 4;  // size not supported
-      return;
-    }
-    uint32_t n = 1u << sbaccess_;
-    if (sbaddress_ & (n - 1)) {
-      sberror_ = 3;  // alignment
-      return;
-    }
-    uint8_t b[4] = {uint8_t(sbdata_), uint8_t(sbdata_ >> 8), uint8_t(sbdata_ >> 16),
-                    uint8_t(sbdata_ >> 24)};
-    if (!sys_.sba || !sys_.sba(write, sbaddress_, n, b)) {
-      sberror_ = 2;
-      return;
-    }
-    if (!write) {
-      sbdata_ = 0;
-      for (unsigned i = 0; i < n; ++i) sbdata_ |= uint32_t(b[i]) << (8 * i);
-    }
-    if (sbautoinc_) sbaddress_ += n;
-  }
-
+  Eg2DmCore dm_;
+  HartPort hart_;
   uint16_t late_en_;
-  bool dmactive_ = false, havereset_ = true, resumeack_ = false;
-  bool abstract_busy_ = false, dis_late_debug_ = false;
-  uint32_t haltreq_ = 0, ndmreset_ = 0, cmderr_ = 0, abstractauto_ = 0, last_cmd_ = 0;
-  uint32_t sbreadonaddr_ = 0, sbaccess_ = 2, sbautoinc_ = 0, sbreadondata_ = 0, sberror_ = 0;
-  uint32_t sbaddress_ = 0, sbdata_ = 0;
+  bool dis_late_debug_ = false;
   std::unique_ptr<Eg2DebugHost> host_;
 };
 

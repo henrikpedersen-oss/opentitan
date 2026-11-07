@@ -26,12 +26,20 @@ class chip_eg2_rram_jtag_lc_gate_vseq extends chip_stub_cpu_base_vseq;
 
   localparam string Macro = "tb.dut.top_earlgrey.earlgrey_pd_main.u_rram_macro";
   // MIO pads for TCK, TMS, TDI and TDO: IOB6-IOB9, no strap among them.
-  localparam int PadTck = 15, PadTms = 16, PadTdi = 17, PadTdo = 18;
+  // From the generated packages, not as numbers: the upstream merge moved every one of them
+  // (2026-11-07: inputs 51-53 became 87-89, the register offsets 0xf8/0x2a8 became 0x188/0x3c8).
+  localparam int PadTck = top_earlgrey_pkg::MioPadIob6, PadTms = top_earlgrey_pkg::MioPadIob7;
+  localparam int PadTdi = top_earlgrey_pkg::MioPadIob8, PadTdo = top_earlgrey_pkg::MioPadIob9;
   localparam bit [31:0] Pinmux = top_earlgrey_pkg::TOP_EARLGREY_PINMUX_BASE_ADDR;
-  localparam bit [31:0] InselOff = 32'hf8, OutselOff = 32'h2a8;
-  localparam int InTck = 51, InTms = 52, InTdi = 53;  // kTopEarlgreyPinmuxPeripheralInRramMacro*
-  localparam int OutTdo = 57;                        // kTopEarlgreyPinmuxOutselRramMacroTdo
-  localparam int InselMioBase = 2;                   // kTopEarlgreyPinmuxInselIoa0
+  localparam bit [31:0] InselOff = 32'(pinmux_reg_pkg::PINMUX_MIO_PERIPH_INSEL_0_OFFSET);
+  localparam bit [31:0] OutselOff = 32'(pinmux_reg_pkg::PINMUX_MIO_OUTSEL_0_OFFSET);
+  localparam int InTck = top_earlgrey_pkg::MioInRramMacroTck;
+  localparam int InTms = top_earlgrey_pkg::MioInRramMacroTms;
+  localparam int InTdi = top_earlgrey_pkg::MioInRramMacroTdi;
+  // OUTSEL values: 0 constant 0, 1 constant 1, 2 high-Z, then 3 + the peripheral output.
+  localparam int OutTdo = 3 + top_earlgrey_pkg::MioOutRramMacroTdo;
+  // INSEL values: 0 constant 0, 1 constant 1, then 2 + the MIO pad.
+  localparam int InselMioBase = 2;
 
   rand lc_state_e lc_state;
   // When set, the enabled states' IDCODE check runs (the requirement; fails on the emulation

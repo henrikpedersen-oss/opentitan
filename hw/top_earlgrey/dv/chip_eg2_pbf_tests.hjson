@@ -5,7 +5,7 @@
 // EG2 post-boot feature area (eg2_top_verification: status/test_writing_rules.md; spec REQ_PBF,
 // "Post-boot features in CHERIoT mode", "Post-boot faults"). Software in sw/device/tests/eg2_pbf/,
 // vseqs in env/seq_lib/chip_eg2_pbf_vseq_list.sv. The peripheral pair (REQ_PBF_13) is in
-// chip_eg2_periph_tests.hjson; the debug pair (REQ_PBF_20) belongs to the debug area.
+// chip_eg2_periph_tests.hjson. The debug pair (REQ_PBF_20) is registered here.
 //
 // Each `_sb` test runs behind the full secure-boot chain (ROM, ROM_EXT, the test as a signed owner
 // image: run mode sw_test_mode_mask_rom, image flag `rom_ext`); a signed image keeps its knobs'
@@ -781,6 +781,98 @@
       run_opts: ["+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_memory_fault:REQ_PBF_19,REQ_PBF_07"]
       run_timeout_mins: 480
     }
+    // chip_sw_eg2_pbf_debug_sb and chip_sw_eg2_pbf_debug_fault (REQ_PBF_20): the JTAG agent drives
+    // rv_dm (+use_jtag_dmi=1); vseqs in chip_sw_eg2_pbf_debug_vseq.sv.
+    {
+      name: chip_sw_eg2_pbf_debug_sb
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_sb_direct
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_sb_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_sb_cheriot
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb_cheriot:1:rom_ext"]
+      en_run_modes: ["sw_test_mode_rom_ext"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_sb_cheriot_direct
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_sb_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_debug_sb_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_sb_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_sb:REQ_PBF_20,REQ_PBF_01"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_fault
+      uvm_test_seq: chip_sw_eg2_pbf_debug_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_fault:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_fault:REQ_PBF_20,REQ_PBF_07"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_fault_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_debug_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_fault_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_fault:REQ_PBF_20,REQ_PBF_07"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_fault_cheriot
+      uvm_test_seq: chip_sw_eg2_pbf_debug_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_fault_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_fault:REQ_PBF_20,REQ_PBF_07"]
+      run_timeout_mins: 480
+    }
+    {
+      name: chip_sw_eg2_pbf_debug_fault_cheriot_inject_fail
+      uvm_test_seq: chip_sw_eg2_pbf_debug_fault_vseq
+      sw_images: ["//sw/device/tests/eg2_pbf:eg2_pbf_debug_fault_cheriot_inject_fail:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_periph"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=200_000_000", "+eg2_closes=chip_sw_eg2_pbf_debug_fault:REQ_PBF_20,REQ_PBF_07"]
+      run_timeout_mins: 480
+    }
     {
       name: chip_sw_eg2_pbf_sensor_sb
       uvm_test_seq: chip_sw_eg2_pbf_sensor_sb_vseq
@@ -1091,6 +1183,13 @@
               "chip_sw_eg2_pbf_memory_sb_cheriot_direct",
               "chip_sw_eg2_pbf_memory_fault",
               "chip_sw_eg2_pbf_memory_fault_cheriot",
+              // chip_sw_eg2_pbf_debug_sb, chip_sw_eg2_pbf_debug_fault (REQ_PBF_20).
+              "chip_sw_eg2_pbf_debug_sb",
+              "chip_sw_eg2_pbf_debug_sb_direct",
+              "chip_sw_eg2_pbf_debug_sb_cheriot",
+              "chip_sw_eg2_pbf_debug_sb_cheriot_direct",
+              "chip_sw_eg2_pbf_debug_fault",
+              "chip_sw_eg2_pbf_debug_fault_cheriot",
               "chip_sw_eg2_pbf_sensor_sb",
               "chip_sw_eg2_pbf_sensor_sb_direct",
               "chip_sw_eg2_pbf_sensor_sb_cheriot",

@@ -224,7 +224,11 @@ eg2_late_pre:
   li   a1, 0x20   // misa after the lock is not the locked mode's
   j    eg2_late_rv_end
 .Lfail_misa2:
+#ifdef EG2_SWITCH_INJECT_FAIL
+  li   a0, 2      // the check this build broke (eg2_late_rv_end prints EG2_INJECT_CAUGHT)
+#else
   li   a0, 0
+#endif
   li   a1, 0x21   // misa changed by a request after an ePMP lock
   j    eg2_late_rv_end
 .Lfail_readback:

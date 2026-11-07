@@ -86,6 +86,11 @@ class chip_sw_eg2_switch_err_vseq extends chip_sw_eg2_cheriot_vseq;
                                           1'b1));
       `uvm_info(`gfn, $sformatf("EG2 fault: CHERIoT switch state bit %0d flipped", bitpos),
                 UVM_LOW)
+      // The sparse-FSM macro's own check (PRIM_FLOP_SPARSE_FSM: the state is one of the encoded
+      // states) fails on the invalid state the flip makes on purpose, as in OpenTitan's sec_cm
+      // fault injection, which turns it off for the same reason (2026-11-07). The error state and
+      // the fatal_hw_err alert are what the test checks.
+      $assertoff(0, "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.u_cheriot_switch.u_state_regs_A");
       if (!uvm_hdl_deposit(path, v)) `uvm_fatal(`gfn, {"cannot deposit ", path})
       result = 0;
     end else begin

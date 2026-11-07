@@ -49,8 +49,12 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
 
   rand phase_e phases[PhNum];
   rand bit [31:0] vals[8];
+  // A permutation of the five phases. PhNum is the count, not a phase: `unique` alone let the
+  // solver draw it and drop a real phase, and the case below ran ph_reset_halt for it out of order
+  // (chip_eg2_rv_dm_reset_corners_cheriot hung after "reset corners: PhNum", 2026-11-07).
   constraint phases_c {
     unique {phases};
+    foreach (phases[i]) phases[i] != PhNum;
   }
 
   // ndmreset pulsed; waits for the reboot's lines and checks the reset reason and the module
@@ -261,7 +265,8 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
         PhNdmAbstract: ph_ndm_abstract(ok);
         PhNdmSba: ph_ndm_sba(ok);
         PhDmactive: ph_dmactive(ok);
-        default: ph_reset_halt(ok);
+        PhResetHalt: ph_reset_halt(ok);
+        default: `uvm_fatal(`gfn, $sformatf("not a phase: %s", phases[i].name()))
       endcase
       if (!ok || sw_ended()) return;
     end

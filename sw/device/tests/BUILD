@@ -5377,6 +5377,7 @@ opentitan_test(
     verilator = verilator_params(timeout = "long"),
     deps = [
         "//hw/top:top_lib",
+        "//sw/device/lib/base:memory",
         "//sw/device/lib/dif:pinmux",
         "//sw/device/lib/runtime:log",
         "//sw/device/lib/runtime:print",

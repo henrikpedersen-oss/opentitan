@@ -620,6 +620,8 @@
       [
         +use_jtag_dmi=1
         +sw_test_timeout_ns=1000_000_000
+        +eg2_param_parts=1
+        +eg2_param_n_sba_batches=4
         +eg2_mutate=tl_meta_two_pending
       ]
       run_timeout_mins: 720

@@ -152,6 +152,9 @@ class chip_sw_eg2_pbf_debug_fault_vseq extends chip_sw_eg2_pbf_mem_base_vseq;
 
   protected task session(bit [31:0] fp, bit [31:0] f, bit [31:0] mv);
     uvm_reg_data_t data;
+    // The SBA write's outcome: finished (its JTAG accesses returned) and its status.
+    bit sba_done, ndm_written;
+    sba_access_err_e sba_st = SbaErrNone;
     wait_bench_step(1);
     if (!lc_debug_enabled()) begin
       `uvm_info(`gfn, "EG2_PBF debug disabled: the software resets itself", UVM_LOW)
@@ -166,10 +169,10 @@ class chip_sw_eg2_pbf_debug_fault_vseq extends chip_sw_eg2_pbf_mem_base_vseq;
     fork
       begin : sba
         if (fp) begin
-          sba_access_err_e st;
           logic [31:0] v[$];
           v.push_back(mv);
-          cfg.debugger.sba_write(Mailbox, v, st);
+          cfg.debugger.sba_write(Mailbox, v, sba_st);
+          sba_done = 1'b1;
         end
       end
       begin : fault_thread
@@ -177,18 +180,46 @@ class chip_sw_eg2_pbf_debug_fault_vseq extends chip_sw_eg2_pbf_mem_base_vseq;
           if (fp) cfg.chip_vif.cpu_clk_rst_if.wait_clks($urandom_range(0, 20));
           void'(announce_fault("chip_sw_eg2_pbf_debug_fault_vseq", "insn", "rv_dm ndm reset"));
           csr_wr(.ptr(jtag_dmi_ral.dmcontrol.ndmreset), .value(1), .blocking(1), .predict(1));
+          ndm_written = 1'b1;
         end
         // The reset: the ndm reset, or the escalation the software armed.
         wait (cfg.chip_vif.cpu_rst_n === 1'b0);
       end
     join_any
     wait (cfg.chip_vif.cpu_rst_n === 1'b0);
+    // An ndm reset leaves the debug module and its JTAG path running (RISC-V Debug Specification
+    // 0.13.2, 3.12.2 ndmreset), so the ndmreset write and the SBA write in flight both return:
+    // neither is cut off mid-access. An escalation resets the debug module: its accesses are
+    // abandoned.
+    if (f == 0) begin
+      wait (ndm_written);
+      if (fp) wait (sba_done);
+    end
     disable fork;
     cfg.sw_test_status_vif.sw_test_status = SwTestStatusUnderReset;
     if (f == 0) begin
       csr_wr(.ptr(jtag_dmi_ral.dmcontrol.ndmreset), .value(0), .blocking(1), .predict(1));
     end
     wait (cfg.chip_vif.cpu_rst_n === 1'b1);
+    if (f == 0) begin
+      // No access is left hanging: sbcs.sbbusy reads 0 (debug specification 3.12.18).
+      csr_rd(.ptr(jtag_dmi_ral.sbcs), .value(data), .blocking(1));
+      `DV_CHECK_EQ(dv_base_reg_pkg::get_field_val(jtag_dmi_ral.sbcs.sbbusy, data), 0,
+                   "EG2_PBF sbcs.sbbusy after the ndm reset")
+      if (fp) begin
+        sba_access_err_e st;
+        logic [31:0] q[$];
+        // The access completes or errors, never half done: with no error reported (sberror 0:
+        // the access completed, debug specification 3.12.18) the mailbox holds the whole value;
+        // with an error it holds its old value 0. Retention SRAM keeps it across the reset.
+        cfg.debugger.sba_read(Mailbox, q, st);
+        `DV_CHECK_EQ(st, SbaErrNone, "EG2_PBF SBA read of the mailbox after the ndm reset")
+        `uvm_info(`gfn, $sformatf("EG2_PBF SBA write across the ndm reset: %s, mailbox 0x%08x",
+                                  sba_st.name(), q[0]), UVM_LOW)
+        `DV_CHECK_EQ(q[0], sba_st == SbaErrNone ? mv : 32'h0,
+                     "EG2_PBF mailbox after the SBA write across the ndm reset (whole or none)")
+      end
+    end
     csr_rd(.ptr(jtag_dmi_ral.dmcontrol), .value(data), .blocking(1));
     if (f == 1) begin
       // After the escalation reset the debug module is back at its reset state (spec row).

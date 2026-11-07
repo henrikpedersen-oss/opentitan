@@ -27,7 +27,8 @@
 //             RndCnstLcKeymgrDiv*). The padding to AdvDataWidth / GenDataWidth is not reproduced
 //             and the OTP shares are not descrambled, so the keys are not the chip's keys.
 //             Generated keys: share 0 holds the key, share 1 zero.
-//             NumBootStages = 3 (Earl Grey: keymgr_dpe_earlgrey).
+//             NumBootStages = 4 (Earl Grey since the upstream merge of 2026-11-05: Creator, CreatorInt,
+//             OwnerInt, Owner, Runtime; theory_of_operation.md "Advance").
 // otbn        The processor of eg2_otbn.h behind OTBN's register interface (hw/ip/otbn/doc/
 //             theory_of_operation.md, registers.md). After reset STATUS is BUSY_SEC_WIPE_INT
 //             until edn0 gives URND, then IDLE. EXECUTE runs the program (BUSY_EXECUTE): it is
@@ -412,7 +413,8 @@ class Eg2Otbn : public Eg2IpModel {
 // ---------------------------------------------------------------------------------------------
 class Eg2KeymgrDpe : public Eg2IpModel {
  public:
-  static constexpr unsigned kSlots = 4, kNumBootStages = 3;
+  // kNumBootStages is the highest stage, Runtime (4), at which an advance saturates.
+  static constexpr unsigned kSlots = 4, kNumBootStages = 4;
   enum State { kReset = 0, kAvailable = 1, kDisabled = 2, kInvalid = 3 };
   enum Op { kAdvance = 0, kErase = 1, kGenSw = 2, kGenHw = 3, kDisable = 4, kLoadRoot = 5 };
   enum Dest { kNone = 0, kAes = 1, kKmac = 2, kOtbn = 3, kHmac = 4 };
@@ -641,16 +643,16 @@ class Eg2KeymgrDpe : public Eg2IpModel {
     if (src() >= kSlots || dst() >= kSlots) return false;
     Slot &p = slots_[src()];
     // No boot-stage limit. theory_of_operation.md lists "boot_stage + 1 < NumBootStages" as an
-    // advance condition, but also has advances "from parents with boot_stage > 2" (message =
+    // advance condition, but also has advances "from parents with boot_stage > 3" (message =
     // SW_CDI_INPUT) and keymgr_dpe_key_derivation_test advances its stage-3 OwnerKey; the RTL
-    // (keymgr_dpe_ctrl.sv next_boot_stage) saturates boot_stage at BootStageRuntime (3).
+    // (keymgr_dpe_ctrl.sv next_boot_stage) saturates boot_stage at BootStageRuntime (4).
     if (!p.valid || !(p.policy & 1)) return false;
     bool retain = p.policy & 4;
     if (retain && src() == dst()) return false;
     if (slots_[dst()].valid && dst() != src() && (slots_[dst()].policy & 4)) return false;
     bool enforce = mubi4_true(value(enforce_sw_binding_));  // a MuBi4 (keymgr_dpe.hjson)
-    if (enforce && p.boot_stage <= 2 && !sw_binding_only()) return false;
-    // message = SW_CDI_INPUT || stage inputs (NumBootStages = 3).
+    if (enforce && p.boot_stage <= 3 && !sw_binding_only()) return false;
+    // message = SW_CDI_INPUT || stage inputs (NumBootStages = 4).
     std::vector<uint8_t> msg;
     append_words(msg, sw_binding_, 8);
     if (!sw_binding_only()) {
@@ -660,8 +662,13 @@ class Eg2KeymgrDpe : public Eg2IpModel {
         append(msg, rom_digest());
         append(msg, standin("hw_revision_seed"));
       } else if (p.boot_stage == 1) {
-        append(msg, seed(false));
+        // field_entropy: tied to its default in Earl Grey 2 (earlgrey_pd_main.sv), so the netlist
+        // constant RndCnstFieldEntropySeed is used (theory_of_operation.md "KDF Details"); a
+        // stand-in for it here.
+        append(msg, standin("field_entropy"));
       } else if (p.boot_stage == 2) {
+        append(msg, seed(false));
+      } else if (p.boot_stage == 3) {
         append(msg, seed(true));
       }
     }
@@ -760,10 +767,10 @@ class Eg2KeymgrDpe : public Eg2IpModel {
     for (unsigned i = 0; i < 8; ++i) {
       const Slot *s = i < kSlots ? &slots_[i] : nullptr;
       set_value(meta_lo_[i], s ? s->max_key_version : 0);
-      // METADATA_HIGH: VALID (0), BOOT_STAGE (2:1), ALLOW_CHILD (3), EXPORTABLE (4),
-      // RETAIN_PARENT (5), ALLOW_KEYGEN (6).
+      // METADATA_HIGH: VALID (0), BOOT_STAGE (3:1), ALLOW_CHILD (4), EXPORTABLE (5),
+      // RETAIN_PARENT (6), ALLOW_KEYGEN (7) (registers.md, since the four-stage merge).
       uint32_t hi = 0;
-      if (s && s->valid) hi = 1u | ((s->boot_stage & 3) << 1) | ((s->policy & 0xf) << 3);
+      if (s && s->valid) hi = 1u | ((s->boot_stage & 7) << 1) | ((s->policy & 0xf) << 4);
       set_value(meta_hi_[i], hi);
     }
   }

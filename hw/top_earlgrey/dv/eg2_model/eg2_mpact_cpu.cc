@@ -286,6 +286,10 @@ bool Eg2MpactCpu::step() {
   if (last_fence_i_) {
     key_wait_ = kIcKeyRenewInsns;
     eg2_mpact_step_emulated(m_, 4, 0, 0);
+#ifdef EG2_MPACT_HAS_FENCE_I
+    // MPACT keeps decoded instructions: code written before the FENCE.I runs after it (Zifencei).
+    eg2_mpact_fence_i(m_);
+#endif
     return true;
   }
   // mcounteren on Earl Grey, as Ibex's cs_registers.rst gives it (MPACT keeps only bit 0): the
@@ -311,6 +315,36 @@ bool Eg2MpactCpu::step() {
   if ((!board_ || cfg_.ibex_csrs) && (last_insn_ & 3) == 3 && ibex_csr(last_insn_)) {
     last_emulated_ = true;
     return true;
+  }
+  // Zcb's register instructions, which MPACT-CHERIoT does not decode: Ibex has Zcb in CHERIoT mode
+  // (cheriot.rst excludes only Zcmp there; Earl Grey 2 builds the core with RV32ZcaZcbZcmp), and
+  // the CHERIoT toolchain emits c.mul (2026-11-07: every new CHERIoT image trapped on one in the
+  // test framework). Their registers are x8-x15. Zcb's loads and stores (c.lbu, c.lhu, c.lh, c.sb,
+  // c.sh) are left to MPACT.
+  if ((last_insn_ & 3) != 3 && (last_insn_ & 0xfc03) == 0x9c01) {
+    uint32_t c = last_insn_ & 0xffff;
+    unsigned crd = 8 + ((c >> 7) & 7), crs2 = 8 + ((c >> 2) & 7);
+    uint32_t a = eg2_mpact_gpr(m_, crd), r = 0;
+    bool ok = true;
+    if ((c & 0x60) == 0x40) {
+      r = a * eg2_mpact_gpr(m_, crs2);                // c.mul
+    } else if ((c & 0x60) == 0x60) {
+      switch ((c >> 2) & 7) {
+        case 0: r = a & 0xff; break;                     // c.zext.b
+        case 1: r = uint32_t(int32_t(int8_t(a))); break;  // c.sext.b
+        case 2: r = a & 0xffff; break;                   // c.zext.h
+        case 3: r = uint32_t(int32_t(int16_t(a))); break; // c.sext.h
+        case 5: r = ~a; break;                           // c.not
+        default: ok = false; break;                      // c.zext.w (RV64) and reserved
+      }
+    } else {
+      ok = false;
+    }
+    if (ok) {
+      last_emulated_ = true;
+      eg2_mpact_step_emulated(m_, 2, crd, r);
+      return true;
+    }
   }
   unsigned rd = (last_insn_ >> 7) & 31, rs1 = (last_insn_ >> 15) & 31;
   unsigned rs2 = (last_insn_ >> 20) & 31;

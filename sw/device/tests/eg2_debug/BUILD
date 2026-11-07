@@ -254,3 +254,97 @@ _DMX_TESTS = [
         ]),
     ]
 ]
+
+# chip_rv_dm_perform_debug and chip_rv_dm_perform_debug_cheriot (REQ_CDM_08, REQ_PBF_20): the
+# chip_rv_dm_perform_debug testpoint's procedure (rom_e2e_jtag_debug_*) on this image, after the
+# lock in CHERIoT mode (env/seq_lib/chip_eg2_rv_dm_perform_debug_vseq.sv).
+[
+    opentitan_test(
+        verilator = EG2_VERILATOR,
+        name = "eg2_rv_dm_perform_debug" + mode + variant,
+        srcs = ["eg2_rv_dm_perform_debug.c"],
+        copts = _COPTS,
+        exec_env = _ENVS,
+        local_defines = defines,
+        platform = platform,
+        deps = _DEPS + [":eg2_dm_corners"],
+    )
+    for mode, platform in [
+        ("", None),
+        ("_cheriot", CHERIOT_PLATFORM),
+    ]
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", [
+            "EG2_RV_DM_PERFORM_DEBUG_INJECT_FAIL",
+            "EG2_TEST_INJECT_FAIL",
+        ]),
+    ]
+]
+
+# chip_eg2_rv_dm_code_patch and chip_eg2_rv_dm_lockstep (REQ_CDM_08, REQ_CIB_03; "Debug
+# Controller" / "Corner cases"): code in main SRAM patched over SBA under the instruction cache
+# (eg2_dm_patch.S calls it), and halts, steps and abstract commands with the lockstep comparator
+# on, then a glitch of the shadow core (env/seq_lib/chip_eg2_rv_dm_{code_patch,lockstep}_vseq.sv).
+[
+    opentitan_test(
+        verilator = EG2_VERILATOR,
+        name = src + mode + variant,
+        srcs = [src + ".c"] + extra_srcs,
+        copts = _COPTS,
+        exec_env = _ENVS,
+        local_defines = defines,
+        platform = platform,
+        deps = _DEPS + [
+            ":eg2_dm_corners",
+            "//hw/top:rv_core_ibex_c_regs",
+            "//hw/top:sram_ctrl_c_regs",
+            "//sw/device/lib/base:multibits",
+        ],
+    )
+    for src, extra_srcs in [
+        ("eg2_rv_dm_code_patch", ["eg2_dm_patch.S"]),
+        ("eg2_rv_dm_lockstep", []),
+    ]
+    for mode, platform in [
+        ("", None),
+        ("_cheriot", CHERIOT_PLATFORM),
+    ]
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", [
+            src.upper() + "_INJECT_FAIL",
+            "EG2_TEST_INJECT_FAIL",
+        ]),
+    ]
+]
+
+# chip_sw_rv_dm_cheriot_mode_switch (REQ_CDM_04; both builds, the `_cheriot` one switches),
+# chip_eg2_rv_dm_reg_tags (REQ_CDM_08) and chip_rv_dm_cheriot_progbuf_cap (REQ_CDM_09), CHERIoT
+# mode only: stages of eg2_dm_cap.h under eg2_dm_serve (env/seq_lib/
+# chip_{sw_rv_dm_cheriot_mode_switch,eg2_rv_dm_reg_tags,rv_dm_cheriot_progbuf_cap}_vseq.sv).
+[
+    opentitan_test(
+        verilator = EG2_VERILATOR,
+        name = src + mode + variant,
+        srcs = [src + ".c"],
+        copts = _COPTS,
+        exec_env = _ENVS,
+        local_defines = defines,
+        platform = CHERIOT_PLATFORM if mode == "_cheriot" else None,
+        deps = _DMX_DEPS,
+    )
+    for src, modes in [
+        ("eg2_rv_dm_cheriot_mode_switch", ["", "_cheriot"]),
+        ("eg2_rv_dm_reg_tags", ["_cheriot"]),
+        ("eg2_rv_dm_cheriot_progbuf_cap", ["_cheriot"]),
+    ]
+    for mode in modes
+    for variant, defines in [
+        ("", []),
+        ("_inject_fail", [
+            src.upper() + "_INJECT_FAIL",
+            "EG2_TEST_INJECT_FAIL",
+        ]),
+    ]
+]

@@ -342,6 +342,13 @@ class eg2_iss_wrapper extends uvm_component;
   // chip reset. The controller's local escalation (its own faults) is not modelled.
   protected bit [3:0]    rram_sw_dis;
   protected bit          rram_escalated;
+  // Instruction fetches rram_ctrl answered without an error while the fetch rule refused execution
+  // (watch_rram_host). An instruction from RRAM executed while the rule refuses it is an error only
+  // then: the core also executes from its instruction cache and prefetch buffer, which need no
+  // request to rram_ctrl (2026-11-07: chip_sw_rram_crash_alert and sram_ctrl_meta_lc_escalation ran
+  // on cached code after the escalation and failed). The documents bind rram_ctrl to refuse the
+  // requests, not the core to stop executing what it already holds.
+  protected int unsigned rram_fetch_served_blocked, rram_fetch_refused;
   // Main SRAM's fetch rule (sram_ctrl theory_of_operation.md "Code Execution from SRAM"): with OTP
   // HW_CFG1.EN_SRAM_IFETCH MuBi8True the EXEC CSR decides (MuBi4True allows), otherwise the life
   // cycle's HW_DEBUG_EN (on in TEST_UNLOCKED, DEV and RMA: doc/security/specs/device_life_cycle
@@ -510,6 +517,7 @@ class eg2_iss_wrapper extends uvm_component;
       watch_rram_writes();
       watch_tbre_clears();  // R18, 2026-10-26
       watch_revbm();        // the bitmap at the core's lookups, 2026-11-06
+      watch_rram_host();    // fetches rram_ctrl answered while refusing execution, 2026-11-07
       // The global escalation reaches every sram_ctrl (lc_escalate_en): the retention SRAM's keys
       // are discarded, whether or not the core retires another instruction before the reset.
       forever begin
@@ -1106,6 +1114,13 @@ class eg2_iss_wrapper extends uvm_component;
 
   // CHERIoT-Sail's capability tags over [base, base + size) cleared (one per 8 bytes). R18.
   // The memories with capability tags (REQ_CMS_10): main SRAM, sec SRAM, RRAM.
+  // A capability store (CHERIoT encodings): CSC (STORE, funct3 3), c.csc (quadrant 0, funct3 111)
+  // and c.cscsp (quadrant 2, funct3 111).
+  protected static function bit is_cap_store(bit [31:0] insn);
+    if (insn[1:0] == 2'b11) return insn[6:0] == 7'b0100011 && insn[14:12] == 3'd3;
+    return insn[1:0] != 2'b01 && insn[15:13] == 3'b111;
+  endfunction
+
   protected function bit holds_tags(bit [31:0] addr);
     return (addr >= top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR &&
             addr - top_earlgrey_pkg::TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR <
@@ -1540,6 +1555,17 @@ class eg2_iss_wrapper extends uvm_component;
         exp.match  = 1'b0;
         exp.errors = {exp.errors, "the chip's data access got a bus error and it did not trap; "};
       end
+      // A non-capability store that reached the tag filter clears the tag of the location even
+      // when the host answers it with an error (cheriot_mem_sys theory_of_operation.md, "Tag
+      // Filter": "Writes always look up because a non-capability store must clear the tag of the
+      // location it overwrites"; host and meta errors are merged into d_error). The NVM refuses
+      // every write, so a byte store to a capability in RRAM traps and leaves it untagged
+      // (chip_sw_cheriot_tag_roundtrip, 2026-11-07). A capability store to the NVM is the WTRC's
+      // and leaves the tag as it was when it fails.
+      if (sail_active && sail_rc == 0 && err_store && !is_cap_store(item.insn) &&
+          holds_tags(err_addr)) begin
+        cheriot_sail_cosim_clear_tag({err_addr[31:3], 3'b000});
+      end
     end else begin
       exp.match = cheriot_sail_cosim_step(item.insn, item.pc, cheri_we, item.rd_addr,
                                           item.rd_wcap[32], rd_wdata, item.trap) == 0 && exp.match;
@@ -1854,6 +1880,12 @@ class eg2_iss_wrapper extends uvm_component;
     for (int unsigned i = 0; i < len; i++) inst.mailbox[addr + i] = 1'b1;
   endfunction
 
+  // A bench mailbox byte: eg2_sysmodel takes the chip's value for it as well (an SBA write there
+  // reaches neither model, 2026-11-07: the debug tests' mailbox words mismatched in eg2_sysmodel).
+  static function bit is_mailbox(bit [31:0] addr);
+    return inst != null && inst.mailbox.exists(addr);
+  endfunction
+
   // A sequence of this run halts the core through rv_dm (`by` names it): a debug-mode entry stops
   // the model until the next chip reset (see debug_stopped) instead of failing the run.
   // 2026-11-02.
@@ -2008,9 +2040,16 @@ class eg2_iss_wrapper extends uvm_component;
   //     returns, which the vseq helpers' backdoor_write then reports a second time: skipped), and,
   //     before a step, the window's writes up to the last completed lookup are applied: the model
   //     decides the load with the word the lookup returned, as the filter did.
+  // A write enters the record only when its response has no error, at its request's time: the
+  // window refuses anything but a full-word write with a TL-UL error (cheriot_mem_sys ToO "Access
+  // Checkers"), so a refused halfword or byte write leaves the word as it was
+  // (chip_sw_cheriot_revbm_write_order). A write still waiting for its response may or may not
+  // land: a lookup returning its value is not an error.
   typedef struct { realtime t; bit [31:0] val; } bm_val_t;
   typedef struct { realtime t_a; realtime t_d; int unsigned word; bit [31:0] data; } bm_lookup_t;
+  typedef struct { realtime t; bit wr; int unsigned word; bit [3:0] mask; bit [31:0] data; } bm_dev_req_t;
   protected bm_val_t     bm_hist[int unsigned][$];
+  protected bm_dev_req_t bm_dev_pend[$];             // the device port's requests, to their responses
   protected bm_lookup_t  bm_lookups[$];
   protected int unsigned bm_sba_bytes[bit [31:0]];  // SBA bytes reported at bus time, per address
   protected realtime     bm_guard;                  // two clock periods: a write's way into memory
@@ -2041,14 +2080,23 @@ class eg2_iss_wrapper extends uvm_component;
       @(posedge cfg.chip_vif.cms_clk);
       if (t_prev > 0) bm_guard = 2 * ($realtime - t_prev);
       t_prev = $realtime;
-      // Every host's writes, at the window's device port.
+      // Every host's writes, at the window's device port: requested, then recorded at their
+      // request's time if the response has no error (the port answers in order).
       h = cfg.chip_vif.cms_revbm_dev_h2d;
       d = cfg.chip_vif.cms_revbm_dev_d2h;
-      if (sail_active && h.a_valid && d.a_ready && h.a_opcode != tlul_pkg::Get) begin
-        int unsigned w  = (h.a_address & 32'hfff) >> 2;
-        bit [31:0]   nv = bm_value_at(w, $realtime);
-        for (int b = 0; b < 4; b++) if (h.a_mask[b]) nv[8 * b +: 8] = h.a_data[8 * b +: 8];
-        bm_hist[w].push_back('{t: $realtime, val: nv});
+      if (!cfg.chip_vif.cms_rst_n) bm_dev_pend.delete();  // a reset drops the port's responses
+      else if (h.a_valid && d.a_ready) begin
+        bm_dev_pend.push_back('{t: $realtime, wr: h.a_opcode != tlul_pkg::Get,
+                                word: (h.a_address & 32'hfff) >> 2, mask: h.a_mask,
+                                data: h.a_data});
+      end
+      if (d.d_valid && h.d_ready && bm_dev_pend.size() > 0) begin
+        bm_dev_req_t r = bm_dev_pend.pop_front();
+        if (r.wr && !d.d_error && sail_active) begin
+          bit [31:0] nv = bm_value_at(r.word, r.t);
+          for (int b = 0; b < 4; b++) if (r.mask[b]) nv[8 * b +: 8] = r.data[8 * b +: 8];
+          bm_hist[r.word].push_back('{t: r.t, val: nv});
+        end
       end
       // The core's lookups: the word asked for, then the word returned.
       h = cfg.chip_vif.cms_core_revbm_h2d;
@@ -2094,12 +2142,27 @@ class eg2_iss_wrapper extends uvm_component;
       bit         ok  = (l.data == v0);
       realtime    t_ok = l.t_a;
       bm_lookups_checked++;
-      if (!ok && bm_hist.exists(l.word)) begin
-        foreach (bm_hist[l.word][i]) begin
+      if (!ok) begin
+        if (bm_hist.exists(l.word)) foreach (bm_hist[l.word][i]) begin
           if (bm_hist[l.word][i].t <= t_lo || bm_hist[l.word][i].t > l.t_d) continue;
           if (bm_hist[l.word][i].val == l.data) begin
             ok   = 1'b1;
             t_ok = bm_hist[l.word][i].t;
+          end
+        end
+        // A write of the word requested before the lookup's response and still unanswered.
+        if (!ok) begin
+          foreach (bm_dev_pend[i]) begin
+            bit [31:0] pv;
+            if (!bm_dev_pend[i].wr || bm_dev_pend[i].word != l.word ||
+                bm_dev_pend[i].t <= t_lo || bm_dev_pend[i].t > l.t_d) continue;
+            pv = bm_value_at(l.word, bm_dev_pend[i].t);
+            for (int b = 0; b < 4; b++)
+              if (bm_dev_pend[i].mask[b]) pv[8 * b +: 8] = bm_dev_pend[i].data[8 * b +: 8];
+            if (pv == l.data) begin
+              ok   = 1'b1;
+              t_ok = bm_dev_pend[i].t;
+            end
           end
         end
         if (ok) bm_lookups_newer++;
@@ -2168,17 +2231,62 @@ class eg2_iss_wrapper extends uvm_component;
   // A fetch error the chip takes while EXEC allows execution stays unarmed: the model executes,
   // and the instruction check reports the difference.
   // The same for RRAM disabled (DIS.SW_DIS or the global escalation) and, below, for main SRAM.
+  // Why rram_ctrl refuses an instruction fetch now, or "" if it allows it.
+  protected function string rram_fetch_refusal();
+    rram_escalated |= cfg.chip_vif.rram_ctrl_escalated;
+    if (rram_sw_dis != prim_mubi_pkg::MuBi4False) return $sformatf("DIS.SW_DIS is %0h (RRAM disabled)", rram_sw_dis);
+    if (rram_escalated) return "the global escalation disabled RRAM";
+    if (rram_exec != RramExecMagic) return $sformatf("EXEC is %08h, not the value that allows execution", rram_exec);
+    return "";
+  endfunction
+
   protected function void rram_fetch_rule(eg2_rvfi_item item);
     string why;
-    rram_escalated |= cfg.chip_vif.rram_ctrl_escalated;
     if (item.irq_only) return;
     if (item.pc < RramHost || item.pc - RramHost >= top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_SIZE_BYTES) return;
-    if (rram_sw_dis != prim_mubi_pkg::MuBi4False) why = $sformatf("DIS.SW_DIS is %0h (RRAM disabled)", rram_sw_dis);
-    else if (rram_escalated) why = "the global escalation disabled RRAM";
-    else if (rram_exec != RramExecMagic) why = $sformatf("EXEC is %08h, not the value that allows execution", rram_exec);
-    else return;
+    why = rram_fetch_refusal();
+    if (why == "") return;
+    // Executed from the instruction cache or the prefetch buffer, with no fetch served by rram_ctrl
+    // while it refused: not a request to rram_ctrl (rram_fetch_served_blocked above).
+    if (!item.iside_err && rram_fetch_served_blocked == 0) begin
+      `uvm_info(`gfn, $sformatf({"EG2_ISS the instruction at %08h (order %0d) came from the instruction ",
+                                 "cache or the prefetch buffer while rram_ctrl %s: rram_ctrl served no ",
+                                 "fetch meanwhile (%0d refused)"}, item.pc, item.order, why,
+                                rram_fetch_refused), UVM_HIGH)
+      return;
+    end
     fetch_blocked(item, "RRAM", {"rram_ctrl ", why});
   endfunction
+
+  // rram_ctrl's host port: each instruction fetch (a_user.instr_type MuBi4True) accepted while the
+  // fetch rule refuses execution, and its answer. Answered without an error, it is a fetch rram_ctrl
+  // served against its rule (counted for rram_fetch_rule, which reports the instruction). The port
+  // answers in order. Cleared at rram_ctrl's reset.
+  protected task watch_rram_host();
+    bit q_blocked[$];
+    forever begin
+      tlul_pkg::tl_h2d_t h;
+      tlul_pkg::tl_d2h_t d;
+      @(posedge cfg.chip_vif.rram_ctrl_clk);
+      if (cfg.chip_vif.rram_ctrl_rst_n !== 1'b1) begin
+        q_blocked.delete();
+        continue;
+      end
+      h = cfg.chip_vif.rram_host_h2d;
+      d = cfg.chip_vif.rram_host_d2h;
+      if (h.a_valid && d.a_ready) begin
+        q_blocked.push_back(h.a_user.instr_type == prim_mubi_pkg::MuBi4True &&
+                            rram_fetch_refusal() != "");
+      end
+      if (d.d_valid && h.d_ready && q_blocked.size() > 0) begin
+        bit b = q_blocked.pop_front();
+        if (b) begin
+          if (d.d_error) rram_fetch_refused++;
+          else rram_fetch_served_blocked++;
+        end
+      end
+    end
+  endtask
 
   // Main SRAM's fetch rule (sram_ifetch_otp, sram_hw_debug_en, sram_exec; the table in sram_ctrl
   // "Code Execution from SRAM"), and its global escalation.
@@ -2295,6 +2403,7 @@ class eg2_iss_wrapper extends uvm_component;
     mcen_reported    = 1'b0;
     rram_sw_dis      = prim_mubi_pkg::MuBi4False;
     rram_escalated   = 1'b0;
+    rram_fetch_served_blocked = 0;
     sw_model         = SwUnlocked;
     sw_ena           = prim_mubi_pkg::MuBi4False;  // CHERIOT_ENA's reset value, 0x9
     sw_items_after   = 0;
@@ -2529,6 +2638,12 @@ class eg2_iss_wrapper extends uvm_component;
     stop_armed = 1'b1;
     stop_why   = why;
     `uvm_info(`gfn, $sformatf("EG2_ISS will stop after the next data-access fault: %s", why), UVM_LOW)
+  endfunction
+
+  // Whether the instruction check is stopped until the next chip reset (a stop or a debug-mode
+  // entry): the system model, fed by this wrapper's accesses, then predicts nothing either.
+  function bit model_stopped();
+    return stopped;
   endfunction
 
   function void stop_until_reset(string why);

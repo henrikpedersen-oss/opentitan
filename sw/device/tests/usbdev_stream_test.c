@@ -17,6 +17,7 @@
 // independently, by the receiving code to check that the data has been
 // propagated unmodified and without data loss, corruption, replication etc.
 
+#include "sw/device/lib/base/memory.h"
 #include "sw/device/lib/dif/dif_pinmux.h"
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/runtime/print.h"
@@ -129,8 +130,15 @@ static dif_pinmux_t pinmux;
 
 /**
  * State information for streaming data test
+ *
+ * In the CHERIoT build it is a local of test_main instead: purecap code reaches every global
+ * through CGP, and the globals' section stays within 4 KiB (lld relaxation finding; checked by
+ * eg2_top_verification's `make check-cheriot`); this context alone is 0x1ef8 bytes. It is zeroed
+ * there, as this static one is.
  */
+#ifndef __CHERIOT__
 static usb_testutils_streams_ctx_t stream_test;
+#endif
 
 /**
  * Specify whether to perform verbose logging, for visibility
@@ -178,6 +186,10 @@ static const unsigned nstreams = NUM_STREAMS;
 OTTF_DEFINE_TEST_CONFIG();
 
 bool test_main(void) {
+#ifdef __CHERIOT__
+  usb_testutils_streams_ctx_t stream_test;
+  memset(&stream_test, 0, sizeof(stream_test));
+#endif
   // Context state for streaming test
   usb_testutils_streams_ctx_t *ctx = &stream_test;
 

@@ -165,11 +165,17 @@ bool test_main(void) {
   if (rst_info & kDifRstmgrResetInfoPor) {
     config_alert_handler();
 
-    // Initialize keymgr dpe with otp contents
+    // Initialize keymgr dpe with otp contents: load the root key (UDS), as
+    // keymgr_dpe_testutils_startup does first. From reset an advance call only
+    // loads the root key, which does not reopen the SLOT_POLICY, MAX_KEY_VER
+    // and SW_BINDING write enables the call clears (they reopen after a
+    // successful advance only, keymgr_dpe.hjson), so a second advance call
+    // found them locked: kDifLocked, "KMD:413 = FailedPrecondition" (EG2
+    // 2026-11-07, since "[keymgr_dpe,rtl] Introduce the 4th bootstage" added
+    // the CreatorInt advance here). The escalation needs keymgr out of reset,
+    // not a particular boot stage.
     CHECK_STATUS_OK(
-        keymgr_dpe_testutils_advance_state(&keymgr_dpe, &kCreatorIntKeyParams));
-    CHECK_STATUS_OK(
-        keymgr_dpe_testutils_advance_state(&keymgr_dpe, &kOwnerIntKeyParams));
+        keymgr_dpe_testutils_initial_load_uds(&keymgr_dpe, &kInitialParams));
 
     // DO NOT REMOVE, DV sync message
     LOG_INFO("Keymgr entered Init State");

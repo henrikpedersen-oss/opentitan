@@ -151,9 +151,39 @@ class eg2_inject_registry;
       if (!expected_cnt.exists(target)) expected_cnt[target] = 0;
       expected_cnt[target]++;
       last_hit = i;
+      mutation_caught(i);
       return {entries[i].source, ": ", entries[i].kind};
     end
     return "";
+  endfunction
+
+  // A mutation (eg2_mutate, open until the end) that every check it targets in this run has now
+  // detected: the run ends here with an error, the mutation's verdict being known (the grader reads
+  // the EXPECTED lines and the `EG2_MUTATION <m> active <n>` line the end of the run prints). Without
+  // it a caught mutation ran on to the job's time limit, and a killed run prints no activity line,
+  // so it was graded NO LOG (chip_sw_cheriot_revocation__mut__revbm_rsp_ignored: caught at 6.9 ms,
+  // killed after 8 hours, 2026-11-05). +eg2_mutate_run_on=1 keeps the run going.
+  protected static bit ended;
+  protected static function void mutation_caught(int i);
+    int run_on;
+    string seen;
+    if (ended || entries[i].stop != UntilEnd || !eg2_sb_log_has(entries[i].source, "eg2_mutate")) return;
+    if ($value$plusargs("eg2_mutate_run_on=%d", run_on) && run_on != 0) return;
+    foreach (entries[i].targets[j]) begin
+      string t = entries[i].targets[j];
+      // A check that registered must have detected it; one that did not register (the co-simulation
+      // build's insn check outside EG2 periph runs) counts once it has.
+      if (!entries[i].detected.exists(t)) begin
+        if (has_check(t)) return;
+        continue;
+      end
+      seen = {seen, seen == "" ? "" : ", ", t};
+    end
+    if (seen == "") return;
+    ended = 1'b1;
+    `uvm_error("EG2_INJECT", $sformatf({"%s (%s) caught by every check it targets (%s): the run ",
+                                        "ends here (+eg2_mutate_run_on=1 runs on)"},
+                                       entries[i].source, entries[i].kind, seen))
   endfunction
 
   // Whether the injection the last consult() matched was announced with `diverges`.

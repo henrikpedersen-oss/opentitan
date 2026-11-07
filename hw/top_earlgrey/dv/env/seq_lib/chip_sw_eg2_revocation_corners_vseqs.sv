@@ -373,6 +373,7 @@ class chip_sw_eg2_revocation_race_vseq extends chip_sw_eg2_revocation_corner_ben
     set_param("n_sba_batches", n_sba_batches);
     set_param("spin_max", spin_max);
     set_param("n_hold", n_hold);
+    set_param("parts", 15);  // +eg2_param_parts=<mask> runs only those parts (the hjson's slices)
   endfunction
 endclass
 
@@ -405,6 +406,7 @@ class chip_sw_eg2_revocation_irq_vseq extends chip_sw_eg2_revocation_bench_vseq;
     set_param("n_rounds", n_rounds);
     set_param("period", period);
     set_param("nmi_bark", nmi_bark);
+    set_param("parts", 15);  // +eg2_param_parts=<mask> runs only those parts (the hjson's slices)
   endfunction
 endclass
 

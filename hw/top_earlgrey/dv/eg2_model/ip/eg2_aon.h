@@ -180,6 +180,15 @@ class Eg2Rstmgr : public Eg2IpModel {
 // (the top's esc_rst receiver) resets the chip at once, in any state, recorded in rstmgr as the
 // escalation's hardware request; ESCALATE_RESET_STATUS reads 1 while the request is seen (until the
 // reset, which resets the alert handler). The escalation clock timeout is not modelled.
+// pwrmgr's wake-up sources, as the top numbers them (top_earlgrey.h
+// kTopEarlgreyPowerManagerWakeUps*; the upstream merge of 2026-11-05 put I3C0/I3C1's reset detect at
+// 0 and 1, which moved every other source up by two).
+enum Eg2WakeSrc : unsigned {
+  kEg2WakeI3c0 = 0, kEg2WakeI3c1 = 1, kEg2WakeSysrstCtrl = 2, kEg2WakeAdcCtrl = 3,
+  kEg2WakePinmuxPin = 4, kEg2WakePinmuxUsb = 5, kEg2WakeAonTimer = 6, kEg2WakeSensorCtrl = 7,
+  kEg2WakeCount = 8,
+};
+
 class Eg2Pwrmgr : public Eg2IpModel {
  public:
   Eg2Pwrmgr(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
@@ -299,7 +308,8 @@ class Eg2Pwrmgr : public Eg2IpModel {
   // remains on in low power; pwrmgr.hjson WAKE_INFO.FALL_THROUGH records the cancelled entry.
   void interrupt_wakeup() {
     if (!low_power_ || deep_sleep_ || !(value(control_) & (1u << 4))) return;
-    if (!(value(capture_dis_) & 1)) set_value(wake_info_, value(wake_info_) | (1u << 6));
+    // WAKE_INFO: REASONS (one bit per wake-up source), FALL_THROUGH, ABORT (pwrmgr.hjson).
+    if (!(value(capture_dis_) & 1)) set_value(wake_info_, value(wake_info_) | (1u << kEg2WakeCount));
     sys_.note("pwrmgr: processor interrupt cancelled normal-sleep entry (fall through)");
     exit_low_power(false);
   }
@@ -338,7 +348,7 @@ class Eg2Pwrmgr : public Eg2IpModel {
     if (sys_.reset_pending()) return true;
     // A wake-up already requested and enabled wakes the chip at once.
     uint32_t w = value(wake_status_) & value(wake_en_);
-    for (unsigned s = 0; s < 6; ++s) {
+    for (unsigned s = 0; s < kEg2WakeCount; ++s) {
       if ((w >> s) & 1) {
         wakeup(s);
         break;
@@ -421,7 +431,7 @@ class Eg2AonTimer : public Eg2IpModel {
     // Clearing WKUP_CAUSE withdraws the timer's wake-up request (aon_timer: the request follows
     // the cause).
     if (r == cause_ && !(value(cause_) & 1)) {
-      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(4);
+      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(kEg2WakeAonTimer);
     }
     if (r == wctrl_ || r == dctrl_ || r == wc_hi_ || r == wc_lo_ || r == dc_) {
       // Counts written by software, or settings changed: count on from the current values.
@@ -500,7 +510,7 @@ class Eg2AonTimer : public Eg2IpModel {
     if ((value(wctrl_) & 1) && wcount() >= wthold()) {
       set_intr("wkup_timer_expired");
       set_value(cause_, 1);
-      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup(4);
+      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup(kEg2WakeAonTimer);
     }
     if (value(dctrl_) & 1) {
       if (value(dc_) >= value(bark_)) {
@@ -511,7 +521,7 @@ class Eg2AonTimer : public Eg2IpModel {
         // high until software explicitly acknowledges it by software writing 0 to WKUP_CAUSE"
         // (aon_timer.hjson AON_TIMER.WATCHDOG.BARK: "A bark triggers an interrupt and a wakeup").
         set_value(cause_, 1);
-        if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup(4);
+        if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup(kEg2WakeAonTimer);
       }
       if (value(dc_) >= value(bite_)) {
         if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->reset_request(1);
@@ -671,7 +681,7 @@ class Eg2SensorCtrl : public Eg2IpModel {
       else pm->wakeup_clear(kWakeupSrc);
     }
   }
-  static constexpr unsigned kWakeupSrc = 5;  // top_earlgrey.gen.hjson wakeups: sensor_ctrl wkup_req
+  static constexpr unsigned kWakeupSrc = kEg2WakeSensorCtrl;  // top_earlgrey.gen.hjson wakeups: sensor_ctrl wkup_req
   uint32_t ast_events_ = 0;
   bool wkup_req_ = false;
   unsigned io_pok_lsb_ = 1, io_rails_ = 0;

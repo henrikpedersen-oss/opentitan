@@ -1209,6 +1209,11 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
 
   protected bit [3:0]  alert_en[NEvents];
   protected bit [NEvents-1:0] fatal_en, prev_active;
+  // Events that became active since the last AON step, and whether each was fatal then: a
+  // recoverable event is acknowledged and dropped by the AST within a few clk_io_div4 cycles, far
+  // shorter than an AON step, so a step alone missed it while the chip raised its alert
+  // (2026-11-07: chip_sw_sensor_ctrl_alert_eg2sb, pwrmgr_*_eg2sb "recov_alert nothing predicted").
+  protected bit [NEvents-1:0] pulsed, pulsed_fatal;
   protected bit        cfg_regwen = 1'b1;
   protected bit [1:0]  prev_io_pok;
   protected bit [3:0]  prev_init;
@@ -1248,8 +1253,25 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
     wait (vif.sensor_rst_aon_n === 1'b1 && vif.sensor_rst_n === 1'b1);
   endtask
 
+  // Every change of the event lines between AON steps: an event that becomes active is kept for the
+  // next step, with its FATAL_ALERT_EN bit at that moment.
+  protected task watch_events();
+    forever begin
+      @(vif.sensor_alert_p or vif.sensor_alert_n);
+      for (int i = 0; i < NEvents; i++) begin
+        if (vif.sensor_alert_p[i] === 1'b1 || vif.sensor_alert_n[i] === 1'b0) begin
+          if (!pulsed[i]) pulsed_fatal[i] = fatal_en[i];
+          pulsed[i] = 1'b1;
+        end
+      end
+    end
+  endtask
+
   // The alert agents' items: the first alert of a class after a quiet time is one actual item.
   virtual task watch_outputs();
+    fork
+      watch_events();
+    join_none
     for (int i = 0; i < 2; i++) begin
       automatic int k = i;
       fork
@@ -1298,6 +1320,8 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
     foreach (alert_en[i]) alert_en[i] = prim_mubi_pkg::MuBi4True;
     fatal_en = '0;
     prev_active = '0;
+    pulsed = '0;
+    pulsed_fatal = '0;
     cfg_regwen = 1'b1;
     prev_io_pok = vif.sensor_io_pok;
     prev_init = vif.sensor_init_done;
@@ -1306,13 +1330,15 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
   endfunction
 
   virtual function void step();
-    bit [NEvents-1:0] active;
+    bit [NEvents-1:0] active, live;
     for (int i = 0; i < NEvents; i++) begin
-      active[i] = vif.sensor_alert_p[i] === 1'b1 || vif.sensor_alert_n[i] === 1'b0;
+      live[i] = vif.sensor_alert_p[i] === 1'b1 || vif.sensor_alert_n[i] === 1'b0;
     end
+    // An event active now, or active for a while since the last step (watch_events).
+    active = live | pulsed;
     for (int i = 0; i < NEvents; i++) begin
       if (active[i] && alert_en[i] == prim_mubi_pkg::MuBi4True) begin
-        if (fatal_en[i]) begin
+        if (live[i] ? fatal_en[i] : pulsed_fatal[i]) begin
           set_st("FATAL_ALERT", get_st("FATAL_ALERT") | (1 << i));
           // Fatal: never acknowledged, the alert repeats; one episode while it lasts.
           expect_alert(1, $sformatf("event %0d, fatal", i));
@@ -1325,7 +1351,9 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
         sensor_cg.sample(i, fatal_en[i], 0);
       end
     end
-    prev_active = active;
+    // A pulse that is over counts once; the next episode is a new rising edge.
+    prev_active = live;
+    pulsed = '0;
     sample_status();
   endfunction
 

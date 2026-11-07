@@ -648,6 +648,7 @@ interface chip_if;
   wire pwrmgr_cpu_fetch_en = `PWRMGR_HIER.fetch_en_o == lc_ctrl_pkg::On;
   wire pwrmgr_fast_pwr_state_active = `PWRMGR_HIER.u_fsm.u_state_regs.state_o
       == pwrmgr_pkg::FastPwrStateActive;
+  wire pwrmgr_strap_sampled = `PWRMGR_HIER.u_fsm.strap_sampled_o;
 
 `ifdef GATE_LEVEL
   wire rom_ctrl_done = 0;
@@ -748,6 +749,7 @@ interface chip_if;
 `ifdef GATE_LEVEL
   wire        rram_rma_req = 1'b0;
   wire        cms_clk = 1'b0;
+  wire        cms_rst_n = 1'b1;
   wire        cms_tbre_clear_req = 1'b0;
   wire [31:0] cms_tbre_clear_addr = '0;
   wire        cms_tbre_clear_rmw = 1'b0;
@@ -761,6 +763,7 @@ interface chip_if;
 `else
   wire        rram_rma_req = lc_ctrl_pkg::lc_tx_test_true_loose(`RRAM_CTRL_HIER.rma_req_i);
   wire        cms_clk              = `PD_MAIN_HIER.u_cheriot_mem_sys.clk_i;
+  wire        cms_rst_n            = `PD_MAIN_HIER.u_cheriot_mem_sys.rst_ni;
   wire        cms_tbre_clear_req   = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_done;
   wire [31:0] cms_tbre_clear_addr  = 32'(`PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_addr);
   wire        cms_tbre_clear_rmw   = `PD_MAIN_HIER.u_cheriot_mem_sys.tbre_clear_at_rmw &&
@@ -781,11 +784,19 @@ interface chip_if;
   // controllers' global escalation inputs (rram_ctrl "RRAM Escalation & Disable", sram_ctrl "Global
   // and Local Escalation": once escalated, every later request is blocked). Ports, not internals.
 `ifdef GATE_LEVEL
+  wire        rram_ctrl_clk       = 1'b0;
+  wire tlul_pkg::tl_h2d_t rram_host_h2d = ''0;
+  wire tlul_pkg::tl_d2h_t rram_host_d2h = ''0;
   wire        rram_ctrl_rst_n     = 1'b1;
   wire        rram_ctrl_escalated = 1'b0;
   wire        sram_main_rst_n     = 1'b1;
   wire        sram_main_escalated = 1'b0;
 `else
+  // rram_ctrl's host port, for the instruction model's RRAM fetch rule (eg2_iss_wrapper
+  // watch_rram_host, 2026-11-07): which fetches rram_ctrl answered while it refuses execution.
+  wire        rram_ctrl_clk       = `RRAM_CTRL_HIER.clk_i;
+  wire tlul_pkg::tl_h2d_t rram_host_h2d = `RRAM_CTRL_HIER.host_tl_i;
+  wire tlul_pkg::tl_d2h_t rram_host_d2h = `RRAM_CTRL_HIER.host_tl_o;
   wire        rram_ctrl_rst_n     = `RRAM_CTRL_HIER.rst_ni;
   wire        rram_ctrl_escalated = lc_ctrl_pkg::lc_tx_test_true_loose(
                                         `RRAM_CTRL_HIER.lc_escalate_en_i);

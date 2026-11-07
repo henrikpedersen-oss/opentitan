@@ -61,10 +61,10 @@ CHERIOT_BOTH_MODES = [
     "//sw/device/tests:usbdev_pincfg_test",
     "//sw/device/tests:usbdev_pullup_test",
     "//sw/device/tests:usbdev_setuprx_test",
-    # Not //sw/device/tests:usbdev_stream_test: its globals are 9.4 KiB (the test's own stream
-    # context, 7.9 KiB), and the CHERIoT toolchain reaches a global more than 2 KiB from CGP at the
-    # wrong address (eg2_top_verification status/rtl_tickets.md F21): its CHERIoT build traps at
-    # the first such access. Listed again once the toolchain is fixed.
+    # The stream context (7.9 KiB) is a local of test_main in the CHERIoT build: the globals stay
+    # within 4 KiB, which the CHERIoT toolchain needs (a global more than 2 KiB from CGP is reached
+    # at the wrong address; `make check-cheriot`).
+    "//sw/device/tests:usbdev_stream_test",
     "//sw/device/tests:usbdev_toggle_restore_test",
     "//sw/device/tests:usbdev_vbus_test",
 

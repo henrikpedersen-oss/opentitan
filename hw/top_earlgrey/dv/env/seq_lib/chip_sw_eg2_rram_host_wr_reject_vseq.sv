@@ -76,6 +76,10 @@ class chip_sw_eg2_rram_host_wr_reject_vseq extends chip_sw_eg2_chk_base_vseq;
     `DV_CHECK_EQ(row(off), row_before, $sformatf("RRAM row at 0x%0h changed by an SBA write", addr))
     sba_rd32(addr, data, st);
     `DV_CHECK_EQ(st, SbaErrNone, $sformatf("SBA read of the RRAM host window 0x%0h", addr))
+    // The software polls the flag while the SBA write is in flight, and the model hears of the write
+    // only when the JTAG access returns: it takes the chip's value for the flag, as for any bench mailbox
+    // (2026-11-07: "DUT generated load at 10001ff0 with data 1 but data 0 was expected").
+    eg2_iss_wrapper::backdoor_mailbox(flag, 4);
     sba_wr32(flag, 1, st);
     `DV_CHECK_EQ(st, SbaErrNone, "SBA write of the software's flag")
   endtask

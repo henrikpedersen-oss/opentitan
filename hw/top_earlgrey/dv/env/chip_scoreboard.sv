@@ -383,6 +383,19 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       // copy of the request does not explain (2026-10-29, chip_cheriot_fi_meta: a data-integrity
       // flip at cheriot_mem_sys.cored_tl_d_i). Decided before the base prediction, which compares
       // d_error itself and reports the mismatch inside (48bd34e111 asked afterwards, too late).
+      // The same for a response whose integrity the fault broke (a D-channel flip at
+      // cheriot_mem_sys.cored_tl_d_o, chip_sw_cheriot_bus_intg; a meta SRAM flip,
+      // chip_sw_cheriot_meta_intg_escalation; 2026-11-07): the base prediction's integrity check
+      // reports it as an error otherwise, whether or not d_error is set.
+      if (eg2_inject_registry::in_use() && !item.d_error &&
+          !item.is_d_chan_intg_ok(.throw_error(1'b0))) begin
+        string src = eg2_inject_registry::consult("chip_tl");
+        if (src != "") begin
+          `uvm_info(`gfn, $sformatf("TL-UL response integrity at 0x%08x EXPECTED (injected by %s)",
+                                    item.a_addr, src), UVM_LOW)
+          return 1'b1;
+        end
+      end
       if (item.d_error && eg2_inject_registry::in_use()) begin
         string src = eg2_inject_registry::consult("chip_tl");
         if (src != "") begin

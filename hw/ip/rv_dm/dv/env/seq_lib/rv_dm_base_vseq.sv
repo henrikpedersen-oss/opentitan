@@ -139,10 +139,35 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     `downcast(tl_mem_ral,dv_base_ral);
   endfunction
 
+  // The common stress and rand-reset tests create their sequence by name and start a clone of it
+  // with no parent (cip_base_vseq::run_seq_with_rand_reset_vseq): the mode sequencer goes with it.
+  virtual function uvm_sequence create_seq_by_name(string name);
+    uvm_sequence    s = super.create_seq_by_name(name);
+    rv_dm_base_vseq v;
+    if ($cast(v, s) && v != null) v.m_mode_sequencer = m_mode_sequencer;
+    return s;
+  endfunction
+
+  virtual function void do_copy(uvm_object rhs);
+    rv_dm_base_vseq r;
+    super.do_copy(rhs);
+    if ($cast(r, rhs) && r != null) m_mode_sequencer = r.m_mode_sequencer;
+  endfunction
+
   task pre_start();
     rv_dm_mode_seq mode_seq;
     bit strap_en = 1'b0;
 
+    // A child sequence (rv_dm_tap_fsm_vseq's smoke sequence, the stress and rand-reset sequences of
+    // the common tests) takes the mode sequencer of the rv_dm sequence that started it: only the
+    // test's own sequence gets it from rv_dm_base_test::configure_sequence. Without this those
+    // tests stopped at the check below (2026-11-07: rv_dm_tap_fsm, *_with_rand_reset).
+    if (m_mode_sequencer == null) begin
+      rv_dm_base_vseq parent;
+      if ($cast(parent, get_parent_sequence()) && parent != null) begin
+        m_mode_sequencer = parent.m_mode_sequencer;
+      end
+    end
     // Before starting, check that the virtual sequence has been configured
     if (m_mode_sequencer == null) `uvm_fatal(get_name(), "m_mode_sequencer not configured.")
 

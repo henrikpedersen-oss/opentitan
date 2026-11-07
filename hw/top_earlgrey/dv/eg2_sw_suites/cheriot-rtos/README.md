@@ -8,7 +8,7 @@ where the RTOS test suite alone takes minutes on the RTL.
 ```
 make eg2sim                 # the model, from hw/top_earlgrey/dv/eg2_model (lowRISC/ot-model)
 make sw-suite-rtos          # every run; SUITE_JOBS=, PATTERN= (runs whose name contains it), UPDATE=1
-make sw-suite-rtos FW_BUILD=1   # rebuild the firmware first, in ibex_cheriot_verification
+make sw-suite-rtos FW_BUILD=1   # rebuild the firmware first (make rtos-firmware)
 ```
 
 ## What it runs
@@ -71,8 +71,8 @@ EG2 specification).
 
 ## Firmware
 
-The firmware comes from ibex_cheriot_verification's build (`IBEX_CV`, default
-`~/work/ibex_cheriot_verification`; `make rtos-firmware` there), and `rtos_prerelease` from its
-flake (`nix build <IBEX_CV_FLAKE>#cheriot-rtos-test-suite`, done by the runner), until this
-repository builds its own. Output: `scratch/sw-suites/cheriot-rtos/` in eg2_top_verification (`report.txt`, `results.txt`,
+The firmware is built in eg2_top_verification (`RTOS_TOP`, default the checkout above `eg2/`):
+`make rtos-firmware` builds `cheriot-rtos-test-suite/` (the suite's firmware, `cheriot-rtos` and
+`cheri-c-tests`, plain files since 2026-11-06), and `rtos_prerelease` comes from this repository's
+flake (`nix build .#cheriot-rtos-test-suite`, done by the runner). Output: `scratch/sw-suites/cheriot-rtos/` in eg2_top_verification (`report.txt`, `results.txt`,
 a directory per run with `run.log` and `uart0.log`).

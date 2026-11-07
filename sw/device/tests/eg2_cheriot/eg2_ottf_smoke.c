@@ -59,8 +59,11 @@ static const window_t kWindows[] = {EG2_WINDOW_TABLE(EG2_WINDOW_ROW_)};
 
 enum {
   kWindowCount = ARRAYSIZE(kWindows),
+  // The random order's step: a prime that does not divide the count, so every window is visited
+  // (the upstream merge made the count a multiple of 7, the step until 2026-11-07).
+  kStep = kWindowCount % 7 != 0 ? 7 : kWindowCount % 11 != 0 ? 11 : 13,
 };
-_Static_assert(kWindowCount % 7 != 0, "the random order steps by 7 through the windows");
+_Static_assert(kWindowCount % kStep != 0, "the random order's step must be prime to the count");
 
 static eg2_tally_t tally;
 
@@ -130,7 +133,7 @@ bool test_main(void) {
   for (uint32_t k = 0; k < n; ++k) {
     uint32_t i = order == 1 ? k
                  : order == 2 ? kWindowCount - 1 - k
-                              : (start + k * 7) % kWindowCount;  // 7 is prime to the count
+                              : (start + k * kStep) % kWindowCount;  // kStep is prime to the count
     // A window at the base of an earlier one (sram_ctrl_meta.ram under cheriot_mem_sys.revbm, which
     // only the memory subsystem reaches) has no pointer of its own.
     bool alias = false;

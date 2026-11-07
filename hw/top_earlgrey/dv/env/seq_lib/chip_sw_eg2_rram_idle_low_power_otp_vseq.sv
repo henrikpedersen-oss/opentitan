@@ -104,6 +104,8 @@ class chip_sw_eg2_rram_idle_low_power_otp_vseq extends chip_sw_eg2_chk_base_vseq
           cfg.debugger.set_dmactive(1);
           dm_active = 1'b1;
         end
+        // The software polls the flag: the model takes the chip's value for it (bench mailbox).
+        eg2_iss_wrapper::backdoor_mailbox(flag, 4);
         sba_wr32(flag, step + 1, st);
         `DV_CHECK_EQ(st, SbaErrNone, "SBA write of the software's flag")
       end

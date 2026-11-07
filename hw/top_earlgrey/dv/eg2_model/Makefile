@@ -98,6 +98,17 @@ $(OUT)/nist_cavp_check: $(NIST_SRCS) $(NIST_C) $(HDRS) $(TOOLPATHS)
 	$(CXX) $(CXXFLAGS) -I$(CURDIR) $(NIST_SRCS) $(abspath $(OUT))/nist_obj/*.o -o $@ \
 	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
 
+# dm_test: the debug module reference model's self-test through its DPI functions (no simulator,
+# no SystemC); EG2_DM_TEST_BREAK=1 must make it fail.
+.PHONY: dm_test
+dm_test: $(OUT)/eg2_dm_dpi_test
+	$(OUT)/eg2_dm_dpi_test
+	! EG2_DM_TEST_BREAK=1 $(OUT)/eg2_dm_dpi_test > /dev/null
+
+$(OUT)/eg2_dm_dpi_test: dpi/eg2_dm_dpi.cc dpi/eg2_dm_dpi_test.cc ip/eg2_dm_core.h
+	@mkdir -p $(OUT)
+	$(CXX) -std=c++17 -O2 -g -Wall -Wextra -Werror dpi/eg2_dm_dpi.cc dpi/eg2_dm_dpi_test.cc -o $@
+
 $(OUT)/eg2_sysmodel_replay: dpi/eg2_sysmodel_replay.cc dpi/eg2_sysmodel.h $(OUT)/libeg2sysmodel.so
 	$(CXX) -std=c++17 -O2 -g -Wall -I$(CURDIR)/dpi $< -o $@ \
 	  -L$(abspath $(OUT)) -Wl,-rpath,$(abspath $(OUT)) -leg2sysmodel

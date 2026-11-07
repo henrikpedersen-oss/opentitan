@@ -209,7 +209,7 @@ class Eg2Usbdev : public Eg2IpModel {
       uint32_t ev = 1;
       if ((value(drive_) >> 16) & 1) {
         ev |= 1u << 10;  // bus_not_idle once the chip's drive goes at low-power entry
-        eg2_request_wakeup(sys_, 3);
+        eg2_request_wakeup(sys_, kEg2WakePinmuxUsb);
       }
       aon_ev_ = ev;
       set_value(wake_ev_, ev);
@@ -224,7 +224,7 @@ class Eg2Usbdev : public Eg2IpModel {
       aon_ev_ = 0;
       set_value(wake_ev_, 0);
       dbg(1, "wake_control.wake_ack: the wake module stops, its wake-up request ends");
-      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(3);
+      if (auto *pm = dynamic_cast<Eg2Pwrmgr *>(sys_.model("pwrmgr"))) pm->wakeup_clear(kEg2WakePinmuxUsb);
     }
     debug_lines();
   }
@@ -466,7 +466,7 @@ class Eg2Usbdev : public Eg2IpModel {
     if ((aon_ev_ >> bit) & 1) return;
     aon_ev_ |= 1u << bit;
     dbgf(1, "wake module: %s (wake_events bit %u), wake-up requested", what, bit);
-    eg2_request_wakeup(sys_, 3);
+    eg2_request_wakeup(sys_, kEg2WakePinmuxUsb);
   }
   // ---- The bus as usbdev's link FSM and the wake module see it, one full-speed bit (83.3 ns) at a
   // time, while the host runs. Rules: theory_of_operation.md "USB Link State" (states and link

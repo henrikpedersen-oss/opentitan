@@ -15,7 +15,12 @@ static const eg2_dev_window_t kWindows[] = {
 #undef EG2_DEV_WINDOW_
 };
 
-static const char *const kNames[] = {
+// Fixed-width names, not pointers: in CHERIoT a pointer table is a table of capabilities, which
+// the linker puts in .data (0x178 bytes here), and every CHERIoT image must keep .data within
+// 0x1000 bytes (the lld relaxation limit `make check-cheriot` enforces; chip_sw_eg2_testrig_seq was
+// 8 bytes over, 2026-11-07). A char array has no capabilities and stays in .rodata.
+enum { kEg2DevNameLen = 24 };
+static const char kNames[][kEg2DevNameLen] = {
 #define EG2_DEV_NAME_(id, name, base, size) name,
     EG2_DEV_TABLE(EG2_DEV_NAME_)
 #undef EG2_DEV_NAME_

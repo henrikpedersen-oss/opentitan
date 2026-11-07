@@ -16,6 +16,7 @@ class rv_dm_env extends cip_base_env #(
 
   jtag_dmi_monitor   m_jtag_dmi_monitor;
   sba_access_monitor m_sba_access_monitor;
+  rv_dm_cmodel_sb    m_cmodel_sb;
 
   `uvm_component_new
 
@@ -65,6 +66,11 @@ class rv_dm_env extends cip_base_env #(
     m_sba_access_monitor = sba_access_monitor#()::type_id::create("m_sba_access_monitor", this);
     m_sba_access_monitor.cfg = cfg.m_jtag_agent_cfg;
     m_sba_access_monitor.jtag_dmi_ral = cfg.jtag_dmi_ral;
+
+    if (cfg.en_cmodel) begin
+      m_cmodel_sb = rv_dm_cmodel_sb::type_id::create("m_cmodel_sb", this);
+      m_cmodel_sb.cfg = cfg;
+    end
   endfunction
 
   function void connect_phase(uvm_phase phase);
@@ -80,6 +86,18 @@ class rv_dm_env extends cip_base_env #(
       m_sba_access_monitor.analysis_port.connect(scoreboard.sba_access_fifo.analysis_export);
       m_tl_sba_agent.monitor.a_chan_port.connect(scoreboard.tl_sba_a_chan_fifo.analysis_export);
       m_tl_sba_agent.monitor.d_chan_port.connect(scoreboard.tl_sba_d_chan_fifo.analysis_export);
+    end
+
+    if (cfg.en_cmodel) begin
+      if (!cfg.en_scb) begin
+        m_jtag_agent.monitor.analysis_port.connect(m_jtag_dmi_monitor.jtag_item_fifo.analysis_export);
+      end
+      m_jtag_dmi_monitor.req_analysis_port.connect(m_cmodel_sb.dmi_req_fifo.analysis_export);
+      m_jtag_dmi_monitor.analysis_port.connect(m_cmodel_sb.dmi_fifo.analysis_export);
+      m_tl_agents[cfg.mem_ral_name].monitor.d_chan_port.connect(m_cmodel_sb.mem_d_fifo.analysis_export);
+      m_tl_sba_agent.monitor.a_chan_port.connect(m_cmodel_sb.sba_a_fifo.analysis_export);
+      m_tl_sba_agent.monitor.d_chan_port.connect(m_cmodel_sb.sba_d_fifo.analysis_export);
+      m_jtag_agent.monitor.analysis_port.connect(m_cmodel_sb.jtag_fifo.analysis_export);
     end
 
     if (cfg.is_active) begin

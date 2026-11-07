@@ -136,6 +136,16 @@ filesets:
       - seq_lib/chip_eg2_rv_dm_cap_bypass_vseq.sv: {is_include_file: true}
       - seq_lib/chip_eg2_rv_dm_halt_revocation_vseq.sv: {is_include_file: true}
       - seq_lib/chip_eg2_rv_dm_priv_vseq.sv: {is_include_file: true}
+      # chip_rv_dm_perform_debug, chip_rv_dm_perform_debug_cheriot (REQ_CDM_08).
+      - seq_lib/chip_eg2_rv_dm_perform_debug_vseq.sv: {is_include_file: true}
+      # chip_eg2_rv_dm_code_patch, chip_eg2_rv_dm_lockstep (REQ_CDM_08, REQ_CIB_03).
+      - seq_lib/chip_eg2_rv_dm_code_patch_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_lockstep_vseq.sv: {is_include_file: true}
+      # chip_sw_rv_dm_cheriot_mode_switch, chip_eg2_rv_dm_reg_tags, chip_rv_dm_cheriot_progbuf_cap.
+      - seq_lib/chip_eg2_rv_dm_cdm_base_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_sw_rv_dm_cheriot_mode_switch_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_eg2_rv_dm_reg_tags_vseq.sv: {is_include_file: true}
+      - seq_lib/chip_rv_dm_cheriot_progbuf_cap_vseq.sv: {is_include_file: true}
       - seq_lib/chip_eg2_tl_vseq_list.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_tl_errors_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_tl_intg_links_vseq.sv: {is_include_file: true}
@@ -163,6 +173,8 @@ filesets:
       - seq_lib/chip_sw_eg2_pbf_meta_zeroed_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_pbf_rom_ext_vseq.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_pbf_cheriot_vseq.sv: {is_include_file: true}
+      # chip_sw_eg2_pbf_debug_sb, chip_sw_eg2_pbf_debug_fault (REQ_PBF_20).
+      - seq_lib/chip_sw_eg2_pbf_debug_vseq.sv: {is_include_file: true}
       - seq_lib/chip_eg2_nist_vseq_list.sv: {is_include_file: true}
       - seq_lib/chip_sw_eg2_nist_vseq.sv: {is_include_file: true}
       - seq_lib/chip_eg2_rng_vseq_list.sv: {is_include_file: true}

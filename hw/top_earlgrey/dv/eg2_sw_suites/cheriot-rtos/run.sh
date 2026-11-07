@@ -29,12 +29,12 @@
 # expected.txt from this run (review the diff before committing it).
 #
 #   run.sh [--update] [--build] [-j JOBS] [PATTERN]
-#     --build    build the firmware first (make rtos-firmware in ibex_cheriot_verification)
+#     --build    build the firmware first (make rtos-firmware in eg2_top_verification)
 #     PATTERN    run only the runs whose name contains it
 #
-# Firmware: ibex_cheriot_verification's build (IBEX_CV, default ~/work/ibex_cheriot_verification),
-# and for an image named nix:<package>/<path> its flake's package (IBEX_CV_FLAKE, default IBEX_CV;
-# nix build), until this repository builds its own. The model: build/systemc-model/eg2sim (make eg2sim).
+# Firmware: eg2_top_verification's build (RTOS_TOP, default the checkout above eg2/: make rtos-firmware
+# builds cheriot-rtos-test-suite/ since 2026-11-06), and for an image named nix:<package>/<path> its
+# flake's package (RTOS_FLAKE, default RTOS_TOP; nix build). The model: build/systemc-model/eg2sim (make eg2sim).
 # Output: build/sw-suites/cheriot-rtos/ (a directory per run: run.log, uart0.log; results.txt,
 # report.txt).
 
@@ -42,7 +42,8 @@ set -uo pipefail
 # sort and join must collate alike (join compares results.txt with expected.txt).
 export LC_ALL=C
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${HERE}/../env.sh"   # EG2_ROOT, EG2SIM, SW_SUITES_OUT, IBEX_CV
+source "${HERE}/../env.sh"   # EG2_ROOT, EG2SIM, SW_SUITES_OUT
+RTOS_TOP="${RTOS_TOP:-$(cd "${EG2_ROOT}/.." && pwd)}"
 OUT="${SW_SUITES_OUT}/cheriot-rtos"
 EXPECTED="${HERE}/expected.txt"
 RUNS="${HERE}/runs.txt"
@@ -61,18 +62,17 @@ PATTERN="${1:-}"
 
 [[ -x "${EG2SIM}" ]] || { echo "run.sh: no ${EG2SIM} (make eg2sim)" >&2; exit 2; }
 if [[ ${BUILD} -eq 1 ]]; then
-  make -C "${IBEX_CV}" rtos-firmware || { echo "run.sh: the firmware build failed" >&2; exit 2; }
+  make -C "${RTOS_TOP}" rtos-firmware || { echo "run.sh: the firmware build failed" >&2; exit 2; }
 fi
 # The boot stub every run loads: it owns the reset vector and jumps to the code RAM.
-BOOT="${IBEX_CV}/ibex/dv/cheriot-rtos-test-suite/sw/boot/sim_boot_stub/sim_boot_stub"
-[[ -f "${BOOT}" ]] || { echo "run.sh: no boot stub ${BOOT} (make sim-boot-stub in ${IBEX_CV})" >&2; exit 2; }
+BOOT="${RTOS_TOP}/cheriot-rtos-test-suite/sw/boot/sim_boot_stub/sim_boot_stub"
+[[ -f "${BOOT}" ]] || { echo "run.sh: no boot stub ${BOOT} (make sim-boot-stub in ${RTOS_TOP})" >&2; exit 2; }
 
 mkdir -p "${OUT}"
 awk '!/^#/ && NF >= 2 && $2 != "must-print" && $2 != "must-fail" {print $1}' "${RUNS}" \
   | grep -F -- "${PATTERN}" > "${OUT}/runs.txt"
 # Each run's image, as a path: a path in the checkout, or nix:<package>/<path in it>, a package of
-# ibex_cheriot_verification's flake (IBEX_CV_FLAKE, default IBEX_CV), built (or found in the nix
-# store) here.
+# this repository's flake (RTOS_FLAKE, default RTOS_TOP), built (or found in the nix store) here.
 missing=0
 : > "${OUT}/images.txt"
 declare -A NIXOUT
@@ -81,15 +81,15 @@ while read -r run img _; do
   if [[ ${img} == nix:* ]]; then
     pkg=${img#nix:}; pkg=${pkg%%/*}
     [[ -n "${NIXOUT[${pkg}]:-}" ]] || NIXOUT[${pkg}]=$(nix build --no-link --print-out-paths \
-      "${IBEX_CV_FLAKE:-${IBEX_CV}}#${pkg}" 2>/dev/null | head -1)
+      "${RTOS_FLAKE:-${RTOS_TOP}}#${pkg}" 2>/dev/null | head -1)
     path="${NIXOUT[${pkg}]}/${img#nix:${pkg}/}"
   else
-    path="${IBEX_CV}/${img}"
+    path="${RTOS_TOP}/${img}"
   fi
   [[ -f "${path}" ]] || { echo "run.sh: ${run}: no image ${path} (${img})" >&2; missing=1; }
   printf '%s %s\n' "${run}" "${path}" >> "${OUT}/images.txt"
 done < <(awk '!/^#/ && NF >= 2 && $2 != "must-print" && $2 != "must-fail"' "${RUNS}")
-[[ ${missing} -eq 0 ]] || { echo "run.sh: build the firmware (--build, or make rtos-firmware in ${IBEX_CV})" >&2; exit 2; }
+[[ ${missing} -eq 0 ]] || { echo "run.sh: build the firmware (--build, or make rtos-firmware in ${RTOS_TOP})" >&2; exit 2; }
 echo "== $(wc -l < "${OUT}/runs.txt") runs on $(basename "${EG2SIM}") --board rtos_soc (${EG2SIM}), ${JOBS} at a time"
 
 run_one() {
@@ -228,7 +228,7 @@ run_one() {
     }' "${dir}/uart.txt"
 }
 export -f run_one
-export EG2SIM BOOT IBEX_CV OUT RUNS EXPECTED
+export EG2SIM BOOT RTOS_TOP OUT RUNS EXPECTED
 start=$(date +%s)
 # raw.txt: test, outcome, wall seconds, instructions, simulated us, what happened (tab-separated);
 # the times are the run's, shared by its tests.

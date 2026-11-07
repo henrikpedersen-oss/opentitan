@@ -42,6 +42,8 @@ package rv_dm_env_pkg;
   `include "rv_dm_env_cov.sv"
   `include "rv_dm_virtual_sequencer.sv"
   `include "rv_dm_scoreboard.sv"
+  `include "rv_dm_reg_cov.sv"
+  `include "rv_dm_cmodel_sb.sv"
   `include "rv_dm_env.sv"
   `include "rv_dm_vseq_list.sv"
 

@@ -793,12 +793,32 @@
       run_timeout_mins: 480
     }
     {
+    // chip_sw_cheriot_revocation_race in three slices by part (the whole test took more than 12
+    // hours, 2026-11-06): A (SBA race), C (hold ahead of and behind the sweep), B and D (sweeps).
       name: chip_sw_cheriot_revocation_race
       uvm_test_seq: chip_sw_eg2_revocation_race_vseq
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_race_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000"]
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000", "+eg2_param_parts=1", "+eg2_param_n_sba_batches=4"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_cheriot_revocation_race_hold
+      uvm_test_seq: chip_sw_eg2_revocation_race_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_race_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000", "+eg2_param_parts=4", "+eg2_param_n_hold=2"]
+      run_timeout_mins: 720
+    }
+    {
+      name: chip_sw_cheriot_revocation_race_sweep
+      uvm_test_seq: chip_sw_eg2_revocation_race_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_race_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000", "+eg2_param_parts=10"]
       run_timeout_mins: 720
     }
     {
@@ -807,7 +827,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_race_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000"]
+      run_opts: ["+use_jtag_dmi=1", "+sw_test_timeout_ns=1000_000_000", "+eg2_param_parts=2"]
       run_timeout_mins: 720
     }
     // chip_sw_cheriot_tbre_fault: word_err, then the case its name gives. Default build mode: the
@@ -850,7 +870,7 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_irq_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_opts: ["+sw_test_timeout_ns=500_000_000", "+eg2_param_parts=14", "+eg2_param_n_rounds=2"]
       run_timeout_mins: 480
     }
     {
@@ -859,7 +879,18 @@
       sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_irq_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=500_000_000"]
+      run_opts: ["+sw_test_timeout_ns=500_000_000", "+eg2_param_parts=2"]
+      run_timeout_mins: 480
+    }
+    {
+      // Part 1 of chip_sw_cheriot_revocation_irq (preemption rounds) on its own: the whole test
+      // took more than 8 hours (killed after 7 of 10 rounds, 2026-11-05), so it runs as two slices.
+      name: chip_sw_cheriot_revocation_irq_preempt
+      uvm_test_seq: chip_sw_eg2_revocation_irq_vseq
+      sw_images: ["//sw/device/tests/eg2_cheriot:eg2_revocation_irq_cheriot:1:new_rules"]
+      en_run_modes: ["sw_test_mode_test_rom"]
+      build_mode: "en_eg2_cosim"
+      run_opts: ["+sw_test_timeout_ns=500_000_000", "+eg2_param_parts=1", "+eg2_param_n_rounds=8"]
       run_timeout_mins: 480
     }
     {
@@ -1014,7 +1045,7 @@
         "chip_sw_cheriot_revbm_write_order",
         "chip_sw_cheriot_revocation_bounds",
         "chip_sw_cheriot_trvk_fault_verdict", "chip_sw_cheriot_trvk_fault_tag_out", "chip_sw_cheriot_trvk_fault_bit_select", "chip_sw_cheriot_trvk_fault_req_required", "chip_sw_cheriot_trvk_fault_out_of_range", "chip_sw_cheriot_trvk_fault_sealing", "chip_sw_cheriot_trvk_fault_align"
-        "chip_sw_cheriot_revoke_store_clear", "chip_sw_cheriot_revocation_race", "chip_sw_cheriot_tbre_fault_word_intg", "chip_sw_cheriot_tbre_fault_bm_err", "chip_sw_cheriot_tbre_fault_bm_intg", "chip_sw_cheriot_revocation_irq", "chip_sw_cheriot_fetch_backpressure", "chip_cheriot_cap_halves", "chip_sw_cheriot_tbre_progress", "chip_sw_cheriot_tbre_corners", "chip_sw_cheriot_revocation_sleep"
+        "chip_sw_cheriot_revoke_store_clear", "chip_sw_cheriot_revocation_race", "chip_sw_cheriot_revocation_race_hold", "chip_sw_cheriot_revocation_race_sweep", "chip_sw_cheriot_tbre_fault_word_intg", "chip_sw_cheriot_tbre_fault_bm_err", "chip_sw_cheriot_tbre_fault_bm_intg", "chip_sw_cheriot_revocation_irq", "chip_sw_cheriot_revocation_irq_preempt", "chip_sw_cheriot_fetch_backpressure", "chip_cheriot_cap_halves", "chip_sw_cheriot_tbre_progress", "chip_sw_cheriot_tbre_corners", "chip_sw_cheriot_revocation_sleep"
         "chip_sw_cheriot_revbm_errors_bus_err", "chip_sw_cheriot_revbm_errors_intg", "chip_sw_cheriot_revbm_errors_mem_err", "chip_sw_cheriot_revbm_errors_reset_por", "chip_sw_cheriot_revbm_errors_reset_ndm", "chip_sw_cheriot_revbm_errors_reset_wdog"
       ]
     }

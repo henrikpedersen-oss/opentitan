@@ -11,7 +11,9 @@
  * Helpers for the test's RISC-V-mode assembly (each called with `jal ra`, clobbering a0-a5 and
  * t0-t2 only, and using only encodings both modes share):
  *   eg2_late_meta_init  zero the meta SRAM (sram_ctrl_meta INIT after a new key); a0 = 0 if done
- *   eg2_late_rv_end     end the test in RISC-V mode: a0 = 1 pass, 0 fail, a1 = a code printed
+ *   eg2_late_rv_end     end the test in RISC-V mode: a0 = 1 pass, 0 fail, 2 fail on the check an
+ *                       _inject_fail build broke (prints `EG2_INJECT_CAUGHT late` first, as
+ *                       eg2_inject_failed does in C), a1 = a code printed
  *                       with a failure (`EG2 late FAIL <code>`); prints the verdict, writes the
  *                       DV status window and parks (never returns)
  *   eg2_late_rv_puthex  print a1 as eight hex digits (UART0 set up by eg2_late_uart_init)
@@ -299,9 +301,12 @@ eg2_late_rv_bench:
   .asciz " "
 .L_crlf:
   .asciz "\r\n"
+.L_inject_caught:
+  .asciz "EG2_INJECT_CAUGHT late\r\n"
   .section .crt, "ax", @progbits
 
-/** The verdict in RISC-V mode: a0 = 1 pass, 0 fail; a1 = the failure's code. Never returns. */
+/** The verdict in RISC-V mode: a0 = 1 pass, 0 fail, 2 fail on the broken check of an _inject_fail
+ * build; a1 = the failure's code. Never returns. */
   .globl eg2_late_rv_end
   .type eg2_late_rv_end, @function
 eg2_late_rv_end:
@@ -309,6 +314,13 @@ eg2_late_rv_end:
   mv   a5, a1
   cjal eg2_late_uart_init
   li   t0, TOP_UART0_BASE_ADDR
+  li   t1, 2
+  bne  a4, t1, 1f
+  la_abs a1, .L_inject_caught
+  cjal eg2_late_rv_puts
+  li   t0, TOP_UART0_BASE_ADDR
+  li   a4, 0
+1:
   bnez a4, 3f
   uart_putc t0, 'E'
   uart_putc t0, 'G'

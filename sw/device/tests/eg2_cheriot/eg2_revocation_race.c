@@ -62,6 +62,7 @@ EG2_TEST_CONFIG();
   X(n_sba_batches, 0, 0, 32)      \
   X(spin_max, 0, 0, 2000)         \
   X(n_hold, 0, 0, 8)              \
+  X(parts, 15, 1, 15)             \
   X(model_gaps, 0, 0, 1)
 EG2_TEST_PARAMS(REVOCATION_RACE_PARAMS);
 
@@ -414,18 +415,27 @@ bool eg2_test_main(void) {
     eg2_ms_write32(kEg2ArenaA + 4 * i, 0xc0de0000u + i);
   }
 
-  if (bench) {
+  // `parts` (bit 0 A, 1 B, 2 C, 3 D): the chip runs the parts as separate slices (the whole test
+  // took more than 12 hours, 2026-11-06).
+  uint32_t parts = EG2_PARAM(parts);
+  eg2_put_kv("EG2 revocation_race parts", parts);
+  eg2_puts("\r\n");
+  if (bench && (parts & 1u)) {
     for (uint32_t b = 0; b < n_sba; ++b) {
       part_a(b, spin_max);
     }
   }
-  part_b();
-  if (bench) {
+  if (parts & 2u) {
+    part_b();
+  }
+  if (bench && (parts & 4u)) {
     for (uint32_t r = 0; r < n_hold; ++r) {
       part_c(r);
     }
   }
-  part_d();
+  if (parts & 8u) {
+    part_d();
+  }
   eg2_ms_tbre_clear();
   eg2_tally_print("revocation_race", &tally);
   return eg2_tally_ok(&tally);

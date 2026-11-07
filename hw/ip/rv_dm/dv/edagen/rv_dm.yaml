@@ -1,0 +1,154 @@
+# edagen's configuration for rv_dm, the RISC-V debug module (eg2_top_verification: make block-flow
+# BLOCK=rv_dm; edagen is eg2_top_verification's scripts/edagen). It reuses rv_dm's block bench
+# (hw/ip/rv_dm/dv) with the debug module reference model checking the RTL (env/rv_dm_cmodel_sb.sv,
+# +rv_dm_cmodel=1; the model is hw/top_earlgrey/dv/eg2_model/ip/eg2_dm_core.h), and generates the
+# lint, formal, synthesis and equivalence flows from rv_dm_rtl.f.
+module: rv_dm
+clock_frequency_hz: 100_000_000
+top: rv_dm
+description: "rv_dm, the RISC-V debug module: its block bench, checked against the debug module reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  # rv_dm and its dependencies (the PULP debug module, TL-UL, primitives, packages), from FuseSoC
+  # (rv_dm_rtl.f says how). The simulation builds the RTL through DVSim; lint, formal and synthesis
+  # read this list.
+  filelist: rv_dm_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i}
+  - {name: clk_lc, port: clk_lc_i, freq_hz: 100_000_000}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_lc, port: rst_lc_ni, active_low: true, sync_to: clk_lc}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: regs_tl_d_i, d2h: regs_tl_d_o}
+    vip: lowrisc
+    ral_package: rv_dm_regs_ral_pkg
+    ral_core: "lowrisc:dv:rv_dm_env:0.1"
+  - name: mem
+    kind: tl
+    ports: {h2d: mem_tl_d_i, d2h: mem_tl_d_o}
+    vip: lowrisc
+    ral_package: rv_dm_mem_ral_pkg
+    ral_core: "lowrisc:dv:rv_dm_env:0.1"
+  # System bus access: rv_dm is the TL-UL host. Listed for formal: FPV binds tlul_assert with the
+  # bus side assumed legal (a response only to an outstanding request). Without it the bus could
+  # answer a request never made, and tlul_lc_gate's outstanding counter wrapped
+  # (OutStandingOvfl_A counterexample, 2026-11-07).
+  - name: sba
+    kind: tl
+    ports: {h2d: sba_tl_h_o, d2h: sba_tl_h_i}
+    vip: lowrisc
+
+# rv_dm.hjson's alert.
+alerts:
+  - {name: fatal_fault, fatal: true, desc: "A fatal TL-UL bus integrity fault"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/rv_dm/dv/rv_dm_use_jtag_interface_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:rv_dm_sim:0.1"
+  reuse_testplan: hw/ip/rv_dm/data/rv_dm_testplan.hjson
+
+# Jasper only: JTAG's TCK, a field of the jtag_i struct port, is the third clock of the design (the
+# DTM and the DMI clock-domain crossing); CDC finds the crossings only when it is declared.
+formal:
+  clocks: [jtag_i.tck]
+  # The FPV environment: scan mode held off (rv_dm_fpv_env.sv).
+  files: [formal/rv_dm_fpv_env.sv]
+
+# Synthesis with NanGate45 (NANGATE45_DIR: eg2_top_verification sets it to its syn/lib).
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  # Superlint, UNR of the simulations' coverage holes, CDC (TCK, clk and the life-cycle clock),
+  # and FPV with the generated property stub.
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  # Yosys maps to its generic gates: its scripts cannot take NANGATE45_DIR.
+  yosys: {frontend: slang, flatten: true}
+
+# DVSim tests of rv_dm's bench (rv_dm_base_sim_cfg.hjson). The rv_dm_cmodel_* runs compare rv_dm
+# with the model; the random ones have no other checker. rv_dm_cmodel_random_inject_fail corrupts one
+# prediction and must fail: not listed (edagen has no expected failure); make block-flow BLOCK=rv_dm
+# BLOCK_GOAL=sim TEST=rv_dm_cmodel_random_inject_fail.
+# DVSim tests of rv_dm's bench: every test rv_dm_base_sim_cfg.hjson names, and the common CIP tests
+# it imports (CSR, memory, alert, TL-UL access, sec_cm, stress, with rand reset; their child
+# sequences get the mode sequencer from rv_dm_base_vseq since 2026-11-07). The rv_dm_cmodel_* runs compare
+# rv_dm with the debug module reference model; the random ones have no other checker.
+# rv_dm_cmodel_random_inject_fail corrupts one prediction and must fail: not listed (edagen has no
+# expected failure); run it with make block-flow BLOCK=rv_dm BLOCK_GOAL=sim
+# TEST=rv_dm_cmodel_random_inject_fail.
+tests:
+  - {name: rv_dm_abstractcmd_status, uvm_test: rv_dm_abstractcmd_status, seeds: [1], timeout: 1800}
+  - {name: rv_dm_alert_test, uvm_test: rv_dm_alert_test, seeds: [1], timeout: 1800}
+  - {name: rv_dm_autoincr_sba_tl_access, uvm_test: rv_dm_autoincr_sba_tl_access, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_bad_sba_tl_access, uvm_test: rv_dm_bad_sba_tl_access, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_buffered_enable, uvm_test: rv_dm_buffered_enable, seeds: [1], timeout: 1800}
+  - {name: rv_dm_cmderr_busy, uvm_test: rv_dm_cmderr_busy, seeds: [1], timeout: 1800}
+  - {name: rv_dm_cmderr_exception, uvm_test: rv_dm_cmderr_exception, seeds: [1], timeout: 1800}
+  - {name: rv_dm_cmderr_halt_resume, uvm_test: rv_dm_cmderr_halt_resume, seeds: [1], timeout: 1800}
+  - {name: rv_dm_cmderr_not_supported, uvm_test: rv_dm_cmderr_not_supported, seeds: [1], timeout: 1800}
+  - {name: rv_dm_cmodel_halt_resume_whereto, uvm_test: rv_dm_cmodel_halt_resume_whereto, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_cmodel_random, uvm_test: rv_dm_cmodel_random, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 3600}
+  - {name: rv_dm_cmodel_random_cheriot, uvm_test: rv_dm_cmodel_random_cheriot, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 3600}
+  - {name: rv_dm_cmodel_smoke, uvm_test: rv_dm_cmodel_smoke, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_cmodel_stress_all, uvm_test: rv_dm_cmodel_stress_all, seeds: [1, 2, 3], timeout: 3600}
+  - {name: rv_dm_csr_aliasing, uvm_test: rv_dm_csr_aliasing, seeds: [1], timeout: 1800}
+  - {name: rv_dm_csr_bit_bash, uvm_test: rv_dm_csr_bit_bash, seeds: [1], timeout: 1800}
+  - {name: rv_dm_csr_hw_reset, uvm_test: rv_dm_csr_hw_reset, seeds: [1], timeout: 1800}
+  - {name: rv_dm_csr_rw, uvm_test: rv_dm_csr_rw, seeds: [1], timeout: 1800}
+  - {name: rv_dm_dataaddr_rw_access, uvm_test: rv_dm_dataaddr_rw_access, seeds: [1], timeout: 1800}
+  - {name: rv_dm_debug_disabled, uvm_test: rv_dm_debug_disabled, seeds: [1], timeout: 1800}
+  - {name: rv_dm_delayed_resp_sba_tl_access, uvm_test: rv_dm_delayed_resp_sba_tl_access, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_dmi_failed_op, uvm_test: rv_dm_dmi_failed_op, seeds: [1], timeout: 1800}
+  - {name: rv_dm_halt_resume_whereto, uvm_test: rv_dm_halt_resume_whereto, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_hartsel_warl, uvm_test: rv_dm_hartsel_warl, seeds: [1], timeout: 1800}
+  - {name: rv_dm_hart_unavail, uvm_test: rv_dm_hart_unavail, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_csr_aliasing, uvm_test: rv_dm_jtag_dmi_csr_aliasing, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_csr_bit_bash, uvm_test: rv_dm_jtag_dmi_csr_bit_bash, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_csr_hw_reset, uvm_test: rv_dm_jtag_dmi_csr_hw_reset, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_csr_rw, uvm_test: rv_dm_jtag_dmi_csr_rw, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_debug_disabled, uvm_test: rv_dm_jtag_dmi_debug_disabled, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dmi_dm_inactive, uvm_test: rv_dm_jtag_dmi_dm_inactive, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_csr_aliasing, uvm_test: rv_dm_jtag_dtm_csr_aliasing, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_csr_bit_bash, uvm_test: rv_dm_jtag_dtm_csr_bit_bash, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_csr_hw_reset, uvm_test: rv_dm_jtag_dtm_csr_hw_reset, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_csr_rw, uvm_test: rv_dm_jtag_dtm_csr_rw, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_hard_reset, uvm_test: rv_dm_jtag_dtm_hard_reset, seeds: [1], timeout: 1800}
+  - {name: rv_dm_jtag_dtm_idle_hint, uvm_test: rv_dm_jtag_dtm_idle_hint, seeds: [1], timeout: 1800}
+  - {name: rv_dm_mem_partial_access, uvm_test: rv_dm_mem_partial_access, seeds: [1], timeout: 1800}
+  - {name: rv_dm_mem_tl_access_halted, uvm_test: rv_dm_mem_tl_access_halted, seeds: [1], timeout: 1800}
+  - {name: rv_dm_mem_tl_access_resuming, uvm_test: rv_dm_mem_tl_access_resuming, seeds: [1], timeout: 1800}
+  - {name: rv_dm_mem_walk, uvm_test: rv_dm_mem_walk, seeds: [1], timeout: 1800}
+  - {name: rv_dm_ndmreset_req, uvm_test: rv_dm_ndmreset_req, seeds: [1], timeout: 1800}
+  - {name: rv_dm_progbuf_read_write_execute, uvm_test: rv_dm_progbuf_read_write_execute, seeds: [1], timeout: 1800}
+  - {name: rv_dm_rom_read_access, uvm_test: rv_dm_rom_read_access, seeds: [1], timeout: 1800}
+  - {name: rv_dm_same_csr_outstanding, uvm_test: rv_dm_same_csr_outstanding, seeds: [1], timeout: 1800}
+  - {name: rv_dm_sba_debug_disabled, uvm_test: rv_dm_sba_debug_disabled, seeds: [1], timeout: 1800}
+  - {name: rv_dm_sba_tl_access, uvm_test: rv_dm_sba_tl_access, seeds: [1, 2], timeout: 1800}
+  - {name: rv_dm_scanmode, uvm_test: rv_dm_scanmode, seeds: [1], timeout: 1800}
+  - {name: rv_dm_sec_cm, uvm_test: rv_dm_sec_cm, seeds: [1], timeout: 1800}
+  - {name: rv_dm_smoke, uvm_test: rv_dm_smoke, seeds: [1], timeout: 1800}
+  - {name: rv_dm_sparse_lc_gate_fsm, uvm_test: rv_dm_sparse_lc_gate_fsm, seeds: [1], timeout: 1800}
+  - {name: rv_dm_stress_all, uvm_test: rv_dm_stress_all, seeds: [1, 2, 3], timeout: 3600}
+  - {name: rv_dm_csr_mem_rw_with_rand_reset, uvm_test: rv_dm_csr_mem_rw_with_rand_reset, seeds: [1, 2, 3], timeout: 3600}
+  - {name: rv_dm_stress_all_with_rand_reset, uvm_test: rv_dm_stress_all_with_rand_reset, seeds: [1, 2, 3], timeout: 3600}
+  - {name: rv_dm_tap_fsm, uvm_test: rv_dm_tap_fsm, seeds: [1], timeout: 1800}
+  - {name: rv_dm_tl_errors, uvm_test: rv_dm_tl_errors, seeds: [1], timeout: 1800}
+  - {name: rv_dm_tl_intg_err, uvm_test: rv_dm_tl_intg_err, seeds: [1], timeout: 1800}

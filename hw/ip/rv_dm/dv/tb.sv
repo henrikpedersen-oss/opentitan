@@ -57,7 +57,11 @@ module tb;
   // dut
   rv_dm #(
     .IdcodeValue (rv_dm_env_pkg::RV_DM_JTAG_IDCODE),
+`ifdef RV_DM_CHERIOT_SUPPORT
+    .CheriotSupport (1'b1),
+`else
     .CheriotSupport (1'b0),
+`endif
 `ifdef USE_DMI_INTERFACE
     .UseDmiInterface(1'b1)
 `else

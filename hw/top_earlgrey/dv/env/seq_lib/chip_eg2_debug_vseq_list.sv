@@ -23,3 +23,14 @@
 `include "chip_eg2_rv_dm_cap_bypass_vseq.sv"
 `include "chip_eg2_rv_dm_halt_revocation_vseq.sv"
 `include "chip_eg2_rv_dm_priv_vseq.sv"
+// chip_rv_dm_perform_debug, chip_rv_dm_perform_debug_cheriot (REQ_CDM_08).
+`include "chip_eg2_rv_dm_perform_debug_vseq.sv"
+// chip_eg2_rv_dm_code_patch, chip_eg2_rv_dm_lockstep (REQ_CDM_08, REQ_CIB_03).
+`include "chip_eg2_rv_dm_code_patch_vseq.sv"
+`include "chip_eg2_rv_dm_lockstep_vseq.sv"
+// chip_sw_rv_dm_cheriot_mode_switch, chip_eg2_rv_dm_reg_tags, chip_rv_dm_cheriot_progbuf_cap
+// (REQ_CDM_04, REQ_CDM_08, REQ_CDM_09).
+`include "chip_eg2_rv_dm_cdm_base_vseq.sv"
+`include "chip_sw_rv_dm_cheriot_mode_switch_vseq.sv"
+`include "chip_eg2_rv_dm_reg_tags_vseq.sv"
+`include "chip_rv_dm_cheriot_progbuf_cap_vseq.sv"

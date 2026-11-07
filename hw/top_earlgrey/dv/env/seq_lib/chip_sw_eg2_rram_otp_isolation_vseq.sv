@@ -70,6 +70,10 @@ class chip_sw_eg2_rram_otp_isolation_vseq extends chip_sw_eg2_chk_base_vseq;
       `DV_CHECK_NE(st, SbaErrNone, $sformatf("SBA write of OTP page 0x%0h succeeded", addr))
       `DV_CHECK_EQ(row(addr - top_earlgrey_pkg::TOP_EARLGREY_RRAM_CTRL_HOST_BASE_ADDR), row_before,
                    $sformatf("OTP page row at 0x%0h changed by SBA", addr))
+      // The software polls the flag while the SBA write is in flight, and the model hears of the write
+      // only when the JTAG access returns: it takes the chip's value for the flag, as for any bench mailbox
+      // (2026-11-07: "DUT generated load at 10001ff0 with data 1 but data 0 was expected").
+      eg2_iss_wrapper::backdoor_mailbox(flag, 4);
       sba_wr32(flag, 1, st);
       `DV_CHECK_EQ(st, SbaErrNone, "SBA write of the software's flag")
     end

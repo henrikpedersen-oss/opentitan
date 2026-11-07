@@ -13,8 +13,7 @@
 set -uo pipefail
 export LC_ALL=C
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${HERE}/../env.sh"   # EG2_ROOT, EG2SIM, SW_SUITES_OUT, IBEX_CV
-IBEX="${IBEX:-${IBEX_CV}/ibex}"
+source "${HERE}/../env.sh"   # EG2_ROOT, EG2SIM, SW_SUITES_OUT, CHERIOT_ASM_TESTS
 OUT="${SW_SUITES_OUT}/asm-eg2sim"
 RAND="${EG2_ROOT}/sw/device/lib/testing/eg2_rand"
 EXPECTED="${HERE}/expected.txt"
@@ -131,7 +130,7 @@ run_one() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${name}" "${out}" "${wall}" "${insns:--}" "${sim:--}" "${why:-no final status}"
 }
 export -f run_one
-export OUT HERE RAND IBEX RVT ARCH DIRECTED EG2SIM MAX_INSNS OTP
+export OUT HERE RAND RVT ARCH DIRECTED EG2SIM MAX_INSNS OTP
 start=$(date +%s)
 {
   awk '$2 != "not-run" {print $1, $2, $3}' "${OUT}/tests.txt" \
