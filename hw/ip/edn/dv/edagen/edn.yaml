@@ -1,0 +1,78 @@
+# edn: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: edn
+clock_frequency_hz: 100000000
+top: edn
+description: "edn: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: edn_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: main}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: edn_ral_pkg
+    ral_core: "lowrisc:dv:edn_env:0.1"
+
+alerts:
+  - {name: recov_alert, fatal: false, desc: "This alert is triggered when entropy bus data matches on consecutive clock cycles."}
+  - {name: fatal_alert, fatal: true, desc: "This alert triggers (i) if an illegal state machine state is reached, or (ii) if a fatal integrity failure is detected o"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/edn/dv/edn_base_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:edn_sim:0.1"
+  reuse_testplan: hw/ip/edn/data/edn_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: edn_smoke, uvm_test: edn_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: edn_regwen, uvm_test: edn_regwen, seeds: [1, 2], timeout: 3600}
+  - {name: edn_genbits, uvm_test: edn_genbits, seeds: [1, 2], timeout: 3600}
+  - {name: edn_stress_all, uvm_test: edn_stress_all, seeds: [1, 2], timeout: 3600}
+  - {name: edn_stress_all_with_rand_reset, uvm_test: edn_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: edn_intr, uvm_test: edn_intr, seeds: [1, 2], timeout: 3600}
+  - {name: edn_alert, uvm_test: edn_alert, seeds: [1, 2], timeout: 3600}
+  - {name: edn_err, uvm_test: edn_err, seeds: [1, 2], timeout: 3600}
+  - {name: edn_disable, uvm_test: edn_disable, seeds: [1, 2], timeout: 3600}
+  - {name: edn_disable_auto_req_mode, uvm_test: edn_disable_auto_req_mode, seeds: [1, 2], timeout: 3600}
+  - {name: edn_csr_hw_reset, uvm_test: edn_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: edn_csr_rw, uvm_test: edn_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: edn_csr_bit_bash, uvm_test: edn_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: edn_csr_aliasing, uvm_test: edn_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: edn_same_csr_outstanding, uvm_test: edn_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: edn_csr_mem_rw_with_rand_reset, uvm_test: edn_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: edn_intr_test, uvm_test: edn_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: edn_alert_test, uvm_test: edn_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: edn_tl_errors, uvm_test: edn_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: edn_tl_intg_err, uvm_test: edn_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: edn_sec_cm, uvm_test: edn_sec_cm, seeds: [1, 2], timeout: 3600}

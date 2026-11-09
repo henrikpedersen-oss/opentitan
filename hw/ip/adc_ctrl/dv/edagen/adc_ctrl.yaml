@@ -1,0 +1,83 @@
+# adc_ctrl: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: adc_ctrl
+clock_frequency_hz: 24000000
+top: adc_ctrl
+description: "adc_ctrl: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: adc_ctrl_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: io_div4}
+  - {name: clk_aon, port: clk_aon_i, freq_hz: 200000, group: aon}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_aon, port: rst_aon_ni, active_low: true, sync_to: clk_aon}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: adc_ctrl_ral_pkg
+    ral_core: "lowrisc:dv:adc_ctrl_env:0.1"
+
+alerts:
+  - {name: fatal_fault, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected."}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/adc_ctrl/dv/adc_ctrl_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:adc_ctrl_sim:0.1"
+  reuse_testplan: hw/ip/adc_ctrl/data/adc_ctrl_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: adc_ctrl_smoke, uvm_test: adc_ctrl_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_polled, uvm_test: adc_ctrl_filters_polled, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_polled_fixed, uvm_test: adc_ctrl_filters_polled_fixed, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_interrupt, uvm_test: adc_ctrl_filters_interrupt, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_interrupt_fixed, uvm_test: adc_ctrl_filters_interrupt_fixed, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_wakeup, uvm_test: adc_ctrl_filters_wakeup, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_wakeup_fixed, uvm_test: adc_ctrl_filters_wakeup_fixed, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_clock_gating, uvm_test: adc_ctrl_clock_gating, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_filters_both, uvm_test: adc_ctrl_filters_both, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_poweron_counter, uvm_test: adc_ctrl_poweron_counter, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_lowpower_counter, uvm_test: adc_ctrl_lowpower_counter, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_fsm_reset, uvm_test: adc_ctrl_fsm_reset, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_csr_hw_reset, uvm_test: adc_ctrl_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_csr_rw, uvm_test: adc_ctrl_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_csr_bit_bash, uvm_test: adc_ctrl_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_csr_aliasing, uvm_test: adc_ctrl_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_same_csr_outstanding, uvm_test: adc_ctrl_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_csr_mem_rw_with_rand_reset, uvm_test: adc_ctrl_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_alert_test, uvm_test: adc_ctrl_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_intr_test, uvm_test: adc_ctrl_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_tl_errors, uvm_test: adc_ctrl_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_tl_intg_err, uvm_test: adc_ctrl_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_sec_cm, uvm_test: adc_ctrl_sec_cm, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_stress_all_with_rand_reset, uvm_test: adc_ctrl_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: adc_ctrl_stress_all, uvm_test: adc_ctrl_stress_all, seeds: [1, 2], timeout: 3600}

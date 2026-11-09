@@ -1,0 +1,49 @@
+# pinmux: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: pinmux
+clock_frequency_hz: 24000000
+top: pinmux
+description: "pinmux: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: pinmux_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: io_div4}
+  - {name: clk_aon, port: clk_aon_i, freq_hz: 200000, group: aon}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_aon, port: rst_aon_ni, active_low: true, sync_to: clk_aon}
+  - {name: rst_sys, port: rst_sys_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: pinmux_ral_pkg
+
+alerts:
+  - {name: fatal_fault, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected."}
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}

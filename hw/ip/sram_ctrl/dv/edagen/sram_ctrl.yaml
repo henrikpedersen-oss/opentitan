@@ -1,0 +1,95 @@
+# sram_ctrl: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: sram_ctrl
+clock_frequency_hz: 100000000
+top: sram_ctrl
+description: "sram_ctrl: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: sram_ctrl_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: main}
+  - {name: clk_otp, port: clk_otp_i, freq_hz: 24000000, group: io_div4}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_otp, port: rst_otp_ni, active_low: true, sync_to: clk_otp}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: regs_tl_i, d2h: regs_tl_o}
+    vip: lowrisc
+    ral_package: sram_ctrl_regs_ral_pkg
+    ral_core: "lowrisc:dv:sram_ctrl_env:0.1"
+  - name: ram
+    kind: tl
+    ports: {h2d: ram_tl_i, d2h: ram_tl_o}
+    vip: lowrisc
+    ral_package: sram_ctrl_ram_ral_pkg
+    ral_core: "lowrisc:dv:sram_ctrl_env:0.1"
+
+alerts:
+  - {name: fatal_error, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected, or if the initialization mechanism has"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/sram_ctrl/dv/sram_ctrl_main_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:sram_ctrl_fi_sim:0.1"
+  reuse_testplan: hw/ip/sram_ctrl/data/sram_ctrl_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: sram_ctrl_smoke, uvm_test: sram_ctrl_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_multiple_keys, uvm_test: sram_ctrl_multiple_keys, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_bijection, uvm_test: sram_ctrl_bijection, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_stress_pipeline, uvm_test: sram_ctrl_stress_pipeline, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_partial_access, uvm_test: sram_ctrl_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_partial_access_b2b, uvm_test: sram_ctrl_partial_access_b2b, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_max_throughput, uvm_test: sram_ctrl_max_throughput, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_throughput_w_partial_write, uvm_test: sram_ctrl_throughput_w_partial_write, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_throughput_w_readback, uvm_test: sram_ctrl_throughput_w_readback, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_lc_escalation, uvm_test: sram_ctrl_lc_escalation, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_access_during_key_req, uvm_test: sram_ctrl_access_during_key_req, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_executable, uvm_test: sram_ctrl_executable, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_regwen, uvm_test: sram_ctrl_regwen, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_ram_cfg, uvm_test: sram_ctrl_ram_cfg, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_mem_walk, uvm_test: sram_ctrl_mem_walk, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_mem_partial_access, uvm_test: sram_ctrl_mem_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_readback_err, uvm_test: sram_ctrl_readback_err, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_mubi_enc_err, uvm_test: sram_ctrl_mubi_enc_err, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_csr_hw_reset, uvm_test: sram_ctrl_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_csr_rw, uvm_test: sram_ctrl_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_csr_bit_bash, uvm_test: sram_ctrl_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_csr_aliasing, uvm_test: sram_ctrl_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_same_csr_outstanding, uvm_test: sram_ctrl_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_csr_mem_rw_with_rand_reset, uvm_test: sram_ctrl_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_alert_test, uvm_test: sram_ctrl_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_tl_errors, uvm_test: sram_ctrl_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_tl_intg_err, uvm_test: sram_ctrl_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_passthru_mem_tl_intg_err, uvm_test: sram_ctrl_passthru_mem_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_sec_cm, uvm_test: sram_ctrl_sec_cm, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_stress_all_with_rand_reset, uvm_test: sram_ctrl_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: sram_ctrl_stress_all, uvm_test: sram_ctrl_stress_all, seeds: [1, 2], timeout: 3600}

@@ -1,0 +1,92 @@
+# otp_ctrl: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: otp_ctrl
+clock_frequency_hz: 24000000
+top: otp_ctrl
+description: "otp_ctrl: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: otp_ctrl_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: io_div4}
+  - {name: clk_edn, port: clk_edn_i, freq_hz: 100000000, group: main}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_edn, port: rst_edn_ni, active_low: true, sync_to: clk_edn}
+
+interfaces:
+  - name: core
+    kind: tl
+    ports: {h2d: core_tl_i, d2h: core_tl_o}
+    vip: lowrisc
+    ral_package: otp_ctrl_core_ral_pkg
+    ral_core: "lowrisc:earlgrey_dv:otp_ctrl_env:0.1"
+
+alerts:
+  - {name: fatal_macro_error, fatal: true, desc: "This alert triggers if hardware detects an uncorrectable error during an OTP transaction, for example an uncorrectable E"}
+  - {name: fatal_check_error, fatal: true, desc: "This alert triggers if any of the background checks fails. This includes the digest checks and concurrent ECC checks in "}
+  - {name: fatal_bus_integ_error, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected."}
+  - {name: fatal_prim_otp_alert, fatal: true, desc: "Fatal alert triggered inside the OTP primitive, including fatal TL-UL bus integrity faults of the test interface."}
+  - {name: recov_prim_otp_alert, fatal: false, desc: "Recoverable alert triggered inside the OTP primitive."}
+
+dv:
+  lowrisc_root: ../../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/top_earlgrey/ip_autogen/otp_ctrl/dv/otp_ctrl_sim_cfg.hjson
+  reuse_core: "lowrisc:earlgrey_dv:otp_ctrl_sim:0.1"
+  reuse_testplan: hw/top_earlgrey/ip_autogen/otp_ctrl/data/otp_ctrl_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: otp_ctrl_wake_up, uvm_test: otp_ctrl_wake_up, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_smoke, uvm_test: otp_ctrl_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_partition_walk, uvm_test: otp_ctrl_partition_walk, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_low_freq_read, uvm_test: otp_ctrl_low_freq_read, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_init_fail, uvm_test: otp_ctrl_init_fail, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_background_chks, uvm_test: otp_ctrl_background_chks, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_parallel_lc_req, uvm_test: otp_ctrl_parallel_lc_req, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_parallel_lc_esc, uvm_test: otp_ctrl_parallel_lc_esc, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_dai_lock, uvm_test: otp_ctrl_dai_lock, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_dai_errs, uvm_test: otp_ctrl_dai_errs, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_check_fail, uvm_test: otp_ctrl_check_fail, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_macro_errs, uvm_test: otp_ctrl_macro_errs, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_parallel_key_req, uvm_test: otp_ctrl_parallel_key_req, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_regwen, uvm_test: otp_ctrl_regwen, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_test_access, uvm_test: otp_ctrl_test_access, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_stress_all_with_rand_reset, uvm_test: otp_ctrl_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_csr_hw_reset, uvm_test: otp_ctrl_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_csr_rw, uvm_test: otp_ctrl_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_csr_bit_bash, uvm_test: otp_ctrl_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_csr_aliasing, uvm_test: otp_ctrl_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_same_csr_outstanding, uvm_test: otp_ctrl_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_csr_mem_rw_with_rand_reset, uvm_test: otp_ctrl_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_mem_walk, uvm_test: otp_ctrl_mem_walk, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_mem_partial_access, uvm_test: otp_ctrl_mem_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_intr_test, uvm_test: otp_ctrl_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_alert_test, uvm_test: otp_ctrl_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_tl_errors, uvm_test: otp_ctrl_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_tl_intg_err, uvm_test: otp_ctrl_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_sec_cm, uvm_test: otp_ctrl_sec_cm, seeds: [1, 2], timeout: 3600}
+  - {name: otp_ctrl_stress_all, uvm_test: otp_ctrl_stress_all, seeds: [1, 2], timeout: 3600}

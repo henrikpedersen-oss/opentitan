@@ -1,0 +1,55 @@
+# rv_core_ibex: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: rv_core_ibex
+clock_frequency_hz: 100000000
+top: rv_core_ibex
+description: "rv_core_ibex: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rv_core_ibex_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: main}
+  - {name: clk_edn, port: clk_edn_i, freq_hz: 100000000, group: main}
+  - {name: clk_esc, port: clk_esc_i, freq_hz: 24000000, group: io_div4}
+  - {name: clk_otp, port: clk_otp_i, freq_hz: 24000000, group: io_div4}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_edn, port: rst_edn_ni, active_low: true, sync_to: clk_edn}
+  - {name: rst_esc, port: rst_esc_ni, active_low: true, sync_to: clk_esc}
+  - {name: rst_otp, port: rst_otp_ni, active_low: true, sync_to: clk_otp}
+
+interfaces:
+  - name: cfg
+    kind: tl
+    ports: {h2d: cfg_tl_d_i, d2h: cfg_tl_d_o}
+    vip: lowrisc
+    ral_package: rv_core_ibex_cfg_ral_pkg
+
+alerts:
+  - {name: fatal_sw_err, fatal: true, desc: "Software triggered alert for fatal faults"}
+  - {name: recov_sw_err, fatal: false, desc: "Software triggered Alert for recoverable faults"}
+  - {name: fatal_hw_err, fatal: true, desc: "Triggered when - Ibex raises `alert_major_internal_o` - Ibex raises `alert_major_bus_o` - A double fault is seen (Ibex r"}
+  - {name: recov_hw_err, fatal: false, desc: "Triggered when Ibex raises `alert_minor_o`"}
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}

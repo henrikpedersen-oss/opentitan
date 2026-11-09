@@ -1,0 +1,47 @@
+# ast: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: ast
+clock_frequency_hz: 100000000
+top: ast
+description: "ast: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: ast_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+clocks:
+
+resets:
+  - {name: rst_ast_adc, port: rst_ast_adc_ni, active_low: true, sync_to: None}
+  - {name: rst_ast_alert, port: rst_ast_alert_ni, active_low: true, sync_to: None}
+  - {name: rst_ast_es, port: rst_ast_es_ni, active_low: true, sync_to: None}
+  - {name: rst_ast_rng, port: rst_ast_rng_ni, active_low: true, sync_to: None}
+  - {name: rst_ast_tlul, port: rst_ast_tlul_ni, active_low: true, sync_to: None}
+  - {name: rst_ast_usb, port: rst_ast_usb_ni, active_low: true, sync_to: None}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: ast_ral_pkg
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}

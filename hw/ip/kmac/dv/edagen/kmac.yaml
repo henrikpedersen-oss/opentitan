@@ -1,0 +1,89 @@
+# kmac: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: kmac
+clock_frequency_hz: 100000000
+top: kmac
+description: "kmac: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: kmac_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: main}
+  - {name: clk_edn, port: clk_edn_i, freq_hz: 100000000, group: main}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_edn, port: rst_edn_ni, active_low: true, sync_to: clk_edn}
+  - {name: rst_shadowed, port: rst_shadowed_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: kmac_ral_pkg
+    ral_core: "lowrisc:dv:kmac_env:0.1"
+
+alerts:
+  - {name: recov_operation_err, fatal: false, desc: "Alert for KMAC operation error. It occurs when the shadow registers have update errors."}
+  - {name: fatal_fault_err, fatal: true, desc: "This fatal alert is triggered when a fatal error is detected inside the KMAC unit. Examples for such faults include: i) "}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/kmac/dv/kmac_base_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:kmac_sim:0.1"
+  reuse_testplan: hw/ip/kmac/data/kmac_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: kmac_smoke, uvm_test: kmac_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_long_msg_and_output, uvm_test: kmac_long_msg_and_output, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_burst_write, uvm_test: kmac_burst_write, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_sha3_224, uvm_test: kmac_test_vectors_sha3_224, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_sha3_256, uvm_test: kmac_test_vectors_sha3_256, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_sha3_384, uvm_test: kmac_test_vectors_sha3_384, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_sha3_512, uvm_test: kmac_test_vectors_sha3_512, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_shake_128, uvm_test: kmac_test_vectors_shake_128, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_test_vectors_shake_256, uvm_test: kmac_test_vectors_shake_256, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_app, uvm_test: kmac_app, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_app_with_partial_data, uvm_test: kmac_app_with_partial_data, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_mubi, uvm_test: kmac_mubi, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_error, uvm_test: kmac_error, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_lc_escalation, uvm_test: kmac_lc_escalation, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_csr_hw_reset, uvm_test: kmac_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_csr_rw, uvm_test: kmac_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_csr_bit_bash, uvm_test: kmac_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_csr_aliasing, uvm_test: kmac_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_same_csr_outstanding, uvm_test: kmac_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_csr_mem_rw_with_rand_reset, uvm_test: kmac_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_intr_test, uvm_test: kmac_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_tl_errors, uvm_test: kmac_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_tl_intg_err, uvm_test: kmac_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_mem_walk, uvm_test: kmac_mem_walk, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_mem_partial_access, uvm_test: kmac_mem_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_alert_test, uvm_test: kmac_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_shadow_reg_errors, uvm_test: kmac_shadow_reg_errors, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_shadow_reg_errors_with_csr_rw, uvm_test: kmac_shadow_reg_errors_with_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: kmac_sec_cm, uvm_test: kmac_sec_cm, seeds: [1, 2], timeout: 3600}

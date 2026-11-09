@@ -1,0 +1,158 @@
+# usbdev: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: usbdev
+clock_frequency_hz: 48000000
+top: usbdev
+description: "usbdev: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: usbdev_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: usb}
+  - {name: clk_aon, port: clk_aon_i, freq_hz: 200000, group: aon}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_aon, port: rst_aon_ni, active_low: true, sync_to: clk_aon}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: usbdev_ral_pkg
+    ral_core: "lowrisc:dv:usbdev_env:0.1"
+
+alerts:
+  - {name: fatal_fault, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected."}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/usbdev/dv/usbdev_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:usbdev_sim:0.1"
+  reuse_testplan: hw/ip/usbdev/data/usbdev_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: usbdev_aon_wake_disconnect, uvm_test: usbdev_aon_wake_disconnect, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_aon_wake_reset, uvm_test: usbdev_aon_wake_reset, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_aon_wake_resume, uvm_test: usbdev_aon_wake_resume, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_av_buffer, uvm_test: usbdev_av_buffer, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_av_empty, uvm_test: usbdev_av_empty, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_av_overflow, uvm_test: usbdev_av_overflow, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_bitstuff_err, uvm_test: usbdev_bitstuff_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_data_toggle_clear, uvm_test: usbdev_data_toggle_clear, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_data_toggle_restore, uvm_test: usbdev_data_toggle_restore, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_device_address, uvm_test: usbdev_device_address, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_device_timeout, uvm_test: usbdev_device_timeout, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_timeout_missing_host_handshake, uvm_test: usbdev_timeout_missing_host_handshake, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_disable_endpoint, uvm_test: usbdev_disable_endpoint, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_disconnected, uvm_test: usbdev_disconnected, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_dpi_config_host, uvm_test: usbdev_dpi_config_host, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_enable, uvm_test: usbdev_enable, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_endpoint_access, uvm_test: usbdev_endpoint_access, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_endpoint_types, uvm_test: usbdev_endpoint_types, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_fifo_levels, uvm_test: usbdev_fifo_levels, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_fifo_rst, uvm_test: usbdev_fifo_rst, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_freq_hiclk, uvm_test: usbdev_freq_hiclk, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_freq_hiclk_max, uvm_test: usbdev_freq_hiclk_max, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_freq_loclk, uvm_test: usbdev_freq_loclk, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_freq_loclk_max, uvm_test: usbdev_freq_loclk_max, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_freq_phase, uvm_test: usbdev_freq_phase, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_host_lost, uvm_test: usbdev_host_lost, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_invalid_data1_data0_toggle_test, uvm_test: usbdev_invalid_data1_data0_toggle_test, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_invalid_sync, uvm_test: usbdev_invalid_sync, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_in_iso, uvm_test: usbdev_in_iso, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_in_stall, uvm_test: usbdev_in_stall, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_in_trans, uvm_test: usbdev_in_trans, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_iso_retraction, uvm_test: usbdev_iso_retraction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_link_in_err, uvm_test: usbdev_link_in_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_link_out_err, uvm_test: usbdev_link_out_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_link_reset, uvm_test: usbdev_link_reset, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_link_resume, uvm_test: usbdev_link_resume, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_link_suspend, uvm_test: usbdev_link_suspend, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_low_speed_traffic, uvm_test: usbdev_low_speed_traffic, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_max_inter_pkt_delay, uvm_test: usbdev_max_inter_pkt_delay, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_max_length_in_transaction, uvm_test: usbdev_max_length_in_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_max_length_out_transaction, uvm_test: usbdev_max_length_out_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_max_non_iso_usb_traffic, uvm_test: usbdev_max_non_iso_usb_traffic, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_max_usb_traffic, uvm_test: usbdev_max_usb_traffic, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_min_inter_pkt_delay, uvm_test: usbdev_min_inter_pkt_delay, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_min_length_in_transaction, uvm_test: usbdev_min_length_in_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_min_length_out_transaction, uvm_test: usbdev_min_length_out_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_nak_to_out_trans_when_avbuffer_empty_rxfifo_full, uvm_test: usbdev_nak_to_out_trans_when_avbuffer_empty_rxfifo_full, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_nak_trans, uvm_test: usbdev_nak_trans, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_out_iso, uvm_test: usbdev_out_iso, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_out_stall, uvm_test: usbdev_out_stall, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_out_trans_nak, uvm_test: usbdev_out_trans_nak, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_pending_in_trans, uvm_test: usbdev_pending_in_trans, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_eop_single_bit_handling, uvm_test: usbdev_phy_config_eop_single_bit_handling, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_pinflip, uvm_test: usbdev_phy_config_pinflip, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_rand_bus_type, uvm_test: usbdev_phy_config_rand_bus_type, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_rx_dp_dn, uvm_test: usbdev_phy_config_rx_dp_dn, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_tx_osc_test_mode, uvm_test: usbdev_phy_config_tx_osc_test_mode, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_tx_use_d_se0, uvm_test: usbdev_phy_config_tx_use_d_se0, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_config_usb_ref_disable, uvm_test: usbdev_phy_config_usb_ref_disable, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_phy_pins_sense, uvm_test: usbdev_phy_pins_sense, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_pkt_buffer, uvm_test: usbdev_pkt_buffer, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_pkt_received, uvm_test: usbdev_pkt_received, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_pkt_sent, uvm_test: usbdev_pkt_sent, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_random_length_in_transaction, uvm_test: usbdev_random_length_in_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_random_length_out_transaction, uvm_test: usbdev_random_length_out_transaction, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rand_bus_disconnects, uvm_test: usbdev_rand_bus_disconnects, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rand_bus_resets, uvm_test: usbdev_rand_bus_resets, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rand_suspends, uvm_test: usbdev_rand_suspends, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_resume_link_active, uvm_test: usbdev_resume_link_active, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rxenable_out, uvm_test: usbdev_rxenable_out, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rx_crc_err, uvm_test: usbdev_rx_crc_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rx_full, uvm_test: usbdev_rx_full, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_rx_pid_err, uvm_test: usbdev_rx_pid_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_setup_priority, uvm_test: usbdev_setup_priority, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_setup_priority_over_stall_response, uvm_test: usbdev_setup_priority_over_stall_response, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_setup_stage, uvm_test: usbdev_setup_stage, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_setup_trans_ignored, uvm_test: usbdev_setup_trans_ignored, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_smoke, uvm_test: usbdev_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_spurious_pids_ignored, uvm_test: usbdev_spurious_pids_ignored, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stall_priority_over_nak, uvm_test: usbdev_stall_priority_over_nak, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stall_trans, uvm_test: usbdev_stall_trans, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_streaming_out, uvm_test: usbdev_streaming_out, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stream_len_max, uvm_test: usbdev_stream_len_max, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stress_all_with_rand_reset, uvm_test: usbdev_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stress_usb_traffic, uvm_test: usbdev_stress_usb_traffic, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_tx_rx_disruption, uvm_test: usbdev_tx_rx_disruption, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_csr_hw_reset, uvm_test: usbdev_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_csr_rw, uvm_test: usbdev_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_csr_bit_bash, uvm_test: usbdev_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_csr_aliasing, uvm_test: usbdev_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_same_csr_outstanding, uvm_test: usbdev_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_csr_mem_rw_with_rand_reset, uvm_test: usbdev_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_mem_walk, uvm_test: usbdev_mem_walk, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_mem_partial_access, uvm_test: usbdev_mem_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_alert_test, uvm_test: usbdev_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_intr_test, uvm_test: usbdev_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_tl_errors, uvm_test: usbdev_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_tl_intg_err, uvm_test: usbdev_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_sec_cm, uvm_test: usbdev_sec_cm, seeds: [1, 2], timeout: 3600}
+  - {name: usbdev_stress_all, uvm_test: usbdev_stress_all, seeds: [1, 2], timeout: 3600}

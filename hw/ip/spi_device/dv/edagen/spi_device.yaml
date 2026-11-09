@@ -1,0 +1,90 @@
+# spi_device: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: spi_device
+clock_frequency_hz: 24000000
+top: spi_device
+description: "spi_device: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: spi_device_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: io_div4}
+  - {name: scan_clk, port: scan_clk_i, freq_hz: 48000000, group: io_div2}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: spi_device_ral_pkg
+    ral_core: "lowrisc:dv:spi_device_env:0.1"
+
+alerts:
+  - {name: fatal_fault, fatal: true, desc: "This fatal alert is triggered when a fatal TL-UL bus integrity fault is detected."}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/spi_device/dv/base_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:spi_device_sim:0.1"
+  reuse_testplan: hw/ip/spi_device/data/spi_device_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: spi_device_csb_read, uvm_test: spi_device_csb_read, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_mem_parity, uvm_test: spi_device_mem_parity, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_ram_cfg, uvm_test: spi_device_ram_cfg, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tpm_read_hw_reg, uvm_test: spi_device_tpm_read_hw_reg, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tpm_all, uvm_test: spi_device_tpm_all, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tpm_sts_read, uvm_test: spi_device_tpm_sts_read, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tpm_rw, uvm_test: spi_device_tpm_rw, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_pass_cmd_filtering, uvm_test: spi_device_pass_cmd_filtering, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_pass_addr_payload_swap, uvm_test: spi_device_pass_addr_payload_swap, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_intercept, uvm_test: spi_device_intercept, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_mailbox, uvm_test: spi_device_mailbox, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_upload, uvm_test: spi_device_upload, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_cfg_cmd, uvm_test: spi_device_cfg_cmd, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_flash_mode, uvm_test: spi_device_flash_mode, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_flash_mode_ignore_cmds, uvm_test: spi_device_flash_mode_ignore_cmds, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_read_buffer_direct, uvm_test: spi_device_read_buffer_direct, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_flash_all, uvm_test: spi_device_flash_all, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_flash_and_tpm, uvm_test: spi_device_flash_and_tpm, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_flash_and_tpm_min_idle, uvm_test: spi_device_flash_and_tpm_min_idle, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_csr_hw_reset, uvm_test: spi_device_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_csr_rw, uvm_test: spi_device_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_csr_bit_bash, uvm_test: spi_device_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_csr_aliasing, uvm_test: spi_device_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_same_csr_outstanding, uvm_test: spi_device_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_csr_mem_rw_with_rand_reset, uvm_test: spi_device_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_mem_walk, uvm_test: spi_device_mem_walk, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_mem_partial_access, uvm_test: spi_device_mem_partial_access, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_alert_test, uvm_test: spi_device_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_intr_test, uvm_test: spi_device_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tl_errors, uvm_test: spi_device_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_tl_intg_err, uvm_test: spi_device_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_sec_cm, uvm_test: spi_device_sec_cm, seeds: [1, 2], timeout: 3600}
+  - {name: spi_device_stress_all, uvm_test: spi_device_stress_all, seeds: [1, 2], timeout: 3600}

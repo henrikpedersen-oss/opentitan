@@ -1,0 +1,80 @@
+# entropy_src: a first edagen configuration, written by scripts/new_edagen_config.py from
+# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
+# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
+# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
+# as rv_dm.yaml and aes.yaml were checked.
+module: entropy_src
+clock_frequency_hz: 100000000
+top: entropy_src
+description: "entropy_src: its OpenTitan block bench (generated configuration, not reviewed)"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: entropy_src_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i, group: main}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - name: regs
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: entropy_src_ral_pkg
+    ral_core: "lowrisc:dv:entropy_src_env:0.1"
+
+alerts:
+  - {name: recov_alert, fatal: false, desc: "This alert is triggered upon the alert health test threshold criteria not met."}
+  - {name: fatal_alert, fatal: true, desc: "This alert triggers for any condition detected in the !!ERR_CODE register, which includes FIFO errors, COUNTER errors, F"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/entropy_src/dv/entropy_src_base_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:entropy_src_sim:0.1"
+  reuse_testplan: hw/ip/entropy_src/data/entropy_src_testplan.hjson
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+tests:
+  - {name: entropy_src_smoke, uvm_test: entropy_src_smoke, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_rng, uvm_test: entropy_src_rng, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_rng_max_rate, uvm_test: entropy_src_rng_max_rate, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_rng_with_xht_rsps, uvm_test: entropy_src_rng_with_xht_rsps, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_stress_all, uvm_test: entropy_src_stress_all, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_stress_all_with_rand_reset, uvm_test: entropy_src_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_fw_ov, uvm_test: entropy_src_fw_ov, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_fw_ov_contiguous, uvm_test: entropy_src_fw_ov_contiguous, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_intr, uvm_test: entropy_src_intr, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_functional_alerts, uvm_test: entropy_src_functional_alerts, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_cfg_regwen, uvm_test: entropy_src_cfg_regwen, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_functional_errors, uvm_test: entropy_src_functional_errors, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_csr_hw_reset, uvm_test: entropy_src_csr_hw_reset, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_csr_rw, uvm_test: entropy_src_csr_rw, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_csr_bit_bash, uvm_test: entropy_src_csr_bit_bash, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_csr_aliasing, uvm_test: entropy_src_csr_aliasing, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_same_csr_outstanding, uvm_test: entropy_src_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_csr_mem_rw_with_rand_reset, uvm_test: entropy_src_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_intr_test, uvm_test: entropy_src_intr_test, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_alert_test, uvm_test: entropy_src_alert_test, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_tl_errors, uvm_test: entropy_src_tl_errors, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_tl_intg_err, uvm_test: entropy_src_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  - {name: entropy_src_sec_cm, uvm_test: entropy_src_sec_cm, seeds: [1, 2], timeout: 3600}
