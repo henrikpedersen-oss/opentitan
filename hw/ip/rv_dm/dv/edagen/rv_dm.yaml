@@ -62,6 +62,18 @@ formal:
   clocks: [jtag_i.tck]
   # The FPV environment: scan mode held off (rv_dm_fpv_env.sv).
   files: [formal/rv_dm_fpv_env.sv]
+  # Superlint's DFT checks. In test mode (scanmode_i = MuBi4True) rv_dm's prim_clock_mux2 replaces
+  # JTAG's TCK with clk_i and prim_rst_n_mux2 replaces TRST with scan_rst_ni, so clk_i is the only
+  # test clock. Shift holds every reset inactive; in capture the tester drives them. Functional
+  # mode is the chip's: scan mode off.
+  dft:
+    test_clocks: [clk_i]
+    constants:
+      shift: {scanmode_i: "4'h6", scan_rst_ni: "1'b1", rst_ni: "1'b1", rst_lc_ni: "1'b1"}
+      capture: {scanmode_i: "4'h6"}
+      functional: {scanmode_i: "4'h9"}
+    controllable:
+      capture: [scan_rst_ni, rst_ni, rst_lc_ni]
 
 # Synthesis with NanGate45 (NANGATE45_DIR: eg2_top_verification sets it to its syn/lib).
 synthesis:
