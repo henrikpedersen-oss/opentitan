@@ -395,6 +395,18 @@ class rv_dm_scoreboard extends cip_base_scoreboard #(
     csr_addr = ral_model.get_word_aligned_addr(item.a_addr);
     csr      = ral_model.get_default_map().get_reg_by_offset(csr_addr);
 
+    // The Debug ROM is a RAL memory, not a register, so get_reg_by_offset finds nothing there; the
+    // scoreboard has no model of its contents (rv_dm_rom_read_access checks every word against the
+    // ROM by backdoor). Only the response's error flag is checked. Without this a ROM read was taken
+    // as "above the top of the debug memory" and expected to read 0 (2026-11-06: 0x0180006f).
+    if (csr == null && ral_model.get_default_map().get_mem_by_offset(csr_addr) != null) begin
+      if (item.d_error) begin
+        `uvm_error(get_full_name(), $sformatf("Unexpected d_error on access to 0x%0h (Debug ROM)",
+                                             csr_addr))
+      end
+      return;
+    end
+
     if (csr == null) begin
       // An unknown CSR for the mem reg block might be absolutely fine: it just means we're
       // accessing an address that lies above the top of our model of the debug memory. The

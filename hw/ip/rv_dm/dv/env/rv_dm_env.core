@@ -27,6 +27,7 @@ filesets:
       - rv_dm_cmodel_sb.sv: {is_include_file: true}
       - rv_dm_env.sv: {is_include_file: true}
       - seq_lib/rv_dm_vseq_list.sv: {is_include_file: true}
+      - seq_lib/rv_dm_sba_device_seq.sv: {is_include_file: true}
       - seq_lib/rv_dm_base_vseq.sv: {is_include_file: true}
       - seq_lib/rv_dm_common_vseq.sv: {is_include_file: true}
       - seq_lib/rv_dm_smoke_vseq.sv: {is_include_file: true}

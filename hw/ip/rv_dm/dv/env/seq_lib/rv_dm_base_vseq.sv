@@ -340,7 +340,7 @@ class rv_dm_base_vseq extends cip_base_vseq #(
                                        int rsp_abort_pct = 25,
                                        int d_error_pct = 0,
                                        int d_chan_intg_err_pct = 0);
-    m_tl_sba_device_seq = cip_tl_device_seq::type_id::create("m_tl_sba_device_seq");
+    m_tl_sba_device_seq = rv_dm_sba_device_seq::type_id::create("m_tl_sba_device_seq");
     m_tl_sba_device_seq.min_rsp_delay = min_rsp_delay;
     m_tl_sba_device_seq.max_rsp_delay = max_rsp_delay;
     m_tl_sba_device_seq.rsp_abort_pct = rsp_abort_pct;
