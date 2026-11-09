@@ -1,0 +1,29 @@
+read_slang -D SYNTHESIS -I @PRIM_RTL@ --top dm_ar_check \
+  @PRIM_RTL@/prim_mubi_pkg.sv \
+  @DBG@/src/dm_pkg.sv \
+  @DBG@/debug_rom/debug_rom.sv \
+  @DBG@/debug_rom/debug_rom_one_scratch.sv \
+  @DBG@/debug_rom/debug_rom_cheriot.sv \
+  @DM_MEM@ \
+  @HERE@/dm_ar_check.sv
+read_verilog -defer @HLS_VERILOG@ @HERE@/dm_ar_equiv.v
+prep -top dm_ar_equiv
+flatten
+memory_map
+async2sync
+opt_clean
+
+# 1. Documented, implemented register numbers, no aarpostincrement (restrict_i 1): the effect of dm_mem's program
+#    equals the documented effect for every command, in RV32 and CHERIoT mode. Must pass.
+sat -verify -seq 62 -set-init-zero -set restrict_i 1 -prove bad 0 -show-inputs -show-outputs
+# 2. Not vacuous: Bambu's transaction has finished by the comparison.
+sat -verify -seq 62 -set-init-zero -set restrict_i 1 -prove-skip 61 -prove done_seen 1
+# 3. All register numbers. Not -verify: a counterexample here is a finding, reported below.
+sat -seq 62 -set-init-zero -set restrict_i 0 -prove bad 0 -show-inputs -show-outputs
+# 4. Named cases of 3: reserved 0x1040 (aliases x0), reserved 0x2300 (aliases CSR 0x300),
+#    FPR 0x1020 on a hart without F.
+sat -seq 62 -set-init-zero -set restrict_i 0 -set regno_i 16'h1040 -prove bad 0 -show-inputs
+sat -seq 62 -set-init-zero -set restrict_i 0 -set regno_i 16'h2300 -prove bad 0 -show-inputs
+sat -seq 62 -set-init-zero -set restrict_i 0 -set regno_i 16'h1020 -prove bad 0 -show-inputs
+# aarpostincrement 1 on a supported access: the documents say not supported (cmderr 2).
+sat -seq 62 -set-init-zero -set restrict_i 0 -set postinc_i 1 -prove bad 0 -show-inputs
