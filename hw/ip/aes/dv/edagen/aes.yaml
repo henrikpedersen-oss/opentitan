@@ -1,0 +1,127 @@
+# edagen's configuration for aes, the AES-128/192/256 cipher (eg2_top_verification: make block-flow
+# BLOCK=aes; edagen is eg2_top_verification's scripts/edagen). Ported from lowRISC/eg2-git-proposal
+# crypto-engines/aes/config/aes.yaml (00fdd31) to the EG2 fork, 2026-11-07. It reuses aes's block
+# bench (hw/ip/aes/dv), whose scoreboard checks every message against the AES C model through DPI
+# (aes_scoreboard: c_dpi_aes_crypt_message; hw/ip/aes/model, hw/ip/aes/dv/aes_model_dpi), and
+# generates the lint, formal, synthesis and equivalence flows from aes_rtl.f.
+#
+# EG2's configuration (hw/top_earlgrey/data/top_earlgrey.hjson): AESGCMEnable 0, SecMasking 1,
+# SecSBoxImpl aes_pkg::SBoxImplDom. The simulation uses the bench's aes_masked build
+# (aes_masked_sim_cfg.hjson: EN_MASKING=1, SBOX_IMPL=SBoxImplDom, EN_GCM=0); lint, formal and
+# synthesis elaborate with the parameters below (SecSBoxImpl's RTL default is SBoxImplDom).
+module: aes
+clock_frequency_hz: 100_000_000
+top: aes
+description: "aes, the AES cipher engine (masked, no GCM, as in EG2): its block bench, checked against the AES C model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  # aes and its dependencies (TL-UL, primitives, the life-cycle, EDN and keymgr_dpe packages), from
+  # FuseSoC (aes_rtl.f says how). The simulation builds the RTL through DVSim; lint, formal and
+  # synthesis read this list.
+  filelist: aes_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+  parameters: {AESGCMEnable: false, SecMasking: true}
+
+# Both clocks are clk_main in EG2 (top_earlgrey.hjson clock_srcs: clk_i and clk_edn_i "main"), so they
+# are one clock group here: synchronous, no crossing. (With clk_edn in a group of its own, Jasper CDC
+# checked aes's EDN synchronizer as an asynchronous crossing EG2 does not have, 2026-11-08; the
+# synchronizer, prim_sync_reqack, has OpenTitan's own formal and DV.)
+clocks:
+  - {name: clk, port: clk_i}
+  - {name: clk_edn, port: clk_edn_i, freq_hz: 100_000_000, group: clk}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_shadowed, port: rst_shadowed_ni, active_low: true, sync_to: clk}
+  - {name: rst_edn, port: rst_edn_ni, active_low: true, sync_to: clk_edn}
+
+interfaces:
+  - name: tl
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: aes_ral_pkg
+    ral_core: "lowrisc:dv:aes_env:0.1"
+
+# aes.hjson's alerts.
+alerts:
+  - {name: recov_ctrl_update_err, fatal: false, desc: "An update error of a shadowed control register"}
+  - {name: fatal_fault, fatal: true, desc: "A fatal fault: TL-UL integrity, a sparse FSM or counter, a shadowed register storage error"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/aes/dv/aes_masked_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:aes_sim:0.1"
+  reuse_testplan: hw/ip/aes/data/aes_testplan.hjson
+
+# The FPV environment: the EDN endpoint protocol (formal/aes_fpv_env.sv).
+formal:
+  files: [formal/aes_fpv_env.sv]
+  # Superlint's DFT checks (as for rv_dm, 2026-11-09: without a test mode Jasper takes no clock as
+  # controllable and reports every flop unscannable). aes has no scan-mode input: both clocks are
+  # test clocks, shift holds every reset inactive, in capture the tester drives them.
+  dft:
+    test_clocks: [clk_i, clk_edn_i]
+    constants:
+      shift: {rst_ni: "1'b1", rst_shadowed_ni: "1'b1", rst_edn_ni: "1'b1"}
+    controllable:
+      capture: [rst_ni, rst_shadowed_ni, rst_edn_ni]
+
+# Synthesis with NanGate45 (NANGATE45_DIR: eg2_top_verification sets it to the fork's
+# hw/top_earlgrey/syn/tech-lib/nangate45).
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  # Superlint, UNR of the simulations' coverage holes, CDC (clk and the EDN clock), and FPV with the
+  # generated property stub.
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  # Yosys maps to its generic gates: its scripts cannot take NANGATE45_DIR.
+  yosys: {frontend: slang, flatten: true}
+
+# DVSim tests of aes's bench in the aes_masked build: every test aes_base_sim_cfg.hjson names (not the
+# GCM tests of aes_gcm_tests.hjson: EG2 has no GCM), and the common CIP tests it imports (alert, CSR,
+# shadow registers, TL-UL access, sec_cm, stress with rand reset). DVSim's own reseed counts are for
+# nightly regressions; edagen runs one to three seeds each.
+tests:
+  - {name: aes_smoke, uvm_test: aes_smoke, seeds: [1, 2, 3], timeout: 1800}
+  - {name: aes_wake_up, uvm_test: aes_wake_up, seeds: [1], timeout: 1800}
+  - {name: aes_nist_vectors, uvm_test: aes_nist_vectors, seeds: [1], timeout: 3600}
+  - {name: aes_deinit, uvm_test: aes_deinit, seeds: [1, 2], timeout: 1800}
+  - {name: aes_man_cfg_err, uvm_test: aes_man_cfg_err, seeds: [1], timeout: 1800}
+  - {name: aes_readability, uvm_test: aes_readability, seeds: [1], timeout: 1800}
+  - {name: aes_config_error, uvm_test: aes_config_error, seeds: [1, 2], timeout: 3600}
+  - {name: aes_stress, uvm_test: aes_stress, seeds: [1, 2], timeout: 3600}
+  - {name: aes_b2b, uvm_test: aes_b2b, seeds: [1, 2], timeout: 3600}
+  - {name: aes_clear, uvm_test: aes_clear, seeds: [1, 2], timeout: 3600}
+  - {name: aes_alert_reset, uvm_test: aes_alert_reset, seeds: [1, 2], timeout: 3600}
+  - {name: aes_sideload, uvm_test: aes_sideload, seeds: [1, 2], timeout: 3600}
+  - {name: aes_reseed, uvm_test: aes_reseed, seeds: [1, 2], timeout: 3600}
+  - {name: aes_fi, uvm_test: aes_fi, seeds: [1, 2], timeout: 3600}
+  - {name: aes_control_fi, uvm_test: aes_control_fi, seeds: [1, 2], timeout: 3600}
+  - {name: aes_cipher_fi, uvm_test: aes_cipher_fi, seeds: [1, 2], timeout: 3600}
+  - {name: aes_ctr_fi, uvm_test: aes_ctr_fi, seeds: [1, 2], timeout: 3600}
+  - {name: aes_core_fi, uvm_test: aes_core_fi, seeds: [1, 2], timeout: 3600}
+  - {name: aes_alert_test, uvm_test: aes_alert_test, seeds: [1], timeout: 1800}
+  - {name: aes_csr_hw_reset, uvm_test: aes_csr_hw_reset, seeds: [1], timeout: 1800}
+  - {name: aes_csr_rw, uvm_test: aes_csr_rw, seeds: [1], timeout: 1800}
+  - {name: aes_csr_bit_bash, uvm_test: aes_csr_bit_bash, seeds: [1], timeout: 1800}
+  - {name: aes_csr_aliasing, uvm_test: aes_csr_aliasing, seeds: [1], timeout: 1800}
+  - {name: aes_same_csr_outstanding, uvm_test: aes_same_csr_outstanding, seeds: [1], timeout: 1800}
+  - {name: aes_csr_mem_rw_with_rand_reset, uvm_test: aes_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
+  - {name: aes_shadow_reg_errors, uvm_test: aes_shadow_reg_errors, seeds: [1], timeout: 1800}
+  - {name: aes_shadow_reg_errors_with_csr_rw, uvm_test: aes_shadow_reg_errors_with_csr_rw, seeds: [1], timeout: 1800}
+  - {name: aes_tl_errors, uvm_test: aes_tl_errors, seeds: [1], timeout: 1800}
+  - {name: aes_tl_intg_err, uvm_test: aes_tl_intg_err, seeds: [1], timeout: 1800}
+  - {name: aes_sec_cm, uvm_test: aes_sec_cm, seeds: [1], timeout: 1800}
+  - {name: aes_stress_all_with_rand_reset, uvm_test: aes_stress_all_with_rand_reset, seeds: [1, 2], timeout: 3600}

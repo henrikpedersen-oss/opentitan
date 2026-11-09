@@ -1,0 +1,4 @@
+// reason: NEGIDX and RTLINI flag legal, synthesizable SV that OpenTitan uses on purpose: NEGIDX fires on reggen's alert index enum constants (AlertFatalFaultIdx = 1, AlertRecovCtrlUpdateErrIdx = 0) used as array indices, which are never negative; RTLINI fires on automatic variables initialised in package functions (prim_cipher_pkg key_out, keymgr_dpe_pkg unused_key), which are assigned on each call, not power-up values. The proposal waived the same rules (crypto-engines/aes/config/waivers/lint/upstream_hal.halrc) owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// 9 hits in aes, 2026-11-07: NEGIDX aes.sv:196 (2), aes.sv:230, aes.sv:232, prim_mubi_pkg.sv:1001; RTLINI prim_cipher_pkg.sv:249/261/273, keymgr_dpe_pkg.sv:459. Each line below is one HAL argument.
+-NOCHECK NEGIDX
+-NOCHECK RTLINI
