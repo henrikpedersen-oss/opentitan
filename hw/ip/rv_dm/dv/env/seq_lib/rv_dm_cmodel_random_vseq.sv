@@ -46,6 +46,7 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
   protected int unsigned n_sbcs_no_autoinc;  // sbcs writes whose sbautoincrement was cleared
   protected bit          dm_inactive;        // the last dmcontrol write cleared dmactive
   protected int unsigned n_reactivated;      // sbdata0 writes preceded by setting dmactive again
+  protected int unsigned n_clean_deactivate;  // dmcontrol writes clearing dmactive with nothing else
 
   `uvm_object_new
 
@@ -90,9 +91,10 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
                                  "writes clear all of sberror or none (sberror is cleared as a whole); ",
                                  "%0d commands with aarsize 2 for transfer 0 or no aarpostincrement; ",
                                  "%0d sbcs writes without sbautoincrement; %0d sbdata0 writes after ",
-                                 "setting dmactive again"},
+                                 "setting dmactive again; %0d dmcontrol writes clearing dmactive ",
+                                 "with nothing else"},
                                 n_cmderr_clears, n_sberror_whole, n_cmd_changed, n_sbcs_no_autoinc,
-                                n_reactivated),
+                                n_reactivated, n_clean_deactivate),
                 UVM_NONE)
     end
     // No "disable fork": it also killed the SBA device sequence the base sequence forks in
@@ -142,7 +144,9 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
     if (mask_known) begin
       // rv_dm refuses aarsize above the register even with transfer 0 (finding "aarsize is checked
       // when transfer is 0"; Debug spec 3.6.1.1: aarsize does not matter then), and whether it
-      // supports aarpostincrement is not documented (rv_dm refuses it): neither can be predicted.
+      // supports aarpostincrement is not documented: rv_dm refuses it with transfer 0 and ignores it
+      // with transfer 1 (the access runs, no increment, no error: finding of the C = RTL proof,
+      // hw/ip/rv_dm/dv/c2rtl). Neither can be predicted.
       if (!v[17] && v[22:20] > 2) begin
         v[22:20] = 2;
         n_cmd_changed++;
@@ -244,6 +248,15 @@ class rv_dm_cmodel_random_vseq extends rv_dm_base_vseq;
       default:      v = $urandom();
     endcase
     if (r.get_name() == "abstractauto") autoexec_on = (v & 32'hffff_0fff) != 0;
+    // rv_dm applies the other fields of the write that clears dmactive for one clock (PULP
+    // dm_csrs.sv resets on the stored dmactive): resumereq sets the resume flag and clears
+    // resumeack, haltreq raises debug_req, ndmreset pulses (finding "a write clearing dmactive
+    // still acts"; Debug spec 3.12.2: only dmactive can be written then). With the known
+    // findings masked the debugger clears dmactive with nothing else set.
+    if (mask_known && r.get_name() == "dmcontrol" && !v[0] && !dm_inactive && v != 0) begin
+      v = 0;
+      n_clean_deactivate++;
+    end
     if (r.get_name() == "dmcontrol") dm_inactive = !v[0];
     csr_wr(.ptr(r), .value(v), .predict(1'b0), .blocking(1'b1));
   endtask
