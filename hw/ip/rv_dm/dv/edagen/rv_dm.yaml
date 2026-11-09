@@ -18,7 +18,8 @@ rtl:
 
 clocks:
   - {name: clk, port: clk_i}
-  - {name: clk_lc, port: clk_lc_i, freq_hz: 100_000_000}
+  # clk_lc_i is the same clock as clk_i in Earl Grey 2 (both clk_main_infra, earlgrey_pd_main.sv).
+  - {name: clk_lc, port: clk_lc_i, freq_hz: 100_000_000, group: clk}
 
 resets:
   - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
@@ -60,6 +61,19 @@ dv:
 # DTM and the DMI clock-domain crossing); CDC finds the crossings only when it is declared.
 formal:
   clocks: [jtag_i.tck]
+  # CDC: every rv_dm input is synchronous to clk_i except JTAG (Henrik, 2026-11-09). TCK is its own
+  # domain (the one real crossing is clk_i <-> TCK through dmi_cdc); the JTAG fields belong to it
+  # (field by field: jtag_i holds TCK itself, which Jasper will not rate) and TRST is its reset.
+  resets:
+    - {signal: jtag_i.trst_n, clock: jtag_i.tck}
+  cdc_ports:
+    jtag_i.tms: jtag_i.tck
+    jtag_i.tdi: jtag_i.tck
+    jtag_o: jtag_i.tck
+  # Quasi-static: they change at a life-cycle transition, once at boot (lc_init_done, the OTP
+  # setting, the pinmux strap) or at a CHERIoT mode switch, and then stay put.
+  cdc_static: [lc_hw_debug_en_i, lc_dft_en_i, lc_init_done_i, pinmux_hw_debug_en_i,
+               otp_dis_rv_dm_late_debug_i, cheriot_ena_i]
   # The FPV environment: scan mode held off (rv_dm_fpv_env.sv).
   files: [formal/rv_dm_fpv_env.sv]
   # Superlint's DFT checks. In test mode (scanmode_i = MuBi4True) rv_dm's prim_clock_mux2 replaces
