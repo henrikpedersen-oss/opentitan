@@ -10,7 +10,7 @@ class cheriot_mem_sys_tag_smoke_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_new
 
   virtual task body();
-    bit [31:0] w0, w1;
+    bit [31:0] w0, w1, d;
     bit        t, e;
     csr_rd(.ptr(ral.tbre_regwen), .value(d));
     csr_rd(.ptr(ral.tbre_status), .value(d));

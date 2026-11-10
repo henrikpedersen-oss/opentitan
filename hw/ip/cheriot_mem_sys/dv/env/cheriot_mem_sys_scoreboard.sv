@@ -69,6 +69,9 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   // read-modify-write is aborted).
   protected bit [31:0]             meta_image[bit [31:0]];
   protected bit                    aborted_words[bit [31:0]];
+  // The tag words whose last read had a broken integrity, and the write-backs of them seen (Q43).
+  protected bit                    intg_fault_words[bit [31:0]];
+  protected int unsigned           n_q43;
   // Alerts: the fatal one latched, ALERT_TEST alerts and observed alerts waiting for their match
   // (the cycle each arrived), an optional one allowed.
   protected bit                    fatal_expected, fatal_seen;
@@ -76,7 +79,10 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   protected longint unsigned       alert_tests_q[$], unmatched_alerts_q[$];
   protected bit                    alert_optional;
 
+  // Compared accesses, and the responses taken from the monitors (seen): a response whose
+  // prediction never comes is seen but not compared, which check_phase reports.
   protected int unsigned n_core, n_bitmap, n_csr, n_meta_words, n_mismatch, n_reads;
+  protected int unsigned n_core_seen, n_bitmap_seen, n_csr_seen;
   protected bit          corrupted;
 
   `uvm_component_new
@@ -111,24 +117,36 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
         core_fifo.get(act);
         if (cfg.en_cov) cov.core_access_cg.sample(act, region_of(act.addr));
         if (core_in_flight > 0) core_in_flight--;
-        if (ref_model != null) compare_core(act);
+        if (ref_model != null) begin
+          n_core_seen++;
+          compare_core(act);
+        end
       end
       forever begin
         tl_seq_item act;
         revbm_fifo.get(act);
         if (cfg.en_cov) cov.bitmap_access_cg.sample(1'b0, act);
-        if (ref_model != null) compare_bitmap(act, revbm_exp_fifo);
+        if (ref_model != null) begin
+          n_bitmap_seen++;
+          compare_bitmap(act, revbm_exp_fifo);
+        end
       end
       forever begin
         tl_seq_item act;
         corerevbm_fifo.get(act);
         if (cfg.en_cov) cov.bitmap_access_cg.sample(1'b1, act);
-        if (ref_model != null) compare_bitmap(act, corerevbm_exp_fifo);
+        if (ref_model != null) begin
+          n_bitmap_seen++;
+          compare_bitmap(act, corerevbm_exp_fifo);
+        end
       end
       forever begin
         tl_seq_item act;
         regs_fifo.get(act);
-        if (ref_model != null && !act.d_error && !act.is_write()) compare_csr(act);
+        if (ref_model != null && !act.d_error && !act.is_write()) begin
+          n_csr_seen++;
+          compare_csr(act);
+        end
       end
       forever begin
         cheriot_mem_sys_alert_exp exp;
@@ -145,12 +163,20 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     bit [31:0]              rdata = act.rdata;
     core_exp_fifo.get(exp);
     n_core++;
-    // The _inject_fail test: the n-th read response is compared with one bit flipped.
-    if (act.opcode == tlul_pkg::Get && !act.err && ++n_reads == cfg.cmodel_corrupt) begin
-      rdata[0]  = !rdata[0];
-      corrupted = 1'b1;
-      `uvm_info(`gfn, $sformatf("read %0d at 0x%08x compared with one bit flipped", n_reads,
-                                act.addr), UVM_LOW)
+    // The _inject_fail test: from the n-th read response on, the first one whose data the model
+    // compares is compared with one of the compared bits flipped, so the comparison must fail. (A
+    // bit outside rdata_care, such as bit 0 of a byte read in lane 1, would change nothing.)
+    if (cfg.cmodel_corrupt != 0 && act.opcode == tlul_pkg::Get && !act.err) begin
+      n_reads++;
+      if (!corrupted && n_reads >= cfg.cmodel_corrupt && exp.rdata_care != 0 &&
+          !(exp.err_care && exp.err)) begin
+        int unsigned b = 0;
+        while (!exp.rdata_care[b]) b++;
+        rdata[b]  = !rdata[b];
+        corrupted = 1'b1;
+        `uvm_info(`gfn, $sformatf("read %0d at 0x%08x compared with bit %0d flipped", n_reads,
+                                  act.addr, b), UVM_LOW)
+      end
     end
     compare(exp, act.err, rdata);
     if (!act.err && !exp.rtag_set[act.rtag]) begin
@@ -296,21 +322,32 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     join_none
   endfunction
 
-  // A tag word's write-back: it changes the word, and none follows a failed read of it.
+  // A tag word's write-back: it changes the word, and none follows a read of it answered with
+  // d_error ("Error Handling": "Device error on the tag path: Read-modify-write aborted").
+  // After a read answered with a broken integrity the documents give only the fatal_fault alert;
+  // whether the write-back must be dropped too is open (verification spec Q43; rtl_tickets.md,
+  // "the RMW filter writes back a tag word read with a broken integrity"), so it is reported, not
+  // judged.
   function void write_meta_rsp_sb(tl_seq_item it);
-    bit [31:0] word  = {it.a_addr[31:2], 2'b00};
-    bit        tag   = it.a_addr >= MetaNvmTagBase;
-    bit        fault = it.d_error || !tl_d_intg_ok(it);
+    bit [31:0] word = {it.a_addr[31:2], 2'b00};
+    bit        tag  = it.a_addr >= MetaNvmTagBase;
     last_activity = cycle;
     if (!it.is_write()) begin
       if (tag) begin
-        if (fault) aborted_words[word] = 1'b1;
-        else       aborted_words.delete(word);
+        if (it.d_error) aborted_words[word] = 1'b1;
+        else            aborted_words.delete(word);
+        if (!it.d_error && !tl_d_intg_ok(it)) intg_fault_words[word] = 1'b1;
+        else                                  intg_fault_words.delete(word);
       end
       return;
     end
     if (tag && aborted_words.exists(word)) begin
       `uvm_error(`gfn, $sformatf("tag word 0x%08x written back after its read failed", word))
+    end
+    if (tag && intg_fault_words.exists(word)) begin
+      n_q43++;
+      `uvm_info(`gfn, $sformatf({"tag word 0x%08x written back after its read had a broken ",
+                                 "integrity (open question Q43: not judged)"}, word), UVM_LOW)
     end
     if (tag && meta_image.exists(word) && meta_image[word] == it.a_data && it.a_mask == 4'hf) begin
       `uvm_error(`gfn, $sformatf("tag word 0x%08x written back unchanged (0x%08x)", word,
@@ -374,9 +411,20 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     if (ref_model != null) begin
       if (fatal_expected && !fatal_seen) mismatch("a fault raised no fatal_fault before the reset");
       if (alert_tests_q.size() > 0) mismatch("an ALERT_TEST alert did not come before the reset");
+      // An alert nothing explains is judged now: its 2000-cycle window would outlast the reset.
+      if (unmatched_alerts_q.size() > 0) begin
+        mismatch("fatal_fault alert that nothing raised (before the reset)");
+      end
+      // The tests reset at quiet points (a reset in the middle of an access, cms_reset, is not
+      // ported): every response taken must have been compared by now.
+      check_counts("before the reset");
+      n_core_seen   = n_core;
+      n_bitmap_seen = n_bitmap;
+      n_csr_seen    = n_csr;
     end
     core_in_flight = 0;
     aborted_words.delete();
+    intg_fault_words.delete();
     fatal_expected = 1'b0;
     fatal_seen     = 1'b0;
     alert_optional = 1'b0;
@@ -394,6 +442,28 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     if (!core_exp_fifo.is_empty() || !core_fifo.is_empty()) begin
       mismatch("core accesses left uncompared at the end of the test");
     end
+    if (!revbm_exp_fifo.is_empty() || !revbm_fifo.is_empty() ||
+        !corerevbm_exp_fifo.is_empty() || !corerevbm_fifo.is_empty()) begin
+      mismatch("bitmap accesses left uncompared at the end of the test");
+    end
+    if (!csr_exp_fifo.is_empty() || !regs_fifo.is_empty()) begin
+      mismatch("register reads left uncompared at the end of the test");
+    end
+    check_counts("at the end of the test");
+  endfunction
+
+  // Every response taken from a monitor was compared: one still waiting for its prediction is not.
+  protected function void check_counts(string when);
+    if (n_core_seen != n_core) begin
+      mismatch($sformatf("%0d core responses without a prediction %s", n_core_seen - n_core, when));
+    end
+    if (n_bitmap_seen != n_bitmap) begin
+      mismatch($sformatf("%0d bitmap responses without a prediction %s", n_bitmap_seen - n_bitmap,
+                         when));
+    end
+    if (n_csr_seen != n_csr) begin
+      mismatch($sformatf("%0d register reads without a prediction %s", n_csr_seen - n_csr, when));
+    end
   endfunction
 
   function void report_phase(uvm_phase phase);
@@ -403,6 +473,10 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
                               "register accesses, %0d meta SRAM words; %0d mismatches%s"}, n_core,
                               n_bitmap, n_csr, n_meta_words, n_mismatch,
                               corrupted ? " (one read compared corrupted)" : ""), UVM_LOW)
+    if (n_q43 != 0) begin
+      `uvm_info(`gfn, $sformatf({"%0d tag write-backs after a read with a broken integrity, not ",
+                                 "judged (open question Q43)"}, n_q43), UVM_LOW)
+    end
     if (cfg.cmodel_corrupt != 0 && !corrupted) begin
       `uvm_error(`gfn, $sformatf("the corruption at read %0d never happened (%0d reads)",
                                  cfg.cmodel_corrupt, n_reads))

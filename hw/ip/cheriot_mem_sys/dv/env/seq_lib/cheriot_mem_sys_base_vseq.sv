@@ -483,14 +483,15 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
     sweep_running = 1'b0;
   endtask
 
-  // Waits for intr_tbre_done_o to be `level`, as software waits for an interrupt.
-  protected task wait_intr_pin(bit level, int unsigned max_cycles = 200000);
+  // Waits for intr_tbre_done_o to be `level`, as software waits for an interrupt. `what` names the
+  // step in the timeout message.
+  protected task wait_intr_pin(bit level, int unsigned max_cycles = 200000, string what = "");
     for (int unsigned i = 0; i < max_cycles; i++) begin
       if (cfg.intr_vif.pins[0] == level) return;
       wait_cycles(1);
     end
-    `uvm_fatal(`gfn, $sformatf("timeout: intr_tbre_done_o not %0b after %0d cycles", level,
-                               max_cycles))
+    `uvm_fatal(`gfn, $sformatf("timeout: intr_tbre_done_o not %0b after %0d cycles%s", level,
+                               max_cycles, what == "" ? "" : {" (", what, ")"}))
   endtask
 
   // Reads TBRE_STATUS and TBRE_EPOCH after a failed sweep and clears sweep_err, as software does
