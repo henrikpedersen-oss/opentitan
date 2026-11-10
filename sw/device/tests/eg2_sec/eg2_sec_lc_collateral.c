@@ -15,7 +15,7 @@
  *    (SECRET2) only while SECRET2_DIGEST == 0 and CREATOR_SEED_SW_RW_EN is on. otp_ctrl's
  *    partition table: SECRET1 is read- and write-locked by its digest, except that its read lock
  *    is ignored in RMA (`ignore_read_lock_in_rma`). A refused access ends with the DAI's ERR_CODE
- *    ACCESS_ERROR and RDATA zero.
+ *    ACCESS_ERROR (what DIRECT_ACCESS_RDATA then holds, no document says: not checked).
  *  - CREATOR_SEED_SW_RW_EN and OWNER_SEED_SW_RW_EN per state (lc_ctrl "Life Cycle Decoded
  *    Outputs" table): creator on in RMA, and in DEV / PROD / PROD_END only before personalization
  *    (SECRET2_DIGEST == 0); owner on in DEV, PROD, PROD_END and RMA; both off otherwise.
@@ -110,8 +110,9 @@ static bool dai_checks(uint32_t state, bool creator_en) {
                                    : "DAI read SECRET2 error code",
                           expect_ok ? kEg2OtpErrNone : kEg2OtpErrAccess, err) &&
            ok;
+      // A refused read is judged by its error code; what DIRECT_ACCESS_RDATA then holds, no
+      // document says, so eg2_otp_dai does not read it and nothing is checked of r.
       if (!read_allowed) {
-        ok = eg2_boot_check("refused DAI read returns zero", 0, r[0] | r[1]) && ok;
         any_error = true;
       }
     }

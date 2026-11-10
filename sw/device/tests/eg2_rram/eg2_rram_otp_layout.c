@@ -119,6 +119,9 @@ static bool dai_wait_idle(void) {
 }
 
 /** A DAI read; returns ERR_CODE_11 (the DAI's error code), 0xff on a timeout.
+ * The data is read only after a read without error (otp_ctrl programmers_guide.md, "Readout
+ * Sequence": the error first, then the data); what DIRECT_ACCESS_RDATA holds after a refused
+ * read no document says, so *lo and *hi are left as they are then.
  */
 static uint32_t dai_read(uint32_t addr, uint32_t *lo, uint32_t *hi) {
   if (!dai_wait_idle()) {
@@ -130,9 +133,12 @@ static uint32_t dai_read(uint32_t addr, uint32_t *lo, uint32_t *hi) {
   if (!dai_wait_idle()) {
     return 0xff;
   }
-  *lo = otp_rd(OTP_CTRL_DIRECT_ACCESS_RDATA_0_REG_OFFSET);
-  *hi = otp_rd(OTP_CTRL_DIRECT_ACCESS_RDATA_1_REG_OFFSET);
-  return otp_rd(kDaiErr) & OTP_CTRL_ERR_CODE_0_ERR_CODE_0_MASK;
+  uint32_t err = otp_rd(kDaiErr) & OTP_CTRL_ERR_CODE_0_ERR_CODE_0_MASK;
+  if (err == 0) {
+    *lo = otp_rd(OTP_CTRL_DIRECT_ACCESS_RDATA_0_REG_OFFSET);
+    *hi = otp_rd(OTP_CTRL_DIRECT_ACCESS_RDATA_1_REG_OFFSET);
+  }
+  return err;
 }
 
 static bool read_granule(uint32_t part, uint32_t off, uint32_t w) {

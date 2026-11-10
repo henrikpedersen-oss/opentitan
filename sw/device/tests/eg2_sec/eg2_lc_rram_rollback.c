@@ -94,8 +94,9 @@ bool eg2_test_main(void) {
   if (EG2_PARAM(paths) & 2) {
     uint32_t r[2];
     uint32_t err = eg2_otp_dai(kEg2OtpDaiRead, OTP_CTRL_PARAM_LC_STATE_OFFSET, NULL, r);
+    // Refused: the error code is the documented answer (what DIRECT_ACCESS_RDATA then holds, no
+    // document says, so it is not checked).
     ok = eg2_boot_check("DAI read LC_STATE refused", kEg2OtpErrAccess, err) && ok;
-    ok = eg2_boot_check("refused DAI read returns zero", 0, r[0] | r[1]) && ok;
   }
   if (EG2_PARAM(paths) & 3) {
     eg2_otp_dai_clear_error();

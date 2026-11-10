@@ -265,9 +265,11 @@ enum {
 
 /**
  * One DAI command (`cmd`) at OTP byte address `addr`, with write data `wdata[2]` (a write) or
- * read data into `rdata[2]` (a read; zeroed first). Waits for DAI_IDLE. Returns the DAI's
- * ERR_CODE entry (0 NO_ERROR, 5 ACCESS_ERROR, ...); `*regwen_locked` (if given) tells whether
- * DIRECT_ACCESS_REGWEN was 0, in which case the command could not be issued and 0xff is returned.
+ * read data into `rdata[2]` (a read; zeroed first, and read only if the read had no error: the
+ * documents don't say what DIRECT_ACCESS_RDATA holds after a refused one). Waits for DAI_IDLE.
+ * Returns the DAI's ERR_CODE entry (0 NO_ERROR, 5 ACCESS_ERROR, ...); `*regwen_locked` (if
+ * given) tells whether DIRECT_ACCESS_REGWEN was 0, in which case the command could not be issued
+ * and 0xff is returned.
  */
 uint32_t eg2_otp_dai(uint32_t cmd, uint32_t addr, const uint32_t wdata[2], uint32_t rdata[2]);
 

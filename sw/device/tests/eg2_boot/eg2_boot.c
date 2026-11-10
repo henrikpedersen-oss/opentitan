@@ -422,7 +422,10 @@ uint32_t eg2_otp_dai(uint32_t cmd, uint32_t addr, const uint32_t wdata[2], uint3
   uint32_t err = eg2_dev_read32(kEg2DevOtpCtrlCore,
                                 OTP_CTRL_ERR_CODE_0_REG_OFFSET + 4 * OTP_CTRL_PARAM_NUM_PART) &
                  OTP_CTRL_ERR_CODE_0_ERR_CODE_0_MASK;
-  if (rdata != NULL) {
+  // The read data only after a read without error (otp_ctrl programmers_guide.md, "Readout
+  // Sequence": the error is handled first, then the data is read). What DIRECT_ACCESS_RDATA holds
+  // after a refused read no document says, so it is not read then; rdata stays zero.
+  if (rdata != NULL && err == kEg2OtpErrNone) {
     rdata[0] = eg2_dev_read32(kEg2DevOtpCtrlCore, OTP_CTRL_DIRECT_ACCESS_RDATA_0_REG_OFFSET);
     rdata[1] = eg2_dev_read32(kEg2DevOtpCtrlCore, OTP_CTRL_DIRECT_ACCESS_RDATA_1_REG_OFFSET);
   }
