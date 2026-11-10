@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright lowRISC contributors (OpenTitan project). -->
+<!-- Licensed under the Apache License, Version 2.0, see LICENSE for details. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- CHERIoT memory subsystem: the CIP testbench (tb.sv) and its UVM environment. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="650" viewBox="0 0 1000 650"
+     font-family="'Liberation Sans', Arial, sans-serif" font-size="14">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#000000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="650" fill="#ffffff"/>
+
+  <!-- tb -->
+  <rect x="10" y="10" width="980" height="630" fill="none" stroke="#000000" stroke-width="2"/>
+  <text x="24" y="34" font-size="16" font-weight="bold" fill="#000000">tb</text>
+
+  <!-- UVM environment -->
+  <rect x="30" y="50" width="560" height="560" fill="#fce6ce" stroke="#000000"/>
+  <text x="44" y="74" font-size="16" font-weight="bold" fill="#000000">cheriot_mem_sys_env (cip_base_env)</text>
+
+  <rect x="50" y="90" width="250" height="44" fill="#ffffff" stroke="#000000"/>
+  <text x="62" y="117" fill="#000000">cheriot_mem_sys_env_cfg</text>
+  <rect x="320" y="90" width="250" height="44" fill="#ffffff" stroke="#000000"/>
+  <text x="332" y="117" fill="#000000">virtual_sequencer</text>
+
+  <rect x="50" y="154" width="250" height="60" fill="#ffffff" stroke="#000000"/>
+  <text x="62" y="180" fill="#000000">RAL model (ralgen)</text>
+  <text x="62" y="200" font-size="12" fill="#000000">cheriot_mem_sys.hjson</text>
+  <rect x="320" y="154" width="250" height="60" fill="#ffffff" stroke="#000000"/>
+  <text x="332" y="180" fill="#000000">cheriot_mem_sys_env_cov</text>
+  <text x="332" y="200" font-size="12" fill="#000000">CIP covergroups</text>
+
+  <rect x="50" y="234" width="250" height="236" fill="#ffffff" stroke="#000000"/>
+  <text x="62" y="262" fill="#000000">cheriot_mem_sys_scoreboard</text>
+  <text x="62" y="284" font-size="12" fill="#000000">CSR prediction and read</text>
+  <text x="62" y="300" font-size="12" fill="#000000">checks through the RAL</text>
+
+  <rect x="330" y="234" width="240" height="80" fill="#ffe599" stroke="#000000"/>
+  <text x="342" y="260" font-weight="bold" fill="#000000">m_tl_agent</text>
+  <text x="342" y="282" font-size="12" fill="#000000">driver, sequencer, monitor</text>
+  <text x="342" y="300" font-size="12" fill="#000000">regs CSR port</text>
+  <rect x="330" y="334" width="240" height="80" fill="#ffe599" stroke="#000000"/>
+  <text x="342" y="360" font-weight="bold" fill="#000000">alert agent</text>
+  <text x="342" y="382" font-size="12" fill="#000000">fatal_fault</text>
+
+  <rect x="50" y="490" width="520" height="100" fill="#ffffff" stroke="#000000"/>
+  <text x="62" y="516" font-weight="bold" fill="#000000">Test sequences (seq_lib)</text>
+  <text x="62" y="538" font-size="12" fill="#000000">cheriot_mem_sys_base_vseq (cip_base_vseq)</text>
+  <text x="62" y="558" font-size="12" fill="#000000">cheriot_mem_sys_common_vseq: CSR, alert, interrupt, TL-UL tests</text>
+  <text x="62" y="578" font-size="12" fill="#000000">cheriot_mem_sys_smoke_vseq</text>
+
+  <!-- monitor paths to the scoreboard -->
+  <line x1="330" y1="274" x2="302" y2="274" stroke="#000000" marker-end="url(#arrow)"/>
+  <line x1="330" y1="374" x2="302" y2="374" stroke="#000000" marker-end="url(#arrow)"/>
+
+  <!-- DUT -->
+  <rect x="660" y="80" width="300" height="540" fill="#f4cccc" stroke="#000000" stroke-width="2"/>
+  <text x="676" y="108" font-size="16" font-weight="bold" fill="#000000">cheriot_mem_sys</text>
+  <text x="676" y="128" font-size="12" fill="#000000">rtl/cheriot_mem_sys.sv</text>
+
+  <text x="676" y="278" font-size="13" fill="#000000">regs_tl_d</text>
+  <text x="676" y="378" font-size="13" fill="#000000">alert_tx_o / alert_rx_i</text>
+  <text x="676" y="444" font-size="13" fill="#000000">intr_tbre_done_o</text>
+  <text x="676" y="484" font-size="13" fill="#000000">clk_i, rst_ni</text>
+
+  <text x="676" y="524" font-size="12" font-weight="bold" fill="#000000">Tied off in this bench:</text>
+  <text x="676" y="544" font-size="12" fill="#000000">cored_tl_d, cored_tag (core data port)</text>
+  <text x="676" y="560" font-size="12" fill="#000000">corerevbm_tl, revbm_tl_d (bitmap)</text>
+  <text x="676" y="576" font-size="12" fill="#000000">cored_tl_h, tbre_tl_h (to xbar_main)</text>
+  <text x="676" y="592" font-size="12" fill="#000000">meta_sram_tl_h (to sram_ctrl_meta)</text>
+  <text x="676" y="608" font-size="12" fill="#000000">cheriot_ena_i = MuBi4False</text>
+
+  <!-- interfaces between the environment and the DUT -->
+  <line x1="572" y1="274" x2="658" y2="274" stroke="#000000" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="596" y="266" font-size="12" fill="#000000">tl_if</text>
+  <line x1="572" y1="374" x2="658" y2="374" stroke="#000000" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="590" y="366" font-size="12" fill="#000000">alert_if</text>
+  <line x1="660" y1="440" x2="302" y2="440" stroke="#000000" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="400" y="434" font-size="12" fill="#000000">intr pins_if</text>
+  <line x1="600" y1="480" x2="658" y2="480" stroke="#000000" marker-end="url(#arrow)"/>
+  <text x="590" y="500" font-size="12" fill="#000000">clk_rst_if</text>
+</svg>

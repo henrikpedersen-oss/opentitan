@@ -25,6 +25,45 @@
       stage: V1
       tests: ["cheriot_mem_sys_smoke"]
     }
+    {
+      name: cmodel_random
+      desc: '''
+            Constrained-random traffic on every port, checked against the C reference model of the
+            subsystem (`cms_core.h`, written from the design specification, through DPI).
+
+            **Stimulus**:
+            - Capability and data loads and stores of every size and alignment on the core data
+              port (`cored_tl_d` with the tag sideband), to SRAM, NVM and untagged memory.
+            - Capability stores to the NVM that match and that do not (WTRC).
+            - Revocation bitmap reads and writes on `revbm_tl_d` and `corerevbm_tl`.
+            - CSR accesses on `regs`, revocation sweeps (TBRE_START) with concurrent core traffic.
+            - `cheriot_ena_i` in both modes; random back-pressure and response delays on the host
+              ports (`cored_tl_h`, `tbre_tl_h`, `meta_sram_tl_h`); resets in the middle of
+              operations.
+
+            **Checking**:
+            - Every completed transaction (data, tag, error) and every CSR read against the C model.
+            - At the end of the test, the meta SRAM (tags and bitmap) word by word against the model.
+            - A mismatch fails the test.
+
+            The EG2 `cms` bench runs this today: `cms_random_cmodel` and `cms_random_long_cmodel`
+            (`+cms_cmodel=2`). This testbench needs agents on the memory-side ports first.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_cmodel_random"]
+    }
+    {
+      name: cmodel_random_inject_fail
+      desc: '''
+            The C model check of `cmodel_random` is shown to fail: one read response handed to the
+            model is corrupted (one bit flipped), and the test must fail at that transaction with
+            the model's mismatch.
+
+            The EG2 `cms` bench runs this today: `cms_random_cmodel_corrupt_cmodel`.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_cmodel_random_inject_fail"]
+    }
   ]
 
   covergroups: [

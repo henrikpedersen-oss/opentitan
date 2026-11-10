@@ -14,6 +14,7 @@ package cheriot_mem_sys_env_pkg;
   import dv_base_reg_pkg::*;
   import csr_utils_pkg::*;
   import cheriot_mem_sys_regs_ral_pkg::*;
+  import mem_model_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"
@@ -32,6 +33,7 @@ package cheriot_mem_sys_env_pkg;
   `include "cheriot_mem_sys_env_cov.sv"
   `include "cheriot_mem_sys_virtual_sequencer.sv"
   `include "cheriot_mem_sys_scoreboard.sv"
+  `include "cheriot_mem_sys_cmodel_sb.sv"
   `include "cheriot_mem_sys_env.sv"
   `include "cheriot_mem_sys_vseq_list.sv"
 

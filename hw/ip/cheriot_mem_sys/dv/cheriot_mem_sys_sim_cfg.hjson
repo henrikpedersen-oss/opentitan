@@ -51,6 +51,22 @@
       name: cheriot_mem_sys_smoke
       uvm_test_seq: cheriot_mem_sys_smoke_vseq
     }
+    // Constrained-random traffic on every port against the C reference model (testpoint
+    // cmodel_random): the model scoreboard is the checker (the RAL scoreboard covers `regs` only).
+    {
+      name: cheriot_mem_sys_cmodel_random
+      uvm_test_seq: cheriot_mem_sys_cmodel_random_vseq
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1"]
+      reseed: 10
+    }
+    // The model's check shown to fail: the 50th compared read reaches the model with one bit
+    // flipped, and the test must fail with its mismatch (testpoint cmodel_random_inject_fail).
+    {
+      name: cheriot_mem_sys_cmodel_random_inject_fail
+      uvm_test_seq: cheriot_mem_sys_cmodel_random_vseq
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_cmodel_corrupt=50"]
+      reseed: 1
+    }
   ]
 
   // List of regressions.
