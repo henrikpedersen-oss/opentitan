@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Henrik M Pedersen <henrik.pedersen@lowrisc.org>
+Date: Mon, 9 Nov 2026 22:40:00 +0000
+Subject: [PATCH 12/12] Follow the Debug Specification for cmderr, dmactive and
+ Access Register regno
+
+- No abstract command starts while cmderr is not 0, written or by autoexec
+  (0.13.2, 3.12.6, 3.12.7).
+- A dmcontrol write with dmactive 0 resets the module without its other
+  fields acting for one clock (3.12.2).
+- Access Register: aarpostincrement (not implemented), the reserved regno
+  0x1040-0xbfff, and the FPRs without the F extension (new parameter HasFpu)
+  fail with cmderr 2 (3.6.1.1, table 3.3).
+
+Found by the EG2 rv_dm block bench against its reference model and the C = RTL
+proof of the abstract commands (hw/ip/rv_dm/dv/c2rtl).
+
+diff --git a/src/dm_csrs.sv b/src/dm_csrs.sv
+--- a/src/dm_csrs.sv
++++ b/src/dm_csrs.sv
+@@ -383,6 +383,12 @@
+         end
+         dm::DMControl: begin
+           dmcontrol_d = dmi_req_i.data;
++          // A write of dmactive 0 resets the module: its other fields take their reset values
++          // and do nothing (RISC-V Debug Specification 0.13.2, 3.12.2). Before, the write was
++          // stored whole for one clock, so resumereq, haltreq and ndmreset acted.
++          if (!dmcontrol_d.dmactive) begin
++            dmcontrol_d = '0;
++          end
+           // clear the havreset of the selected hart
+           if (dmcontrol_d.ackhavereset) begin
+             havereset_d_aligned[selected_hart] = 1'b0;
+@@ -409,9 +415,12 @@
+         end
+         dm::Command: begin
+           // writes are ignored if a command is already busy
++          // and while cmderr is not 0 (Debug Specification 0.13.2, 3.12.7)
+           if (!cmdbusy_i) begin
+-            cmd_valid_d = 1'b1;
+-            command_d = dm::command_t'(dmi_req_i.data);
++            if (cmderr_q == dm::CmdErrNone) begin
++              cmd_valid_d = 1'b1;
++              command_d = dm::command_t'(dmi_req_i.data);
++            end
+           // if there was an attempted to write during a busy execution
+           // and the cmderror field is zero set the busy error
+           end else begin
+@@ -532,6 +541,12 @@
+       sbdata_d = 64'(sbdata_i);
+     end
+ 
++    // No abstract command is started, written or by autoexec, while cmderr is not 0 (Debug
++    // Specification 0.13.2, 3.12.6).
++    if (cmderr_q != dm::CmdErrNone) begin
++      cmd_valid_d = 1'b0;
++    end
++
+     // dmcontrol
+     // TODO(zarubaf) we currently do not implement the hartarry mask
+     dmcontrol_d.hasel           = 1'b0;
+diff --git a/src/dm_mem.sv b/src/dm_mem.sv
+--- a/src/dm_mem.sv
++++ b/src/dm_mem.sv
+@@ -28,6 +28,9 @@
+   parameter logic [NrHarts-1:0] SelectableHarts  = {NrHarts{1'b1}},
+   parameter int unsigned        DmBaseAddress    = '0,
+   parameter bit                 CheriotSupport   = 1'b0,
++  // The harts have floating-point registers (F extension). Without, an Access Register command
++  // naming an FPR (0x1020-0x103f) is not supported (cmderr 2).
++  parameter bit                 HasFpu           = 1'b0,
+   localparam int unsigned       BeWidth          = BusWidth/8
+ ) (
+   input  logic                             clk_i,       // Clock
+@@ -596,6 +599,19 @@
+           abstract_cmd[0][31:0] = dm::ebreak(); // we leave asap
+           unsupported_command = 1'b1;
+         end
++        // RISC-V Debug Specification 0.13.2: aarpostincrement is not implemented, so a command
++        // with it set fails with "not supported" (3.6.1.1); regno 0x1040-0xbfff is reserved and
++        // the FPRs 0x1020-0x103f exist only with the F extension (table 3.3). Before, the earlier
++        // branches built the access anyway: regno was not incremented, a reserved number reached
++        // a GPR or CSR by its low bits, and an FPR access ended in an exception (cmderr 3).
++        if (ac_ar.aarpostincrement ||
++            (ac_ar.transfer &&
++             ((ac_ar.regno[15:12] == 4'h1 && ac_ar.regno[11:6] != '0) ||
++              (ac_ar.regno[15:12] >= 4'h2 && ac_ar.regno[15:12] <= 4'hb) ||
++              (!HasFpu && ac_ar.regno[15:5] == 11'h081)))) begin
++          abstract_cmd[0][31:0] = dm::ebreak(); // we leave asap
++          unsupported_command = 1'b1;
++        end
+ 
+         // Check whether we need to execute the program buffer. When we
+         // get an unsupported command we really should abort instead of

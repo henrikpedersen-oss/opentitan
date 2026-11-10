@@ -383,6 +383,12 @@ module dm_csrs #(
         end
         dm::DMControl: begin
           dmcontrol_d = dmi_req_i.data;
+          // A write of dmactive 0 resets the module: its other fields take their reset values
+          // and do nothing (RISC-V Debug Specification 0.13.2, 3.12.2). Before, the write was
+          // stored whole for one clock, so resumereq, haltreq and ndmreset acted.
+          if (!dmcontrol_d.dmactive) begin
+            dmcontrol_d = '0;
+          end
           // clear the havreset of the selected hart
           if (dmcontrol_d.ackhavereset) begin
             havereset_d_aligned[selected_hart] = 1'b0;
@@ -409,9 +415,12 @@ module dm_csrs #(
         end
         dm::Command: begin
           // writes are ignored if a command is already busy
+          // and while cmderr is not 0 (Debug Specification 0.13.2, 3.12.7)
           if (!cmdbusy_i) begin
-            cmd_valid_d = 1'b1;
-            command_d = dm::command_t'(dmi_req_i.data);
+            if (cmderr_q == dm::CmdErrNone) begin
+              cmd_valid_d = 1'b1;
+              command_d = dm::command_t'(dmi_req_i.data);
+            end
           // if there was an attempted to write during a busy execution
           // and the cmderror field is zero set the busy error
           end else begin
@@ -530,6 +539,12 @@ module dm_csrs #(
     // update read data
     if (sbdata_valid_i) begin
       sbdata_d = 64'(sbdata_i);
+    end
+
+    // No abstract command is started, written or by autoexec, while cmderr is not 0 (Debug
+    // Specification 0.13.2, 3.12.6).
+    if (cmderr_q != dm::CmdErrNone) begin
+      cmd_valid_d = 1'b0;
     end
 
     // dmcontrol

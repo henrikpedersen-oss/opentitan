@@ -28,6 +28,9 @@ module dm_mem #(
   parameter logic [NrHarts-1:0] SelectableHarts  = {NrHarts{1'b1}},
   parameter int unsigned        DmBaseAddress    = '0,
   parameter bit                 CheriotSupport   = 1'b0,
+  // The harts have floating-point registers (F extension). Without, an Access Register command
+  // naming an FPR (0x1020-0x103f) is not supported (cmderr 2).
+  parameter bit                 HasFpu           = 1'b0,
   localparam int unsigned       BeWidth          = BusWidth/8
 ) (
   input  logic                             clk_i,       // Clock
@@ -593,6 +596,19 @@ module dm_mem #(
           // this should happend when e.g. ac_ar.aarsize >= MaxAar
           // Openocd will try to do an access with aarsize=64 bits
           // first before falling back to 32 bits.
+          abstract_cmd[0][31:0] = dm::ebreak(); // we leave asap
+          unsupported_command = 1'b1;
+        end
+        // RISC-V Debug Specification 0.13.2: aarpostincrement is not implemented, so a command
+        // with it set fails with "not supported" (3.6.1.1); regno 0x1040-0xbfff is reserved and
+        // the FPRs 0x1020-0x103f exist only with the F extension (table 3.3). Before, the earlier
+        // branches built the access anyway: regno was not incremented, a reserved number reached
+        // a GPR or CSR by its low bits, and an FPR access ended in an exception (cmderr 3).
+        if (ac_ar.aarpostincrement ||
+            (ac_ar.transfer &&
+             ((ac_ar.regno[15:12] == 4'h1 && ac_ar.regno[11:6] != '0) ||
+              (ac_ar.regno[15:12] >= 4'h2 && ac_ar.regno[15:12] <= 4'hb) ||
+              (!HasFpu && ac_ar.regno[15:5] == 11'h081)))) begin
           abstract_cmd[0][31:0] = dm::ebreak(); // we leave asap
           unsupported_command = 1'b1;
         end
