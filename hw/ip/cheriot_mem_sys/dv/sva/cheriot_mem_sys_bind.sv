@@ -14,6 +14,33 @@ module cheriot_mem_sys_bind;
   );
 
   bind cheriot_mem_sys tlul_assert #(
+    .EndpointType("Device")
+  ) tlul_assert_device_cored (
+    .clk_i,
+    .rst_ni,
+    .h2d  (cored_tl_d_i),
+    .d2h  (cored_tl_d_o)
+  );
+
+  bind cheriot_mem_sys tlul_assert #(
+    .EndpointType("Device")
+  ) tlul_assert_device_corerevbm (
+    .clk_i,
+    .rst_ni,
+    .h2d  (corerevbm_tl_i),
+    .d2h  (corerevbm_tl_o)
+  );
+
+  bind cheriot_mem_sys tlul_assert #(
+    .EndpointType("Device")
+  ) tlul_assert_device_revbm (
+    .clk_i,
+    .rst_ni,
+    .h2d  (revbm_tl_d_i),
+    .d2h  (revbm_tl_d_o)
+  );
+
+  bind cheriot_mem_sys tlul_assert #(
     .EndpointType("Host")
   ) tlul_assert_host_cored (
     .clk_i,

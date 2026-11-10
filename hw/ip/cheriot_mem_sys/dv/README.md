@@ -26,12 +26,14 @@ The CHERIoT memory subsystem testbench has been constructed based on the [CIP te
 Top level testbench is located at `hw/ip/cheriot_mem_sys/dv/tb.sv`. It instantiates the CHERIoT memory subsystem DUT module `hw/ip/cheriot_mem_sys/rtl/cheriot_mem_sys.sv`.
 In addition, it instantiates the following interfaces, connects them to the DUT and sets their handle into `uvm_config_db`:
 * [Clock and reset interface](../../../dv/sv/common_ifs/README.md)
-* [TileLink host interface](../../../dv/sv/tl_agent/README.md) (`regs` CSR port)
+* [TileLink host interface](../../../dv/sv/tl_agent/README.md) on the `regs` port
+* `cheriot_mem_sys_core_if` on the core data port: TL-UL, the tag sideband (`cored_tag_h2d_i`, `cored_tag_d2h_o`) and `cheriot_ena_i`
+* TileLink host interfaces on the revocation bitmap ports (`corerevbm_tl`, `revbm_tl_d`)
+* TileLink device interfaces on the host ports towards the main crossbar (`cored_tl_h`, `tbre_tl_h`) and the meta SRAM (`meta_sram_tl`)
 * Interrupts ([`pins_if`](../../../dv/sv/common_ifs/README.md))
 * [Alerts interface](../../../dv/sv/alert_agent/README.md)
 
-The core data port with its tag sideband (`cored_tl_d`, `cored_tag`), the revocation bitmap ports (`corerevbm_tl`, `revbm_tl_d`), the host ports towards the main crossbar (`cored_tl_h`, `tbre_tl_h`) and the meta SRAM (`meta_sram_tl_h`) are tied to their idle values, and `cheriot_ena_i` to `MuBi4False`.
-These ports are not exercised by this testbench yet.
+The DUT is built with Earl Grey 2's address map, or with a small one (16 KiB SRAM, 8 KiB NVM; build mode `cms_map`) for the feature tests, which fill and sweep whole regions.
 
 ### Common DV utility components
 The following utilities provide generic helper tasks and functions to perform activities that are common across the project:
@@ -39,17 +41,16 @@ The following utilities provide generic helper tasks and functions to perform ac
 * [csr_utils_pkg](../../../dv/sv/csr_utils/README.md)
 
 ### Global types & methods
-All common types and methods defined at the package level can be found in `env/cheriot_mem_sys_env_pkg`.
-Some of them in use are:
-```systemverilog
-parameter uint   NUM_ALERTS = 1;
-parameter string LIST_OF_ALERTS[NUM_ALERTS] = {"fatal_fault"};
-```
+All common types and methods defined at the package level can be found in `env/cheriot_mem_sys_env_pkg`: the address map, the meta SRAM map, the TBRE_STATUS fields, capability permissions, the fault kinds the memory devices inject, and the capability encoding helpers (`cap_base`, `cap_meta`, `revbm_index`, `tag_word_addr`).
 
-### TL_agent
-The CHERIoT memory subsystem testbench instantiates (already handled in CIP base env) [tl_agent](../../../dv/sv/tl_agent/README.md)
-which provides the ability to drive and independently monitor random traffic via
-TL host interface into the `regs` port of the CHERIoT memory subsystem device.
+### Agents
+* **Core agent** (`core_agent/`, `cheriot_mem_sys_core_agent`): the core on the core data port.
+  Its item (`cheriot_mem_sys_core_item`) is one access with its tag (store tag, or capability-load hint) and its response with the response tag.
+  The driver presents one request at a time, with its tag, holds it until it is taken, and keeps up to two in flight, as Ibex does.
+  The monitor publishes each completed access with both tags and the mode at the request's handshake.
+* **TL-UL host agents** ([tl_agent](../../../dv/sv/tl_agent/README.md)) on `regs` (from the CIP environment), `revbm_tl_d` and `corerevbm_tl`.
+* **TL-UL device agents** on `cored_tl_h`, `tbre_tl_h` and `meta_sram_tl`, answered by `cheriot_mem_sys_mem_device_seq`: a memory with the crossbar's error range and read-only NVM, and fault injection (an error response, a corrupted response or data integrity) by address range, direction and count.
+* **Alert agent** on `fatal_fault` (from the CIP environment).
 
 ### UVM RAL Model
 The CHERIoT memory subsystem RAL model is created with the [`ralgen`](../../../dv/tools/ralgen/README.md) FuseSoC generator script automatically when the simulation is at the build stage.
@@ -57,51 +58,51 @@ The CHERIoT memory subsystem RAL model is created with the [`ralgen`](../../../d
 It can be created manually by invoking [`regtool`](../../../../util/reggen/doc/setup_and_use.md).
 
 ### Stimulus strategy
-#### Test sequences
-All test sequences reside in `hw/ip/cheriot_mem_sys/dv/env/seq_lib`.
-The `cheriot_mem_sys_base_vseq` virtual sequence is extended from `cip_base_vseq` and serves as a starting point.
-All test sequences are extended from `cheriot_mem_sys_base_vseq`.
-It provides commonly used handles, variables, functions and tasks that the test sequences can simply use / call.
-The following test sequences exist:
-* `cheriot_mem_sys_common_vseq` : runs the common CSR, alert, interrupt and TL-UL tests
-* `cheriot_mem_sys_smoke_vseq`  : smoke test; its body is still empty
+#### Tests and test sequences
+Every test is in its own file in `hw/ip/cheriot_mem_sys/dv/tests` (package `cheriot_mem_sys_test_pkg`) and names the virtual sequence it runs.
+The sequences reside in `hw/ip/cheriot_mem_sys/dv/env/seq_lib`, one per test, each describing what it checks.
+They extend `cheriot_mem_sys_base_vseq`, which brings the environment up (reset, the memories preloaded, the memory devices started) and provides the operations the sequences are written in:
+* core accesses (`core_store`, `core_load`, `core_store_cap`, `core_load_cap`, `core_issue`), each a `cheriot_mem_sys_core_access_seq` on the core agent
+* bitmap accesses on the two bitmap agents, register accesses through the RAL, and malformed register accesses on the `regs` agent
+* sweeps (`tbre_sweep`, `tbre_wait_idle`, `tbre_wait_intr`), resets, fault injection, and the checks (`check_tags`, `expect_alert`, `csr_expect`)
+
+`cheriot_mem_sys_common_vseq` runs the common CSR, alert, interrupt and TL-UL tests.
 
 #### Functional coverage
-To ensure high quality constrained random stimulus, it is necessary to develop a functional coverage model.
-The CIP covergroups (CSR, interrupt and alert) are collected; `cheriot_mem_sys_env_cov` does not define any covergroups of its own yet.
+`cheriot_mem_sys_env_cov` samples, from the scoreboard:
+* `core_access_cg`: every core access by opcode, size, tag, mode, region, error and response tag, crossed
+* `bitmap_access_cg`: the bitmap ports by opcode and error
+
+The CIP covergroups (CSR, interrupt and alert) are collected as well.
 
 ### Self-checking strategy
 #### Scoreboard
-The `cheriot_mem_sys_scoreboard` is primarily used for end to end checking.
-It retrieves the data monitored by the TL agent on the `regs` port (TL address and data channels).
-
-For a write transaction, during the address channel, CSR values are updated in RAL.
-For a read transaction, during the data channel, the scoreboard compares the read data with the mirrored value in RAL.
-`intr_state`, `tbre_regwen` and `tbre_status` are updated by the hardware and are not compared.
-Alerts are not checked by the scoreboard yet (`do_alert_check` is 0).
+`cheriot_mem_sys_scoreboard` keeps the RAL up to date from the `regs` port.
+In the feature tests the C reference model of the subsystem (`dv/cms/cmodel`, written from the design specification, through DPI) is the checker.
+Every completed access on the core data port, both bitmap ports and the `regs` port goes to the model, which says whether the response (data, tag, error) is allowed; the crossbar's error answers come from the `cored_tl_h` device agent.
+At the end of the test the meta SRAM is compared with the model's image, word by word.
+In the common tests the RAL checks the register reads; the registers the revocation engine changes (`intr_state`, `tbre_regwen`, `tbre_status`, `tbre_epoch`) are not compared there.
+The tests judge `fatal_fault` themselves (`expect_alert`, `expect_no_alert`) from the alerts the scoreboard counts.
 
 #### Assertions
-* TLUL assertions: The `sva/cheriot_mem_sys_bind.sv` binds the `tlul_assert` [assertions](../../tlul/doc/TlulProtocolChecker.md) to the IP to ensure TileLink interface protocol compliance on the `regs` device port and on the `cored`, `tbre` and `meta_sram` host ports
+* TLUL assertions: The `sva/cheriot_mem_sys_bind.sv` binds the `tlul_assert` [assertions](../../tlul/doc/TlulProtocolChecker.md) to the IP to ensure TileLink interface protocol compliance on every port: the `regs`, `cored_tl_d`, `corerevbm_tl` and `revbm_tl_d` device ports and the `cored`, `tbre` and `meta_sram` host ports
 * CSR assertions: The `sva/cheriot_mem_sys_bind.sv` binds the generated `cheriot_mem_sys_regs_csr_assert_fpv` checks
 * Unknown checks on DUT outputs: The RTL has assertions to ensure all outputs are initialized to known values after coming out of reset
 
 ## Second testbench: EG2 `cms`
 The CHERIoT memory subsystem has a second testbench, built for Earl Grey 2: `cms`, in [`dv/cms`](cms/README.md). It is a class-based SystemVerilog testbench (its own TL-UL drivers, monitors and scoreboard; no UVM library, no RAL), so it also runs on Verilator.
-Where this testbench covers the `regs` port, `cms` drives every port of the subsystem:
-* the core data port with its tag sideband, both revocation bitmap ports and the `regs` port, through TL-UL host agents
-* the host ports towards the main crossbar and the meta SRAM, through TL-UL memory models that also inject errors and integrity faults
-* `cheriot_ena_i` with every MuBi4 encoding, the alert and the interrupt
-
+The feature tests of this testbench were ported from it.
 Its scoreboard predicts tags, data, the WTRC, the revocation sweep (including its races with core stores), the registers and the meta SRAM from the design specification.
-The C reference model of the subsystem (`dv/cms/cmodel`, also written from the specification) checks every transaction as a second checker through DPI.
+The C reference model of the subsystem (`dv/cms/cmodel`) is shared by both testbenches.
 Its testplan is [`cheriot_mem_sys_cms_testplan.hjson`](../data/cheriot_mem_sys_cms_testplan.hjson) (39 testpoints, 14 covergroups).
 
 ## Building and running tests
 The [dvsim](https://github.com/lowRISC/dvsim) tool is used for building and running our tests and regressions.
 Please take a look at the link for detailed information on the usage, capabilities, features and known issues.
-Here's how to run a smoke test:
+Here's how to run the smoke test, and all the feature tests:
 ```console
-$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i cheriot_mem_sys_smoke
+$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i cheriot_mem_sys_tag_smoke
+$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i feature
 ```
 
 ## Testplan

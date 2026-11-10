@@ -195,7 +195,8 @@ static void test_reset_mid_sweep() {
   EXPECT(!m.sweep_active(), "no sweep after a reset");
   EXPECT(m.tag(slot) == kTagAny, "a tag the cut sweep may have cleared is open (REQ_CMS_15)");
   EXPECT(m.tag(sealed) == kTag1, "a sealing capability keeps its tag");
-  EXPECT(load_cap(m, slot, false) == 0 && m.tag(slot) == kTag0, "a load of tag 0 resolves it");
+  EXPECT(load_cap(m, slot, false) == 0 && load_cap(m, slot, true) == 0 && m.tag(slot) == kTagAny,
+         "either tag may be loaded, and the tag stays open: the model takes no value from the DUT");
   EXPECT(load_cap(m, sealed, false) > 0, "must fail: tag 0 for the sealing capability");
 }
 

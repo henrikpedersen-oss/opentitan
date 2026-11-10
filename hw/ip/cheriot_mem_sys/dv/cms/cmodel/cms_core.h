@@ -11,15 +11,17 @@
 //   [ToO]   hw/ip/cheriot_mem_sys/doc/theory_of_operation.md
 //   [PG]    doc/programmers_guide.md      [REGS] doc/registers.md, data/cheriot_mem_sys.hjson
 //   [ISA]   CHERIoT ISA v1.0 (capability encoding, sealing)
-//   [REV]   the Requirements Review (Drive): the detailed requirements REQ_TF_*, REQ_WTRC_*, ...,
-//           and DV's readings where the documents are silent (Q2, Q17, Q18, Q42, Q44, Q46, Q47)
-// Where it follows a reading rather than the text, the comment names the reading.
+//   REQ_*   the detailed requirements of the subsystem's verification specification; where the
+//           documents are silent the model follows a reading, which the comment names (Q2, ...)
 //
-// The model checks complete transactions (request and response), one call per transaction a bench
-// monitor observes, as the cms bench's cms_sb does. Each check returns the number of mismatches and
-// keeps their text (messages()). Where a race leaves the outcome open (a sweep and a core store to
-// the same capability, the bitmap changed during a sweep), a tag is a set of allowed values (TagSet)
-// until a later observation resolves it.
+// The model is self-contained: it never takes a value from the DUT. For each request a monitor
+// observes, predict_*() gives the response the documents allow (an error, data in the bits the
+// model is sure of, the allowed tag values) and update_*() advances the model's state; the bench's
+// scoreboard compares. Where a race leaves an outcome open (a sweep and a core store to the same
+// capability, the bitmap changed during a sweep), a tag is a set of allowed values (TagSet). The
+// model has no clock: it learns that a sweep has ended as software does, from a register read
+// (sync_sweep_end). The check-style calls (core(), bitmap(), csr()) predict, compare and update in
+// one call, for the cms bench.
 //
 // Not modelled (the RTL does not implement them; the bench's known gaps): the MUBI-encoded tag
 // sideband (REQ_CMS_01) and the lockstep copy (REQ_CMS_02). Cycle timing (REQ_CMS_07, the "add no
@@ -101,6 +103,37 @@ enum Csr : uint32_t {
   kTbreBase = 0x14, kTbreNum = 0x18, kTbreStart = 0x1c, kTbreStatus = 0x20, kTbreEpoch = 0x24
 };
 
+// A request on the core data port, and what the subsystem's host side answered for it.
+struct CoreReq {
+  uint8_t op;          // kGet, kPutFull, kPutPartial
+  uint32_t addr;
+  uint8_t size;        // 0, 1, 2
+  uint8_t mask;
+  uint32_t wdata;
+  bool tag;            // cored_tag_h2d: a store's tag, a load's capability hint
+  uint8_t ena;         // cheriot_ena_i
+  bool host_err;       // the crossbar answered d_error
+  bool meta_err;       // the meta SRAM answered an error or an integrity fault for its tag access
+};
+
+// The response the model expects: the error, the data in the bytes it is sure of (rdata_care),
+// and the tag values allowed.
+struct CoreExp {
+  bool err;
+  uint32_t rdata, rdata_care;
+  TagSet rtag;
+};
+
+// The response to a bitmap window access, and to a register read: the value in the bits the model
+// is sure of.
+struct BitmapExp {
+  bool err;
+  uint32_t rdata, rdata_care;
+};
+struct CsrExp {
+  uint32_t rdata, rdata_care;
+};
+
 // One transaction on the core data port, with what the bench observed.
 struct CoreTxn {
   uint8_t op;          // kGet, kPutFull, kPutPartial
@@ -135,6 +168,8 @@ class Model {
     wtrc_open_ = false;
     captured_known_ = true; captured_ = false;
     alerts_ = 0;
+    alert_tests_ = 0;
+    fatal_ = false;
     msgs_.clear();
   }
 
@@ -143,6 +178,7 @@ class Model {
   void dut_reset() {
     // A sweep cut short: each tag it would have cleared may or may not be cleared yet.
     if (active_) settle_sweep(true);
+    fatal_ = false;                                 // latched until reset
     intr_state_ = intr_enable_ = false;
     alert_test_regwen_ = true;
     base_ = num_ = 0;
@@ -170,30 +206,69 @@ class Model {
   }
 
   // ---- The core data port: the tag filter, the WTRC, the mode ([ToO] "Tag Filter", "WTRC") ----
-  int core(const CoreTxn &t) {
-    int n0 = n_;
-    bool wr = t.op != kGet, cheriot = t.ena == kMuBi4True, tagged = m_.tagged(t.addr);
-    bool lookup = cheriot && tagged;                         // REQ_TF_02, 03, 04
-    bool nvm_cap = wr && cheriot && m_.in_nvm(t.addr) && t.tag;  // REQ_WTRC: a capability store to the NVM
-    uint32_t g = tagged ? m_.granule(t.addr) : 0;
-    char ctx[160];
-    std::snprintf(ctx, sizeof ctx, "core %s addr=0x%08x size=%u mask=%x tag=%d ena=%x",
-                  wr ? (t.op == kPutFull ? "PutFull" : "PutPartial") : "Get", t.addr, t.size,
-                  t.mask, t.tag, t.ena);
+  //
+  // predict_core: the response the documents allow for a request, from the model's own state.
+  // update_core: the model's state after the access, again from its own state alone. Where the
+  // documents leave an outcome open (a race with a sweep), the model keeps both values allowed;
+  // it never takes a value from the DUT.
+  CoreExp predict_core(const CoreReq &r) const {
+    CoreExp e{};
+    bool wr = r.op != kGet, cheriot = r.ena == kMuBi4True, tagged = m_.tagged(r.addr);
+    bool lookup = cheriot && tagged;                               // REQ_TF_02, 03, 04
+    bool nvm_cap = wr && cheriot && m_.in_nvm(r.addr) && r.tag;    // REQ_WTRC: to the NVM
+    uint32_t g = tagged ? m_.granule(r.addr) : 0;
 
     // The error: the host's answer, or the tag answer's (REQ_TF_12a, 12b); for a capability store
     // to the NVM, the WTRC's verdict (REQ_WTRC_04, 07, 08, 10).
-    bool exp_err = t.host_err || (lookup && t.meta_err);
+    e.err = r.host_err || (lookup && r.meta_err);
+    if (nvm_cap) e.err = !wtrc_step(r, g).ok || r.meta_err;
+    // A write's answer is untagged (REQ_TF_11a). A failed read's data and tag are not documented.
+    if (wr) { e.rtag = kTag0; return e; }
+    if (e.err) { e.rtag = kTagAny; return e; }
+
+    // A read: the host's data, unchanged (REQ_TF_07).
+    e.rdata = get_data(r.addr);
+    for (int b = 0; b < 4; b++) if (r.mask >> b & 1) e.rdata_care |= 0xffu << (8 * b);
+    // The tag of a read (REQ_TF_08 to 11c).
+    bool aligned = !(r.addr & 4);
+    if (aligned && r.tag && lookup && r.size == 2) {
+      e.rtag = tag_of(g);
+      // While a sweep runs over the granule, a capability it may revoke reads either way: the
+      // engine may or may not have cleared it yet (REQ_TBRE_19, 24).
+      if (active_ && in_sweep(g) && (e.rtag & kTag1) && may_revoke(g)) e.rtag |= kTag0;
+    } else if (aligned) {
+      e.rtag = kTag0;
+    } else {
+      // The sticky tag (REQ_TF_09): an unaligned read response presents the tag captured from the
+      // last aligned one, whatever the read and its address.
+      e.rtag = captured_known_ ? tag_exact(captured_) : kTagAny;
+    }
+    return e;
+  }
+
+  void update_core(const CoreReq &r) {
+    bool wr = r.op != kGet, cheriot = r.ena == kMuBi4True, tagged = m_.tagged(r.addr);
+    bool lookup = cheriot && tagged;
+    bool nvm_cap = wr && cheriot && m_.in_nvm(r.addr) && r.tag;
+    uint32_t g = tagged ? m_.granule(r.addr) : 0;
     bool tag_set = false;
-    if (nvm_cap) exp_err = !wtrc(t, g, tag_set) || t.meta_err;
-    if (t.err != exp_err) fail(std::string(ctx) + ": d_error " + std::to_string(t.err) + ", expected " + std::to_string(exp_err));
+    CoreExp e = predict_core(r);
+
+    if (nvm_cap) {
+      WtrcStep s = wtrc_step(r, g);
+      wtrc_open_ = s.open; wtrc_g_ = s.g; wtrc_w0_ok_ = s.w0_ok;
+      tag_set = s.tag_set;
+      if (s.alert) raise_fatal();
+    } else if (wtrc_open_) {
+      // Any other request while a capability store to the NVM waits for its W1 ([ToO] "Error
+      // Handling": out of the W0-W1 sequence).
+      raise_fatal();
+    }
 
     if (wr) {
-      // A write's answer is untagged (REQ_TF_11a).
-      if (t.rtag) fail(std::string(ctx) + ": write answered with tag 1");
       // The data: forwarded unchanged (REQ_TF_01b); not for a capability store to the NVM, which
       // reaches the host only as reads (REQ_WTRC_01).
-      if (!nvm_cap && !t.host_err) put_data(t.addr, t.wdata, t.mask);
+      if (!nvm_cap && !r.host_err) put_data(r.addr, r.wdata, r.mask);
       if (lookup) {
         // The tag: the store's sideband, so a plain store clears it (REQ_TAG_02, 03); a partial
         // write carries tag 0 (assumption A5). The tag write leaves with the host request in the
@@ -201,50 +276,54 @@ class Model {
         // it (REQ_RMW_13). A capability store to the NVM sets the tag only when verified (REQ_WTRC_06).
         TagSet nset;
         if (nvm_cap) nset = tag_set ? kTag1 : tag_of(g);
-        else nset = tag_exact(t.tag && t.op == kPutFull);
-        if (t.meta_err) nset = kTagAny;
+        else nset = tag_exact(r.tag && r.op == kPutFull);
+        if (r.meta_err) nset = kTagAny;
         set_tag(g, nset);
         if (active_ && in_sweep(g)) watched_.insert(g);      // the core write watch (REQ_TBRE_24)
       }
       // A write leaves the captured tag of a capability load alone (REQ_TF_11b).
-      return n_ - n0;
+      return;
     }
 
-    // A read: the host's data, unchanged (REQ_TF_07).
-    if (!t.err) {
-      uint32_t m = 0;
-      for (int b = 0; b < 4; b++) if (t.mask >> b & 1) m |= 0xffu << (8 * b);
-      uint32_t exp = get_data(t.addr);
-      if ((t.rdata & m) != (exp & m)) {
+    // An aligned read response captures the tag it presents; an unaligned one clears it. Whether an
+    // error response captures or clears is not documented, so the sticky tag is then open.
+    bool aligned = !(r.addr & 4);
+    if (e.err) {
+      captured_known_ = false;
+    } else if (!aligned) {
+      captured_known_ = true;
+      captured_ = false;
+    } else {
+      captured_known_ = e.rtag != kTagAny;
+      captured_ = e.rtag == kTag1;
+    }
+  }
+
+  // A complete transaction checked against the prediction (the cms bench's interface).
+  int core(const CoreTxn &t) {
+    int n0 = n_;
+    CoreReq r{t.op, t.addr, t.size, t.mask, t.wdata, t.tag, t.ena, t.host_err, t.meta_err};
+    CoreExp e = predict_core(r);
+    char ctx[160];
+    std::snprintf(ctx, sizeof ctx, "core %s addr=0x%08x size=%u mask=%x tag=%d ena=%x",
+                  t.op == kGet ? "Get" : (t.op == kPutFull ? "PutFull" : "PutPartial"), t.addr,
+                  t.size, t.mask, t.tag, t.ena);
+    if (t.err != e.err) {
+      fail(std::string(ctx) + ": d_error " + std::to_string(t.err) + ", expected " +
+           std::to_string(e.err));
+    } else if (!t.err) {
+      if ((t.rdata & e.rdata_care) != (e.rdata & e.rdata_care)) {
         char s[220];
-        std::snprintf(s, sizeof s, "%s: rdata 0x%08x, expected 0x%08x", ctx, t.rdata & m, exp & m);
+        std::snprintf(s, sizeof s, "%s: rdata 0x%08x, expected 0x%08x", ctx,
+                      t.rdata & e.rdata_care, e.rdata & e.rdata_care);
         fail(s);
       }
-    }
-    // The tag of a read (REQ_TF_08 to 11c).
-    bool aligned = !(t.addr & 4);
-    if (!t.err) {
-      if (aligned && t.tag && lookup && t.size == 2) {
-        TagSet s = tag_of(g);
-        // While a sweep runs over the granule, a capability it may revoke reads either way: the
-        // engine may or may not have cleared it yet (REQ_TBRE_19, 24).
-        if (active_ && in_sweep(g) && (s & kTag1) && may_revoke(g)) s |= kTag0;
-        if (!(s >> t.rtag & 1)) fail(std::string(ctx) + ": tag " + std::to_string(t.rtag) + " not allowed");
-        else if (!(active_ && in_sweep(g))) set_tag(g, tag_exact(t.rtag));  // resolved by the observation
-      } else if (aligned) {
-        if (t.rtag) fail(std::string(ctx) + ": tag 1 on a load that is not a capability load");
-      } else if (captured_known_ && t.rtag != captured_) {
-        // The sticky tag (REQ_TF_09; theory_of_operation.md): an unaligned read response presents the
-        // tag captured from the last aligned one, whatever the read and its address, then clears it.
-        fail(std::string(ctx) + ": tag " + std::to_string(t.rtag) + ", the captured tag is " +
-             std::to_string(captured_));
+      if (!(e.rtag >> t.rtag & 1)) {
+        fail(std::string(ctx) + ": tag " + std::to_string(t.rtag) + " not allowed (allowed: " +
+             tagset_str(e.rtag) + ")");
       }
     }
-    // An aligned read response captures the tag it presents; an unaligned one clears it. Writes leave
-    // it alone (REQ_TF_11b). An error response: whether it captured or cleared is not documented, so
-    // the next unaligned read is not checked.
-    captured_known_ = !t.err;
-    captured_ = !t.err && aligned && t.rtag;
+    update_core(r);
     return n_ - n0;
   }
 
@@ -252,46 +331,80 @@ class Model {
   // [ToO] "Access Checkers": forwarded only in CHERIoT mode, inside the port's region (the bitmap),
   // word-aligned full words, Get or PutFullData; anything else gets an error answer and no alert
   // (REQ_META_03 to 07, REQ_ALT_04). Writes from either port follow the rule as written (reading Q45).
+  BitmapExp predict_bitmap(uint8_t op, uint32_t off, uint8_t size, uint8_t mask,
+                           uint8_t ena) const {
+    BitmapExp e{};
+    e.err = !bitmap_legal(op, off, size, mask, ena);
+    if (!e.err && op == kGet) {
+      e.rdata = revbm_[off / 4];
+      e.rdata_care = 0xffffffff;
+    }
+    return e;
+  }
+
+  void update_bitmap(uint8_t op, uint32_t off, uint8_t size, uint8_t mask, uint32_t wdata,
+                     uint8_t ena) {
+    if (!bitmap_legal(op, off, size, mask, ena) || op == kGet) return;
+    uint32_t w = off / 4;
+    if (active_) revbm_changed_[w] |= revbm_[w] ^ wdata;  // the sweep's lookups may see either value
+    revbm_[w] = wdata;
+  }
+
   int bitmap(bool core_port, uint8_t op, uint32_t off, uint8_t size, uint8_t mask, uint32_t wdata,
              uint8_t ena, bool err, uint32_t rdata) {
     int n0 = n_;
-    bool legal = ena == kMuBi4True && off < m_.revbm_bytes() && (off & 3) == 0 && size == 2 &&
-                 (op == kGet || (op == kPutFull && mask == 0xf));
+    BitmapExp e = predict_bitmap(op, off, size, mask, ena);
     char ctx[120];
     std::snprintf(ctx, sizeof ctx, "%s %s off=0x%x ena=%x", core_port ? "corerevbm" : "revbm",
                   op == kGet ? "Get" : "Put", off, ena);
-    if (err != !legal) fail(std::string(ctx) + ": d_error " + std::to_string(err) + ", expected " + std::to_string(!legal));
-    if (!legal || err) return n_ - n0;
-    uint32_t w = off / 4;
-    if (op == kGet) {
-      if (rdata != revbm_[w]) {
-        char s[200];
-        std::snprintf(s, sizeof s, "%s: rdata 0x%08x, expected 0x%08x", ctx, rdata, revbm_[w]);
-        fail(s);
-      }
-    } else {
-      if (active_) revbm_changed_[w] |= revbm_[w] ^ wdata;  // the sweep's lookups may see either value
-      revbm_[w] = wdata;
+    if (err != e.err) {
+      fail(std::string(ctx) + ": d_error " + std::to_string(err) + ", expected " +
+           std::to_string(e.err));
+    } else if ((rdata & e.rdata_care) != (e.rdata & e.rdata_care)) {
+      char s[200];
+      std::snprintf(s, sizeof s, "%s: rdata 0x%08x, expected 0x%08x", ctx, rdata, e.rdata);
+      fail(s);
     }
+    update_bitmap(op, off, size, mask, wdata, ena);
     return n_ - n0;
   }
 
   // ---- The registers [REGS], [PG] ----
-  int csr(bool write, uint32_t off, uint32_t wdata, uint32_t rdata) {
-    int n0 = n_;
-    if (write) { csr_write(off, wdata); return 0; }
-    uint32_t exp = csr_value(off), care = 0xffffffff;
+  // The model has no clock: it learns that a sweep has ended when software would, from a read of
+  // TBRE_STATUS.busy or TBRE_EPOCH.active at 0, or TBRE_REGWEN at 1 (sync_sweep_end, before the
+  // read is predicted).
+  void sync_sweep_end(uint32_t off, uint32_t rdata) {
+    if (active_ && ((off == kTbreStatus && !(rdata & 1)) || (off == kTbreEpoch && !(rdata & 1)) ||
+                    (off == kTbreRegwen && (rdata & 1)))) {
+      sweep_end();
+    }
+  }
+
+  CsrExp predict_csr_read(uint32_t off) const {
+    CsrExp e{csr_value(off), 0xffffffff};
     // sweep_err: a fault in the running sweep sets it when it hits, which the bench does not see;
     // one cleared during that sweep may or may not be set again at its end (until a read shows it).
-    if (off == kTbreStatus && ((active_ && sweep_err_now_) || sweep_err_open_)) care &= ~(1u << 9);
-    if ((rdata & care) != (exp & care)) {
-      char s[120];
-      std::snprintf(s, sizeof s, "csr read 0x%02x: 0x%08x, expected 0x%08x", off, rdata, exp);
-      fail(s);
-    } else if (off == kTbreStatus && sweep_err_open_ && !active_) {
-      sweep_err_ = rdata >> 9 & 1;
-      sweep_err_open_ = false;
+    if (off == kTbreStatus && ((active_ && sweep_err_now_) || sweep_err_open_)) {
+      e.rdata_care &= ~(1u << 9);
     }
+    return e;
+  }
+
+  // A register write. Reads change nothing: a sweep_err left open by a race stays open until
+  // software clears it.
+  void update_csr_write(uint32_t off, uint32_t wdata) { csr_write(off, wdata); }
+
+  int csr(bool write, uint32_t off, uint32_t wdata, uint32_t rdata) {
+    int n0 = n_;
+    if (!write) {
+      CsrExp e = predict_csr_read(off);
+      if ((rdata & e.rdata_care) != (e.rdata & e.rdata_care)) {
+        char s[120];
+        std::snprintf(s, sizeof s, "csr read 0x%02x: 0x%08x, expected 0x%08x", off, rdata, e.rdata);
+        fail(s);
+      }
+    }
+    if (write) update_csr_write(off, wdata);
     return n_ - n0;
   }
 
@@ -305,13 +418,44 @@ class Model {
   void sweep_keep(uint32_t addr) { skipped_.insert(m_.granule(addr)); }
   void sweep_revoke(uint32_t addr) { forced_revoke_.insert(m_.granule(addr)); }
   void sweep_dont_care(uint32_t addr) { dont_care_.insert(m_.granule(addr)); }
-  void sweep_error(bool alert) { sweep_err_now_ = true; if (alert) alerts_++; }
+  void sweep_error(bool alert) { sweep_err_now_ = true; if (alert) raise_fatal(); }
   void sweep_read_error(uint32_t addr) { sweep_err_now_ = true; skipped_.insert(m_.granule(addr)); }
   void sweep_fault(bool on_bitmap_lookup, uint32_t addr) {
     sweep_err_now_ = true;
-    alerts_++;
+    raise_fatal();
     if (on_bitmap_lookup) forced_revoke_.insert(m_.granule(addr));
   }
+  // A fault on the engine's bitmap lookup, seen on the meta port at bitmap word `word_off`: the
+  // capability whose lookup it was counts as revoked (REQ_TBRE_34). The bench cannot see which
+  // capability that was: if only one capability of the sweep has its base in that word, it is
+  // revoked; otherwise each of them may or may not be.
+  void sweep_lookup_fault(uint32_t word_off) {
+    sweep_err_now_ = true;
+    raise_fatal();
+    std::vector<uint32_t> cand;
+    uint32_t first = m_.granule(base_), caps = sweep_caps();
+    for (uint32_t g = first; g < first + caps; g++) {
+      if (!(tag_of(g) & kTag1)) continue;
+      uint32_t a = m_.granule_addr(g), w0 = get_data(a), w1 = get_data(a + 4);
+      if (cap_sealing(w1)) continue;
+      uint32_t base = cap_base(w0, w1);
+      if (!m_.in_sram(base)) continue;
+      if (((base - m_.sram_base) >> 8) * 4 == word_off) cand.push_back(g);
+    }
+    if (cand.size() == 1) forced_revoke_.insert(cand[0]);
+    else for (uint32_t g : cand) dont_care_.insert(g);
+  }
+  // A fault on the engine's access to a tag word (`word_off` in the meta SRAM): each capability of
+  // the sweep in that word may keep its tag or lose it (REQ_TBRE_33).
+  void sweep_tag_fault(uint32_t word_off) {
+    sweep_err_now_ = true;
+    raise_fatal();
+    uint32_t first = m_.granule(base_), caps = sweep_caps();
+    for (uint32_t g = first; g < first + caps; g++) {
+      if (m_.tag_word_off(g) == word_off) dont_care_.insert(g);
+    }
+  }
+
   // The end of a sweep, as the bench sees it (TBRE_STATUS.busy falls, or the interrupt): the tags
   // the sweep leaves (REQ_TBRE_19, 20, 38, 39), the epoch (REQ_TBRE_10) and the interrupt (REQ_TBRE_28).
   void sweep_end() {
@@ -377,6 +521,12 @@ class Model {
   bool intr_expected() const { return intr_state_ && intr_enable_; }      // REQ_TBRE_31
   bool sweep_active() const { return active_; }
   unsigned alerts_expected() const { return alerts_; }
+  // fatal_fault: latched by a fault until reset. ALERT_TEST: one alert per write that raises it.
+  bool fatal_expected() const { return fatal_; }
+  unsigned alert_tests() const { return alert_tests_; }
+  // A fault the bench observed on one of the subsystem's inputs that the documents say raises
+  // fatal_fault ([ToO] "Error Handling").
+  void raise_fatal() { alerts_++; fatal_ = true; }
   TagSet tag(uint32_t addr) const { return m_.tagged(addr) ? tag_of(m_.granule(addr)) : kTag0; }
   // A whole meta SRAM word as the model expects it, and which bits it is sure of.
   void meta_word(uint32_t off, uint32_t &value, uint32_t &care) const {
@@ -410,26 +560,41 @@ class Model {
   // answered with an error unless it is a full-word PutFullData in sequence that matches the NVM;
   // W1 sets the tag only when it and its W0 both matched (REQ_WTRC_04 to 08). A partial word or a
   // broken sequence also raises fatal_fault (REQ_WTRC_10, 11); a mismatch or a failed NVM read
-  // does not (REQ_WTRC_09). Returns whether the word is accepted; tag_set for a verified W1.
-  bool wtrc(const CoreTxn &t, uint32_t g, bool &tag_set) {
-    bool full = t.op == kPutFull && t.mask == 0xf && t.size == 2;
-    bool match = full && !t.host_err && t.wdata == get_data(t.addr);
-    bool upper = t.addr & 4, seq_bad, ok;
-    tag_set = false;
-    if (!upper) {
+  // does not (REQ_WTRC_09). wtrc_step computes the step and the WTRC's next state; update_core
+  // applies it.
+  struct WtrcStep {
+    bool ok, tag_set, alert;
+    bool open, w0_ok;  // the next state
+    uint32_t g;
+  };
+  WtrcStep wtrc_step(const CoreReq &r, uint32_t g) const {
+    WtrcStep s{false, false, false, wtrc_open_, wtrc_w0_ok_, wtrc_g_};
+    bool full = r.op == kPutFull && r.mask == 0xf && r.size == 2;
+    bool match = full && !r.host_err && r.wdata == get_data(r.addr);
+    bool seq_bad;
+    if (!(r.addr & 4)) {
       seq_bad = wtrc_open_;
-      wtrc_open_ = true;
-      wtrc_g_ = g;
-      wtrc_w0_ok_ = match && !seq_bad;
-      ok = wtrc_w0_ok_;
+      s.open = true;
+      s.g = g;
+      s.w0_ok = match && !seq_bad;
+      s.ok = s.w0_ok;
     } else {
       seq_bad = !wtrc_open_ || wtrc_g_ != g;
-      ok = !seq_bad && wtrc_w0_ok_ && match;
-      wtrc_open_ = false;
-      tag_set = ok;
+      s.ok = !seq_bad && wtrc_w0_ok_ && match;
+      s.open = false;
+      s.tag_set = s.ok;
     }
-    if (!full || seq_bad) alerts_++;
-    return ok;
+    s.alert = !full || seq_bad;
+    return s;
+  }
+
+  bool bitmap_legal(uint8_t op, uint32_t off, uint8_t size, uint8_t mask, uint8_t ena) const {
+    return ena == kMuBi4True && off < m_.revbm_bytes() && (off & 3) == 0 && size == 2 &&
+           (op == kGet || (op == kPutFull && mask == 0xf));
+  }
+
+  static std::string tagset_str(TagSet s) {
+    return s == kTag0 ? "0" : s == kTag1 ? "1" : "0 or 1";
   }
 
   void csr_write(uint32_t off, uint32_t v) {
@@ -438,7 +603,7 @@ class Model {
       case kIntrEnable: intr_enable_ = v & 1; break;
       case kIntrTest: if (v & 1) intr_state_ = true; break;          // REQ_TBRE_28
       case kAlertTest:
-        if ((v & 1) && alert_test_regwen_) alerts_++;               // REQ_ALT_02
+        if ((v & 1) && alert_test_regwen_) { alerts_++; alert_tests_++; }  // REQ_ALT_02
         if (!(v >> 31 & 1)) alert_test_regwen_ = false;             // rw0c (REQ_ALT_03)
         break;
       // While the engine is active, writes to BASE_ADDR, NUM_CAPS and START have no effect
@@ -523,7 +688,8 @@ class Model {
   bool wtrc_open_, wtrc_w0_ok_ = false;
   uint32_t wtrc_g_ = 0;
   bool captured_known_ = true, captured_ = false;  // the tag filter's sticky tag
-  unsigned alerts_;
+  unsigned alerts_, alert_tests_ = 0;
+  bool fatal_ = false;
   int n_ = 0;
   std::vector<std::string> msgs_;
 };

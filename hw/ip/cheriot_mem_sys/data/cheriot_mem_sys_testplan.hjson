@@ -13,41 +13,166 @@
                      "hw/dv/tools/dvsim/testplans/tl_device_access_types_testplan.hjson",
                      "cheriot_mem_sys_sec_cm_testplan.hjson"]
 
+  // Every feature test is checked by the C reference model of the subsystem (dv/cms/cmodel,
+  // written from the design documents): each completed access on the core data port, both bitmap
+  // ports and `regs` (data, tag, error), and the meta SRAM word by word at the end. Its vseq
+  // (dv/env/seq_lib/cheriot_mem_sys_<name>_vseq.sv) describes the stimulus in full.
   testpoints: [
     {
       name: smoke
       desc: '''
-            Bring the subsystem out of reset in ePMP mode with the CSR interface connected. The
-            checks that no host port (`cored_tl_h`, `tbre_tl_h`, `meta_sram_tl`) transacts and that
-            `fatal_fault` stays low are not implemented yet: the testbench leaves those ports
-            unconnected.
+            The registers' reset values; ePMP mode out of reset with no meta SRAM access and no
+            tag; in CHERIoT mode a capability store sets a tag, a capability load returns it and a
+            data store clears it.
             '''
       stage: V1
-      tests: ["cheriot_mem_sys_smoke"]
+      tests: ["cheriot_mem_sys_tag_smoke"]
+    }
+    {
+      name: tag_store_load
+      desc: '''
+            Capability stores set the tag of their granule and capability loads return it, in the
+            SRAM and the NVM, at the region boundaries and at random granules; untagged memory has
+            no tag and never reaches the meta SRAM.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tag_store_load"]
+    }
+    {
+      name: tag_clear_subword
+      desc: '''
+            Every non-capability write (byte, halfword, word, partial word) clears the tag of the
+            granule it touches and of no other.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tag_clear_subword"]
+    }
+    {
+      name: cap_load_hint
+      desc: '''
+            Only a hinted, 64-bit-aligned load in CHERIoT mode to tagged memory looks its tag up;
+            the second word carries the first word's tag; two outstanding accesses under
+            back-pressure.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_cap_load_hint"]
+    }
+    {
+      name: access_check
+      desc: '''
+            The bitmap window and the core's TRVK port reach only the revocation bitmap, with
+            full-word, word-aligned Get and PutFullData; the tag regions are not mapped; no alert.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_access_check"]
+    }
+    {
+      name: mode_gating
+      desc: '''
+            Every `cheriot_ena_i` value other than MuBi4True (MuBi4False and the 14 invalid
+            encodings) blocks the meta SRAM from every port, issues no tag lookup and ignores
+            TBRE_START.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_mode_gating"]
+    }
+    {
+      name: rmw
+      desc: '''
+            A tag write changes exactly its bit of the meta word under heavy traffic to one word,
+            and skips the write-back when the bit already has the value; the core and the
+            revocation engine writing bits of the same word at once lose no update.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_rmw_same_word", "cheriot_mem_sys_rmw_core_tbre_same_word"]
+    }
+    {
+      name: nvm_cap_store
+      desc: '''
+            A capability store to the NVM is read and compared (WTRC): it sets the tag only if the
+            NVM holds both words, otherwise answers d_error and leaves the tag; plain stores are
+            refused and clear the tag; programming the NVM leaves it; stores the core cannot
+            produce raise fatal_fault.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_nvm_cap_store"]
+    }
+    {
+      name: tbre_sweep
+      desc: '''
+            A sweep clears exactly the tagged, non-sealing capabilities whose base is revoked, over
+            whole regions, sub-ranges and single capabilities, for every exponent and both base
+            corrections, at the bitmap's edges.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tbre_sweep", "cheriot_mem_sys_tbre_base_decode"]
+    }
+    {
+      name: tbre_registers
+      desc: '''
+            TBRE_START, TBRE_REGWEN, TBRE_STATUS and TBRE_EPOCH: accepted and ignored starts,
+            start_err and sweep_err, the lock while a sweep runs, a sweep clamped at the top of its
+            region, refused partial writes and unmapped offsets, the epoch's count.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tbre_csr", "cheriot_mem_sys_tbre_epoch"]
+    }
+    {
+      name: tbre_concurrent
+      desc: '''
+            Core traffic and bitmap writes during a sweep; core writes to capabilities the engine
+            has in flight stop their clear (the snoop window).
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tbre_concurrent", "cheriot_mem_sys_tbre_snoop_window"]
+    }
+    {
+      name: tbre_intr
+      desc: '''
+            The tbre_done interrupt at the end of every sweep (also a failed one), INTR_STATE as a
+            level, INTR_ENABLE masking, INTR_TEST, none for an ignored start.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_tbre_intr"]
+    }
+    {
+      name: alert_test_reg
+      desc: '''
+            ALERT_TEST.fatal_fault raises one handshake while ALERT_TEST.regwen is set; clearing
+            regwen disables alert testing until reset.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_alert_test_reg"]
+    }
+    {
+      name: errors
+      desc: '''
+            Every error path: a register command integrity fault; errors on the data path (no
+            alert); device and integrity errors on the meta SRAM path (fatal_fault); faults on the
+            revocation engine's reads and bitmap lookups (sweep_err, not counted, the capability
+            kept or revoked as documented).
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_data_path",
+              "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tag_path",
+              "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm"]
+    }
+    {
+      name: mixed_random
+      desc: '''
+            Random core traffic of every kind against sweeps of random ranges, concentrated on a
+            few meta words so that the core, the engine and the bitmap meet.
+            '''
+      stage: V2
+      tests: ["cheriot_mem_sys_mixed_random"]
     }
     {
       name: cmodel_random
       desc: '''
-            Constrained-random traffic on every port, checked against the C reference model of the
-            subsystem (`cms_core.h`, written from the design specification, through DPI).
-
-            **Stimulus**:
-            - Capability and data loads and stores of every size and alignment on the core data
-              port (`cored_tl_d` with the tag sideband), to SRAM, NVM and untagged memory.
-            - Capability stores to the NVM that match and that do not (WTRC).
-            - Revocation bitmap reads and writes on `revbm_tl_d` and `corerevbm_tl`.
-            - CSR accesses on `regs`, revocation sweeps (TBRE_START) with concurrent core traffic.
-            - `cheriot_ena_i` in both modes; random back-pressure and response delays on the host
-              ports (`cored_tl_h`, `tbre_tl_h`, `meta_sram_tl_h`); resets in the middle of
-              operations.
-
-            **Checking**:
-            - Every completed transaction (data, tag, error) and every CSR read against the C model.
-            - At the end of the test, the meta SRAM (tags and bitmap) word by word against the model.
-            - A mismatch fails the test.
-
-            The EG2 `cms` bench runs this today: `cms_random_cmodel` and `cms_random_long_cmodel`
-            (`+cms_cmodel=2`). This testbench needs agents on the memory-side ports first.
+            Constrained-random traffic on every port on Earl Grey 2's address map: data and
+            capability loads and stores to the SRAM, the NVM and untagged memory, capability stores
+            to the NVM that match and that do not, bitmap reads and writes on both bitmap ports,
+            sweeps and register reads; `cheriot_ena_i` in both modes and invalid encodings.
             '''
       stage: V2
       tests: ["cheriot_mem_sys_cmodel_random"]
@@ -55,11 +180,9 @@
     {
       name: cmodel_random_inject_fail
       desc: '''
-            The C model check of `cmodel_random` is shown to fail: one read response handed to the
-            model is corrupted (one bit flipped), and the test must fail at that transaction with
-            the model's mismatch.
-
-            The EG2 `cms` bench runs this today: `cms_random_cmodel_corrupt_cmodel`.
+            The C model's check is shown to fail: one read response handed to the model is
+            corrupted (one bit flipped), and the test must fail at that access with the model's
+            mismatch.
             '''
       stage: V2
       tests: ["cheriot_mem_sys_cmodel_random_inject_fail"]
@@ -68,10 +191,16 @@
 
   covergroups: [
     {
-      name: cheriot_mem_sys_feature_cg
+      name: core_access_cg
       desc: '''
-            Placeholder. No covergroup is implemented; SIM_COVERAGE_MODEL_ADDED is Not Started and
-            scoped for the V1-to-V2 work.
+            Every core access: opcode, size, tag (store tag or load hint), mode (CHERIoT, ePMP,
+            invalid), region (SRAM, NVM, untagged, error range), error and response tag, crossed.
+            '''
+    }
+    {
+      name: bitmap_access_cg
+      desc: '''
+            The bitmap ports (software window, core TRVK port): opcode and error, crossed.
             '''
     }
   ]

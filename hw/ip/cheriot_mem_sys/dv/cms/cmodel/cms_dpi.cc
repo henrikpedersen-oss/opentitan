@@ -45,6 +45,59 @@ int cms_core(void *h, int op, unsigned addr, int size, int mask, unsigned wdata,
   return done(h, M(h)->core(t));
 }
 
+// ---- The reference model's interface: predict a response from a request, then update ----
+
+static cms::CoreReq core_req(int op, unsigned addr, int size, int mask, unsigned wdata, int tag,
+                             int ena, int host_err, int meta_err) {
+  return cms::CoreReq{uint8_t(op), addr, uint8_t(size), uint8_t(mask), wdata, bool(tag),
+                      uint8_t(ena), bool(host_err), bool(meta_err)};
+}
+
+void cms_predict_core(void *h, int op, unsigned addr, int size, int mask, unsigned wdata, int tag,
+                      int ena, int host_err, int meta_err, int *err, unsigned *rdata,
+                      unsigned *rdata_care, int *rtag_set) {
+  cms::CoreExp e = M(h)->predict_core(core_req(op, addr, size, mask, wdata, tag, ena, host_err,
+                                               meta_err));
+  *err = e.err; *rdata = e.rdata; *rdata_care = e.rdata_care; *rtag_set = e.rtag;
+}
+
+void cms_update_core(void *h, int op, unsigned addr, int size, int mask, unsigned wdata, int tag,
+                     int ena, int host_err, int meta_err) {
+  M(h)->update_core(core_req(op, addr, size, mask, wdata, tag, ena, host_err, meta_err));
+}
+
+void cms_predict_bitmap(void *h, int op, unsigned off, int size, int mask, int ena, int *err,
+                        unsigned *rdata, unsigned *rdata_care) {
+  cms::BitmapExp e = M(h)->predict_bitmap(uint8_t(op), off, uint8_t(size), uint8_t(mask),
+                                          uint8_t(ena));
+  *err = e.err; *rdata = e.rdata; *rdata_care = e.rdata_care;
+}
+
+void cms_update_bitmap(void *h, int op, unsigned off, int size, int mask, unsigned wdata, int ena) {
+  M(h)->update_bitmap(uint8_t(op), off, uint8_t(size), uint8_t(mask), wdata, uint8_t(ena));
+}
+
+void cms_sync_sweep_end(void *h, unsigned off, unsigned rdata) { M(h)->sync_sweep_end(off, rdata); }
+
+void cms_predict_csr_read(void *h, unsigned off, unsigned *rdata, unsigned *rdata_care) {
+  cms::CsrExp e = M(h)->predict_csr_read(off);
+  *rdata = e.rdata; *rdata_care = e.rdata_care;
+}
+
+void cms_update_csr_write(void *h, unsigned off, unsigned wdata) {
+  M(h)->update_csr_write(off, wdata);
+}
+
+int cms_fatal_expected(void *h) { return M(h)->fatal_expected(); }
+int cms_alert_tests(void *h) { return int(M(h)->alert_tests()); }
+void cms_raise_fatal(void *h) { M(h)->raise_fatal(); }
+
+void cms_meta_word(void *h, unsigned off, unsigned *value, unsigned *care) {
+  M(h)->meta_word(off, *value, *care);
+}
+
+// ---- The checking interface (the cms bench): a complete transaction against the prediction ----
+
 int cms_bitmap(void *h, int core_port, int op, unsigned off, int size, int mask, unsigned wdata,
                int ena, int err, unsigned rdata) {
   return done(h, M(h)->bitmap(core_port, uint8_t(op), off, uint8_t(size), uint8_t(mask), wdata,
@@ -59,6 +112,8 @@ void cms_sweep_read_error(void *h, unsigned addr) { M(h)->sweep_read_error(addr)
 void cms_sweep_fault(void *h, int on_bitmap_lookup, unsigned addr) {
   M(h)->sweep_fault(on_bitmap_lookup, addr);
 }
+void cms_sweep_lookup_fault(void *h, unsigned word_off) { M(h)->sweep_lookup_fault(word_off); }
+void cms_sweep_tag_fault(void *h, unsigned word_off) { M(h)->sweep_tag_fault(word_off); }
 void cms_sweep_end(void *h) { M(h)->sweep_end(); }
 void cms_sweep_keep(void *h, unsigned addr) { M(h)->sweep_keep(addr); }
 void cms_sweep_revoke(void *h, unsigned addr) { M(h)->sweep_revoke(addr); }

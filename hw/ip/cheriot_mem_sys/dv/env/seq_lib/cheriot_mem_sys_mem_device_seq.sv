@@ -14,14 +14,14 @@
 // the subsystem's WTRC compares data integrity and rightly rejects a capability store against it.
 // It is computed again here, last, over the data each response carries.
 //
-// As the memories of the cms testbench (cms_tl_mem.sv), the main crossbar's answers an access to
-// its error range [err_lo, err_hi) and a write to the NVM [ro_lo, ro_hi) with d_error and does not
-// apply such a write; writes are acknowledged with no data, as tlul_adapter_sram does. n_reads and
-// n_writes count the requests (tests check that some modes leave the meta SRAM untouched).
+// The main crossbar answers an access to its error range [err_lo, err_hi) and a write to the NVM
+// [ro_lo, ro_hi) with d_error and does not apply such a write; writes are acknowledged with no
+// data, as tlul_adapter_sram does. n_reads and n_writes count the requests (tests check that some
+// modes leave the meta SRAM untouched).
 //
-// Fault injection, as the cms memories (inject()): the next `count` requests in [lo, hi) of the
-// selected direction (op: 0 any, 1 reads, 2 writes) are answered with d_error (a write is then not
-// applied), a corrupted rsp_intg, or a corrupted data_intg.
+// Fault injection (inject()): the next `count` requests in [lo, hi) in the given direction are
+// answered with d_error (a write is then not applied), a corrupted rsp_intg, or a corrupted
+// data_intg.
 class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   `uvm_object_utils(cheriot_mem_sys_mem_device_seq)
   `uvm_object_new
@@ -33,14 +33,19 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   typedef struct {
     inj_kind_e   kind;
     bit [31:0]   lo, hi;
-    int unsigned op, count;
+    inj_dir_e    dir;
+    int unsigned count;
   } inj_t;
   protected inj_t inj_q[$];
 
-  function void inject(inj_kind_e kind, bit [31:0] lo, bit [31:0] hi, int unsigned op,
-                       int unsigned count);
+  function void inject(inj_kind_e kind, bit [31:0] lo, bit [31:0] hi, inj_dir_e dir,
+                       int unsigned count = 1);
     inj_t i;
-    i.kind = kind; i.lo = lo; i.hi = hi; i.op = op; i.count = count;
+    i.kind  = kind;
+    i.lo    = lo;
+    i.hi    = hi;
+    i.dir   = dir;
+    i.count = count;
     inj_q.push_back(i);
   endfunction
 
@@ -51,7 +56,8 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   protected function int match_injection(bit [31:0] addr, bit write);
     foreach (inj_q[i]) begin
       if (inj_q[i].count > 0 && addr >= inj_q[i].lo && addr < inj_q[i].hi &&
-          (inj_q[i].op == 0 || (inj_q[i].op == 1 && !write) || (inj_q[i].op == 2 && write))) begin
+          (inj_q[i].dir == InjAny || (inj_q[i].dir == InjReads && !write) ||
+           (inj_q[i].dir == InjWrites && write))) begin
         inj_q[i].count--;
         n_inj_applied++;
         `uvm_info(`gfn, $sformatf("injected %s on the %s of 0x%08x", inj_q[i].kind.name(),
@@ -86,7 +92,6 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
           if (rsp.a_mask[i]) mem.write_byte(word_addr + i, rsp.a_data[8*i +: 8]);
         end
       end
-      // A write is acknowledged with no data, as OpenTitan's memories answer (tlul_adapter_sram).
       rsp.d_data = '0;
     end else if (rsp.d_error) begin
       rsp.d_data = '0;

@@ -23,31 +23,27 @@ module tb;
 
   `DV_ALERT_IF_CONNECT()
 
-  // The memory side: hosts on the core data port (with its tag sideband), the core's revocation
-  // bitmap port and the bitmap window; devices on the host ports towards the main crossbar (core,
-  // revocation engine) and the meta SRAM.
-  tl_if cored_tl_if(.clk(clk), .rst_n(rst_n));
+  // The core on the core data port, with its tag sideband and the mode; TL-UL hosts on the core's
+  // revocation bitmap port and the bitmap window; TL-UL devices on the host ports towards the main
+  // crossbar (core, revocation engine) and the meta SRAM.
+  cheriot_mem_sys_core_if core_if(.clk(clk), .rst_n(rst_n));
   tl_if corerevbm_tl_if(.clk(clk), .rst_n(rst_n));
   tl_if revbm_tl_if(.clk(clk), .rst_n(rst_n));
   tl_if cored_h_tl_if(.clk(clk), .rst_n(rst_n));
   tl_if tbre_h_tl_if(.clk(clk), .rst_n(rst_n));
   tl_if meta_tl_if(.clk(clk), .rst_n(rst_n));
-  logic cored_tag_d2h;
-  cheriot_mem_sys_side_if side_if(.clk(clk), .rst_n(rst_n), .h2d(cored_tl_if.h2d),
-                                  .d2h(cored_tl_if.d2h), .tag_d2h(cored_tag_d2h));
-
 
   // dut
-  // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM; build mode cms_map) for the
-  // tests ported from it, which sweep and fill whole regions; Earl Grey 2's otherwise.
+  // The feature tests use a small address map (16 KiB SRAM, 8 KiB NVM; build mode cms_map), as
+  // they fill and sweep whole regions; Earl Grey 2's otherwise.
 `ifdef CHERIOT_MEM_SYS_CMS_MAP
   cheriot_mem_sys #(
-    .MainSramBaseAddr(cms_pkg::MainSramBase),
-    .MainSramTopAddr (cms_pkg::MainSramTop),
-    .NvmBaseAddr     (cms_pkg::NvmBase),
-    .NvmTopAddr      (cms_pkg::NvmTop),
-    .MetaSramBaseAddr(cms_pkg::MetaBase),
-    .MemSizeRevbm    (cms_pkg::RevbmBytes)
+    .MainSramBaseAddr(MainSramBase),
+    .MainSramTopAddr (MainSramTop),
+    .NvmBaseAddr     (NvmBase),
+    .NvmTopAddr      (NvmTop),
+    .MetaSramBaseAddr(MetaBase),
+    .MemSizeRevbm    (RevbmBytes)
   ) dut (
 `else
   cheriot_mem_sys dut (
@@ -67,13 +63,13 @@ module tb;
     .alert_tx_o           (alert_tx ),
 
     // Execution mode
-    .cheriot_ena_i        (side_if.cheriot_ena),
+    .cheriot_ena_i        (core_if.cheriot_ena),
 
     // Core data port with its capability tag sideband
-    .cored_tl_d_i         (cored_tl_if.h2d),
-    .cored_tag_h2d_i      (side_if.tag_h2d),
-    .cored_tl_d_o         (cored_tl_if.d2h),
-    .cored_tag_d2h_o      (cored_tag_d2h),
+    .cored_tl_d_i         (core_if.h2d),
+    .cored_tag_h2d_i      (core_if.tag_h2d),
+    .cored_tl_d_o         (core_if.d2h),
+    .cored_tag_d2h_o      (core_if.tag_d2h),
 
     // Core revocation bitmap port
     .corerevbm_tl_i       (corerevbm_tl_if.h2d),
@@ -94,31 +90,11 @@ module tb;
     .meta_sram_tl_i       (meta_tl_if.d2h)
   );
 
-  // The WTRC's assertions state what Ibex does; a test that drives what the core cannot turns
-  // them off around it (cheriot_mem_sys_cms_vseq::wtrc_assertions).
-  always @(side_if.wtrc_sva_off) begin
-    if (side_if.wtrc_sva_off) $assertoff(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
-    else                      $asserton(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
-  end
-
-  // Which cause set TBRE_STATUS.sweep_err (rare; printed for the C-model scoreboard's reports).
-  always @(posedge clk) begin
-    if (rst_n && dut.tbre_sweep_err) begin
-      $display("%0t tb: sweep_err set: mover_read_err %0b mover_err %0b revbm_intg %0b revbm_data_intg %0b revbm_dev %0b rmw_data_intg %0b rmw_rsp_intg %0b rmw_dev %0b (tbre_active %0b)",
-               $time, dut.tbre_mover_read_err, dut.tbre_mover_err, dut.tbre_revbm_intg_err,
-               dut.tbre_revbm_data_intg_err, dut.tbre_revbm_dev_err, dut.rmw_data_intg_err,
-               dut.rmw_rsp_intg_err, dut.rmw_dev_err, dut.tbre_active);
-    end
-  end
-
-  // The response the RMW filter flags with a data integrity error (diagnostic).
-  always @(posedge clk) begin
-    if (rst_n && dut.rmw_data_intg_err) begin
-      $display("%0t tb: rmw data_intg error on a meta response: d_opcode %0d d_size %0d d_source %0h d_error %0b d_data %08x data_intg %02x (expected %02x); meta d2h valid %0b",
-               $time, dut.rmw_tl_d2h.d_opcode, dut.rmw_tl_d2h.d_size, dut.rmw_tl_d2h.d_source,
-               dut.rmw_tl_d2h.d_error, dut.rmw_tl_d2h.d_data, dut.rmw_tl_d2h.d_user.data_intg,
-               tlul_pkg::get_data_intg(dut.rmw_tl_d2h.d_data), meta_tl_if.d2h.d_valid);
-    end
+  // The WTRC's assertions describe what the core does; a test that drives something the core
+  // cannot produce turns them off around it (cheriot_mem_sys_base_vseq::wtrc_assertions).
+  always @(core_if.wtrc_assert_en) begin
+    if (core_if.wtrc_assert_en) $asserton(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
+    else                        $assertoff(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
   end
 
   initial begin
@@ -127,13 +103,13 @@ module tb;
     uvm_config_db#(virtual clk_rst_if)::set(null, "*.env", "clk_rst_vif", clk_rst_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_tl_agent*", "vif", tl_if);
     uvm_config_db#(intr_vif)::set(null, "*.env", "intr_vif", intr_if);
-    uvm_config_db#(virtual tl_if)::set(null, "*.env.m_cored_agent*", "vif", cored_tl_if);
+    uvm_config_db#(virtual cheriot_mem_sys_core_if)::set(null, "*.env.m_core_agent*", "vif",
+                                                         core_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_corerevbm_agent*", "vif", corerevbm_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_revbm_agent*", "vif", revbm_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_cored_h_agent*", "vif", cored_h_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_tbre_h_agent*", "vif", tbre_h_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_meta_agent*", "vif", meta_tl_if);
-    uvm_config_db#(virtual cheriot_mem_sys_side_if)::set(null, "*.env", "side_vif", side_if);
     $timeformat(-12, 0, " ps", 12);
     run_test();
   end

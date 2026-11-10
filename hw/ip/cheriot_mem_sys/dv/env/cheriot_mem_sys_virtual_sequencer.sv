@@ -8,12 +8,15 @@ class cheriot_mem_sys_virtual_sequencer extends cip_base_virtual_sequencer #(
   );
   `uvm_component_utils(cheriot_mem_sys_virtual_sequencer)
 
-  tl_sequencer cored_sqr;
-  tl_sequencer corerevbm_sqr;
-  tl_sequencer revbm_sqr;
-  tl_sequencer cored_h_sqr;
-  tl_sequencer tbre_h_sqr;
-  tl_sequencer meta_sqr;
+  cheriot_mem_sys_core_sequencer core_sqr;
+  tl_sequencer                   corerevbm_sqr;
+  tl_sequencer                   revbm_sqr;
+  tl_sequencer                   cored_h_sqr;
+  tl_sequencer                   tbre_h_sqr;
+  tl_sequencer                   meta_sqr;
+
+  // The backdoor of the memory behind the crossbar (preloading, programming the NVM).
+  cheriot_mem_sys_mem_backdoor   mem_backdoor;
 
   `uvm_component_new
 
