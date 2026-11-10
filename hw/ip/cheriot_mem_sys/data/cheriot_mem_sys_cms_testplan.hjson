@@ -1,0 +1,867 @@
+// Copyright lowRISC contributors.
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Testplan of the EG2 cms bench (hw/ip/cheriot_mem_sys/dv/cms) for the CHERIoT memory subsystem
+// (hw/ip/cheriot_mem_sys, top module `cheriot_mem_sys`): tag filter, write-to-read-and-compare filter (WTRC), RMW
+// filter, access checkers, TRVK filter, revocation engine (TBRE), CSRs, interrupt, error handling,
+// response integrity, reset.
+//
+// dvsim testplan format. The obligations are those
+// of the design documents, cited as doc:<line> for hw/ip/cheriot_mem_sys/doc/
+// theory_of_operation.md, regs:<register> for doc/registers.md, pg:<line> for
+// doc/programmers_guide.md, and rtl/<file>:<line> for hw/ip/cheriot_mem_sys/rtl/ (line numbers of the
+// upstream RTL the bench was first run on; five files have since changed by a few lines).
+//
+// Where each testpoint is checked is given by its tags:
+//   blk     the block-level bench hw/ip/cheriot_mem_sys/dv/cms/ (Xcelium; dv/cms/cms_regress.sh).
+//           Its tests are the result names of hw/ip/cheriot_mem_sys/dv/cms/cms_regress.list; every
+//           seed listed there must pass, except a declared known gap (@xfail=<finding>,
+//           cms_expected_failures.hjson): it must fail with every error that finding's and is
+//           shown as FAIL (known gap <finding>), never as passing (dv/cms/scripts/cms_results.py). The reference model (cms_pkg.sv) is written from the
+//           documents, never from DUT state: a shadow tag map, revocation bitmap, data and CSR model.
+//   cheriot-rtos  CHERIoT RTOS firmware on the RTOS test SoC (the CHERIoT RTOS test suite's cheriot-rtos_testplan.hjson);
+//           the named tests are reported there, not here.
+//   formal  property checking, not started; the testpoint names the property and has no test.
+// A testpoint with only cheriot-rtos/formal tags has tests: [] here.
+{
+  name: "cheriot_mem_subsys"
+
+  testpoints: [
+    // ─── Tag filter (doc:55-99, rtl/cheriot_tag_filter.sv) ─────────────────────────────────
+    {
+      name: smoke
+      desc: '''**Goal**: the subsystem comes out of reset quiet in ePMP mode and stores and loads
+            a tag once in CHERIoT mode.
+
+            **Check**: CSR reset values (TBRE_REGWEN 1, TBRE_STATUS 0, TBRE_EPOCH 0, INTR_STATE
+            0, INTR_ENABLE 0, TBRE_BASE_ADDR 0, TBRE_NUM_CAPS 0); intr_tbre_done_o low; no meta
+            SRAM access and no tag returned in ePMP mode; in CHERIoT mode a capability stored with
+            tag 1 loads with tag 1 and a data store over it clears it.'''
+      stage: V1
+      tags: ["blk"]
+      tests: ["cms_smoke"]
+    }
+    {
+      name: tag_store_load
+      desc: '''**Goal**: a capability store sets the tag of its 8-byte granule to the store's
+            tag, and a capability load returns it, in both tagged regions; untagged memory has
+            no tag and never reaches the meta SRAM (doc:62-70; rtl/cheriot_tag_filter.sv:215). In
+            the NVM a tagged store sets the tag only when verified (see nvm_cap_store).
+
+            **Stimulus**: capability stores with random tags to random granules and to the
+            first/last granule of main SRAM, NVM and an untagged window (in the NVM, half of them
+            programmed first); capability loads of them; stores just outside each tagged region.
+
+            **Check**: every hinted aligned load's tag against the shadow tag map; the meta SRAM
+            (TB model) bit-for-bit against the map at the end; no meta SRAM traffic for the
+            untagged window.'''
+      stage: V1
+      tags: ["blk", "cheriot-rtos"]
+      tests: ["cms_tag_store_load"]
+    }
+    {
+      name: tag_clear_on_data_store
+      desc: '''**Goal**: every non-capability write clears the tag of the granule it touches and
+            of no other (doc:68-70 "Writes always look up"; cheriot_mem_sys.hjson
+            CHERIOT.TAG_CLEAR_ON_DATA_WRITE).
+
+            **Stimulus**: for a tagged granule with tagged neighbours: a byte store at each of the
+            8 offsets, a halfword at each of the 4, a word at both, PutPartialData with random
+            masks; also a word store carrying tag 1 (the tag of a granule is the tag of its last
+            store: the subsystem trusts the core's tag).
+
+            **Check**: the granule's tag is 0 (1 for the tag-1 store), both neighbours keep tag 1;
+            capability loads and the meta SRAM agree with the shadow.'''
+      stage: V1
+      tags: ["blk", "cheriot-rtos"]
+      tests: ["cms_tag_clear_subword"]
+    }
+    {
+      name: cap_load_tag_and_hint
+      desc: '''**Goal**: only a hinted, 64-bit-aligned load in CHERIoT mode to tagged memory
+            looks its tag up; the second word of a capability carries the first word's tag, and
+            only read responses take part: a write answered in between is untagged and leaves the
+            captured tag alone (doc:62-77; rtl/cheriot_tag_filter.sv:215, 330-345); two outstanding
+            accesses work under back-pressure (doc:79-81).
+
+            **Stimulus**: back-to-back capability loads (both words outstanding) interleaved with
+            non-capability loads of every size; hinted loads of untagged memory; aggressive and
+            random handshake timing on every port.
+
+            **Check**: aligned non-capability loads never return tag 1; no write response carries
+            tag 1; every unaligned read returns the tag the last aligned read captured (the second word's
+            tag equals the first's; any other unaligned read gets the captured tag too, doc:72-77); data of every load against the shadow
+            memory; in-order responses with the right d_source/d_opcode/d_size (cms_tl_host).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_cap_load_hint", "cms_random"]
+    }
+
+    // ─── Capability stores to the NVM (doc:101-143, rtl/cheriot_wtrc.sv) ───────────────────
+    {
+      name: nvm_cap_store
+      desc: '''**Goal**: a capability store to the NVM (strict CHERIoT mode, tag sideband set) is
+            not written but read and compared: it sets the tag only if the NVM already holds both
+            words; otherwise W0 is answered with d_error if its word differs, W1 if either does,
+            and the tag is left as it was; no alert (doc:101-122, 265, 273-277; pg:39-48). A plain
+            store to the NVM is refused by the NVM and clears the tag (pg:44). Programming the NVM
+            (not a core write) leaves the tag. Outside CHERIoT mode a tagged store is a plain one.
+
+            **Stimulus**: directed: matching, W0 differing, W1 differing, programming over a
+            tagged capability, a plain store, a differing store over tag 0, a tagged store in ePMP
+            mode, a matching store whose NVM read of W0 fails (d_error on both words, tag left,
+            no alert); random: stores to programmed (matching or differing in either word) and
+            unprogrammed granules, plain word and byte stores and capability loads, three timing
+            passes. The TB data memory refuses writes to the NVM, as the system's does; the core
+            host issues nothing between W0 and W1, nor after W1 until it is answered, as Ibex
+            does (doc:111-112, 139-143).
+
+            **Check**: the reference model's WTRC sequence (cms_pkg.sv nvm_cap_store) predicts
+            every d_error and tag; the NVM data never changes through the core; the meta SRAM in
+            full after each pass; no alert.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_nvm_cap_store", "cms_tag_store_load", "cms_random"]
+    }
+    {
+      name: nvm_cap_store_fault
+      desc: '''**Goal**: a capability store to the NVM the core cannot produce -- not a full-word
+            PutFullData, or out of the W0-W1 sequence -- is answered with d_error, leaves the tag
+            as it was, and raises fatal_fault; any other request presented between W1 and its tag
+            write is out of sequence as soon as it is presented and raises fatal_fault, the
+            answers unchanged (doc:124-143, 266-267; rtl/cheriot_wtrc.sv:311-368).
+
+            **Stimulus**, one per reset: W0 a PutPartialData, W0 a halfword (each followed by a
+            full W1), a W1 with no W0; a verified W0 and W1 with W1 not held, so a load of
+            untagged memory is presented while the meta SRAM holds W1's tag write back for 100
+            cycles (the WTRC's own assertions, which state that Ibex never does this, are off for
+            that case only).
+
+            **Check**: d_error on the faulting word and on the W1 after a faulting W0; the tag
+            unchanged; for the presented load, W1 answered without d_error and the tag set (after a
+            plain store cleared it), the load's data; the alert in every case.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_nvm_cap_store"]
+    }
+
+    // ─── Access checkers, mode gating (doc:224-236, rtl/cheriot_access_check.sv) ───────────
+    {
+      name: mode_gating_strict_mubi
+      desc: '''**Goal**: only a strict MuBi4True on cheriot_ena_i enables the subsystem's CHERIoT
+            behaviour; every other value -- MuBi4False and the 14 invalid encodings -- makes the
+            whole meta SRAM inaccessible from every port, issues no tag lookup, and ignores
+            TBRE_START (doc:229-236, 175-181; rtl/cheriot_access_check.sv:57-68;
+            rtl/cheriot_tag_filter.sv:215; rtl/cheriot_mem_sys.sv:549-565).
+
+            **Stimulus**: tags written in CHERIoT mode; then for each of the 15 other values:
+            capability loads and stores, data stores over tagged granules, revbm and corerevbm
+            reads and writes, a TBRE start; back to CHERIoT mode.
+
+            **Check**: no meta SRAM request at all (also an always-on check: meta_sram_tl a_valid
+            only with cheriot_ena_i == MuBi4True); loads return tag 0; tags written before are
+            unchanged afterwards (no lookup means no clear either); bitmap accesses answer
+            d_error; no sweep; no alert.'''
+      stage: V2
+      tags: ["blk", "formal"]
+      tests: ["cms_mode_gating"]
+    }
+    {
+      name: meta_window_access_check
+      desc: '''**Goal**: revbm_tl_d (software) and corerevbm_tl (the core's TRVK) reach only the
+            revocation bitmap, with full-word, word-aligned Get/PutFullData; the tag regions are
+            not memory-mapped (doc:43-51, 224-236; cheriot_mem_sys.hjson MEM.SW_NOACCESS;
+            rtl/cheriot_mem_sys.sv:234-246, 478-490; rtl/cheriot_access_check.sv:57-74).
+
+            **Stimulus**: random accesses on both windows below the meta SRAM, in the bitmap, at
+            its last word, in the NVM and SRAM tag regions and above the meta SRAM; every opcode
+            and size, sub-word at every offset; occasionally with cheriot_ena_i not MuBi4True.
+
+            **Check**: d_error exactly when the doc's four conditions are not all met; read data of
+            allowed reads against the shadow bitmap; the tag map unchanged (backdoor compare); no
+            fatal alert (the first three rows of the doc's error table are software-reachable,
+            doc:273-277). Note: corerevbm_tl accepts PutFullData to the bitmap like revbm_tl_d
+            does; the core's TRVK never writes, but the port allows it.'''
+      stage: V2
+      tags: ["blk", "formal"]
+      tests: ["cms_access_check", "cms_mode_gating"]
+    }
+
+    // ─── RMW filter (doc:145-171, rtl/cheriot_rmw_filter.sv) ───────────────────────────────
+    {
+      name: rmw_bit_granular_update
+      desc: '''**Goal**: a tag write modifies exactly the addressed bit of its 32-bit meta word,
+            and is a read with no write-back when the bit already has the value
+            (doc:147-158; rtl/cheriot_rmw_filter.sv:136-170, 321).
+
+            **Stimulus**: back-to-back (zero-gap, two outstanding) capability and data stores and
+            capability loads to the 32 granules sharing one meta word, in SRAM and NVM, with
+            aggressive and random timing; a re-store of an unchanged tag; a tag clear.
+
+            **Check**: every meta SRAM write to a tag word changes exactly one bit (TB meta model,
+            always on); the meta words against the shadow; the unchanged re-store causes no meta
+            write and the clear exactly one.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_rmw_same_word"]
+    }
+    {
+      name: rmw_core_and_tbre_concurrent
+      desc: '''**Goal**: the one RMW filter shared by the core's and the TBRE's tag filters
+            through cheriot_socket_m1 (doc:163-171; rtl/cheriot_mem_sys.sv:276-297) loses no update when
+            both write bits of the same meta word at the same time; it takes a request in the
+            cycle a read is answered, so the two requesters' lookups follow each other at one per
+            cycle (doc:164-167; rtl/cheriot_rmw_filter.sv:108-109, 220-234).
+
+            **Stimulus**: 16 revoked capabilities in the lower half of a 256-byte block (one meta
+            word) swept by the TBRE while the core keeps storing live capabilities, with random
+            tags, to the upper half.
+
+            **Check**: after the sweep the lower 16 bits are clear and the upper 16 hold the
+            core's last stores exactly. Coverage: rmw_cg cp_read_back_to_back (a request taken in
+            the cycle a read is answered).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_rmw_core_tbre_same_word"]
+    }
+
+    // ─── TRVK filter and revocation engine (doc:173-221) ───────────────────────────────────
+    {
+      name: tbre_sweep_revokes_exactly
+      desc: '''**Goal**: a sweep of TBRE_NUM_CAPS capabilities from TBRE_BASE_ADDR, in the main
+            SRAM or the NVM, clears the tag of exactly the tagged, non-sealing capabilities whose
+            base has its revocation bit set, and nothing else; it never writes memory
+            (doc:175-181, 196-203; pg:23-24; rtl/cheriot_trvk_core.sv:241-302;
+            rtl/cheriot_tbre_mover.sv:329-334; rtl/cheriot_mem_sys.sv:834).
+
+            **Stimulus**: the whole SRAM, and the whole NVM, filled with capabilities of every
+            class (revoked, live, sealing with the bit set, sealed data capabilities with the bit
+            set, bases below the heap and beyond the bitmap, executable, random exponents,
+            untagged look-alikes); whole-region, random sub-range and single-capability sweeps at
+            both ends of both regions.
+
+            **Check**: the reference model decodes each base itself (CHERIoT bounds encoding,
+            cms_pkg.sv cap_base) and predicts every swept tag; the meta SRAM is compared in full
+            after every sweep; the TBRE reads exactly the 2 x N words of the range in order, all
+            Gets; the data memory is unchanged by the engine.'''
+      stage: V2
+      tags: ["blk", "cheriot-rtos"]
+      tests: ["cms_tbre_sweep"]
+    }
+    {
+      name: trvk_base_decode
+      desc: '''**Goal**: the revoked/not-revoked decision is right for every exponent (0-14 and
+            the 24 of encoding 15), both base corrections (address in the base's 2^(E+9) block or
+            the next), bit selects 0 and 31 of a bitmap word, the last heap granule, and the first
+            base past the bitmap (out of range: never revoked) (rtl/cheriot_trvk_core.sv:241-302).
+
+            **Stimulus**: per exponent, capabilities whose own bit is set, or only the bit next to
+            it (catches an off-by-one granule), or the one before; one sweep over all of them.
+
+            **Check**: as tbre_sweep_revokes_exactly, plus capability loads of every one.'''
+      stage: V2
+      tags: ["blk", "formal"]
+      tests: ["cms_tbre_base_decode"]
+    }
+    {
+      name: tbre_csr_start_regwen
+      desc: '''**Goal**: TBRE_START starts a sweep only with TBRE_NUM_CAPS != 0, TBRE_BASE_ADDR
+            in the main SRAM or the NVM and strict CHERIoT mode; any other start is ignored and
+            sets TBRE_STATUS.start_err; a write of 0 and a start while the engine is active are
+            dropped without it; TBRE_STATUS.busy is high until every capability is resolved and
+            TBRE_REGWEN locks BASE, NUM and START while the engine is active; a sweep past the top
+            of its region ends there and NUM keeps the value written (doc:175-186, 218-221;
+            regs:TBRE_REGWEN, TBRE_START, TBRE_STATUS; rtl/cheriot_mem_sys.sv:531-579).
+
+            **Stimulus**: reset values; field widths (BASE bits 2:0 and NUM bit 31 read 0);
+            writes leaving out a byte that holds a field and unmapped offsets; writes to the
+            read-only REGWEN, STATUS.busy and EPOCH; ignored starts (NUM 0, base below, at and far
+            below the SRAM, around the NVM, ePMP mode in both regions, write 0, write 2); start_err
+            cleared by writing 1; clamped sweeps in both regions (5 capabilities from the top with
+            NUM 1000; NUM 0x7fff_ffff); a long sweep with BASE/NUM/START written while it runs.
+
+            **Check**: d_error exactly where reggen's byte-enable rule and the map say (the model's
+            rule is cross-checked against cheriot_mem_sys_reg_pkg); no TBRE read for an ignored start;
+            start_err on every TBRE_STATUS read; busy reads 1 only while a sweep runs and reads 0
+            only once every word was read and every clear acknowledged (backdoor compare right
+            after); locked writes dropped and no second sweep.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_tbre_csr", "cms_smoke"]
+    }
+    {
+      name: tbre_epoch_status
+      desc: '''**Goal**: TBRE_EPOCH bit 0 is set exactly while the engine is active and bits 31:1
+            count the sweeps that ended without an error, advancing in the cycle bit 0 clears; a
+            sweep with an error is not counted, so the epoch returns to its even value; ignored
+            starts and starts while active leave it; TBRE_STATUS.sweep_err is set by an error
+            during a sweep and, like start_err, stays set until written 1 (doc:188-194, 268-271;
+            regs:TBRE_EPOCH, TBRE_STATUS; pg:27-34, 50-54; rtl/cheriot_mem_sys.sv:567-626).
+
+            **Stimulus**: sweeps of either region waited for by polling busy, by polling the epoch
+            until even, and by the interrupt; a start while a long sweep runs; ignored starts; a
+            sweep with an error response to a capability read (no alert), then one without; reset.
+
+            **Check**: every TBRE_EPOCH, TBRE_REGWEN and TBRE_STATUS read against the model; an
+            even epoch, REGWEN high or busy low with a sweep running ends it in the model, which
+            then predicts the swept tags; the epoch after a failed sweep is the one before it;
+            sweep_err survives a good sweep; no alert for the error response; 0 after reset.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_tbre_epoch", "cms_err_tbre_read", "cms_err_tbre_revbm", "cms_random"]
+    }
+    {
+      name: tbre_done_interrupt
+      desc: '''**Goal**: the tbre_done interrupt is raised when the engine stops being active, also
+            after a sweep with an error; INTR_STATE is a level until written 1 (rw1c);
+            INTR_ENABLE masks intr_tbre_done_o; INTR_TEST forces INTR_STATE; an ignored start
+            raises none (doc:185-186; regs:INTR_STATE, INTR_ENABLE, INTR_TEST; interfaces.md;
+            pg:17-19, 36-37; rtl/cheriot_mem_sys.sv:598, 631-644).
+
+            **Stimulus**: a sweep waited for by the pin; the level held for 200 cycles; a masked
+            sweep, then enabling; INTR_TEST; ignored starts; acknowledging during a sweep; sweeps of
+            both regions waited for as the programmer's guide does (acknowledge, re-check busy); a
+            sweep with an error response to a capability read (no alert). The sweeps waited for by the
+            pin end with a revoked, tagged capability and the meta SRAM is slow (4-12 cycles,
+            a_ready 50%), so the last clear outlasts the TBRE_STATUS read after the pin.
+
+            **Check**: intr_tbre_done_o against the model's INTR_STATE & INTR_ENABLE whenever the
+            CSR port has been quiet for four cycles (cms_tb, always on, every test); every tag
+            final when the pin rises; INTR_STATE reads.'''
+      stage: V2
+      tags: ["blk", "cheriot-rtos"]
+      tests: ["cms_tbre_intr", "cms_tbre_epoch", "cms_random"]
+    }
+    {
+      name: tbre_concurrent_core_traffic
+      desc: '''**Goal**: core traffic and bitmap writes during a sweep are served correctly and
+            do not disturb it.
+
+            **Stimulus**: sweeps over a quarter of the SRAM while the core loads capabilities in
+            and out of the range, stores live capabilities anywhere (including in the range),
+            stores bytes, reads NVM and untagged memory, and software flips bitmap bits.
+
+            **Check**: loads in the swept range may see a revocable capability's tag before or
+            after its clear; a bitmap bit changed during the sweep allows either outcome for the
+            capabilities whose base it covers; a core write to a swept capability as
+            tbre_snoop_window says; everything else exact, and the meta SRAM in full after each
+            sweep.'''
+      stage: V2
+      tags: ["blk", "cheriot-rtos"]
+      tests: ["cms_tbre_concurrent", "cms_random", "cms_random_long"]
+    }
+    {
+      name: tbre_store_race
+      desc: '''**Goal**: a fresh capability the core stores over a revoked one while the engine is
+            between reading the revoked one and clearing its tag keeps its tag (doc:205-216;
+            pg:25; cheriot_mem_sys.hjson CHERIOT.TBRE_CORE_WRITE_SNOOP; rtl/cheriot_tbre_mover.sv:401-485,
+            rtl/cheriot_mem_sys.sv:303-432).
+
+            **Stimulus**: a revoked capability at G, a one-capability sweep of G, and a store of a
+            live capability (base in NVM, never revocable) to G 0-23 cycles after the engine's
+            read response of G's first word, then of its second word; and the same 0-23 cycles after
+            the engine presents the read of each word, which lands stores between the read and the
+            clear (the window the watch exists for).
+
+            **Check**: G's tag is 1 after the sweep, exactly (every such store is answered after
+            the engine presented the read of G's lower word, so it is watched).'''
+      stage: V2
+      tags: ["blk", "formal"]
+      tests: ["cms_tbre_store_race"]
+    }
+    {
+      name: tbre_snoop_window
+      desc: '''**Goal**: the watch of core writes (doc:205-216): every write the core presents, and
+            every accepted one until it is answered, is compared at capability granularity with
+            the capabilities the engine has in flight, from the presentation of the read of a
+            capability's lower word; a capability written from then on is not cleared, including a
+            write to its upper word only and a write of a capability that is itself revoked; a
+            write answered before is resolved by the engine like any capability. Writes by other
+            hosts are not watched (sba_bypasses_tag_filter).
+
+            **Stimulus**: sweeps of 2-8 revoked capabilities with one write at a random point of
+            the sweep to one of them: a capability store of another revoked capability, a tag-1
+            store of only the upper or only the lower word, a data store; in the NVM, a capability
+            store that differs from the NVM (d_error, nothing written).
+
+            **Check**: the model times each write's answer against the engine's reads seen on
+            tbre_tl_h: answered at or after the lower word's read was seen presented, the tag the
+            write left, exactly; answered before the read could have been presented (the cycle
+            after the handshake of the engine's previous read), the engine's decision on the data
+            it then reads, exactly; in between, either. The counts are in CMS_RESULT
+            (snoop_kept/snoop_before/snoop_around). Per the document a failed capability store to
+            the NVM is a watched write too, so the revoked capability it did not overwrite keeps
+            its tag; the test logs how often.'''
+      stage: V2
+      tags: ["blk", "formal"]
+      tests: ["cms_tbre_snoop_window", "cms_tbre_store_race", "cms_tbre_concurrent", "cms_random"]
+    }
+
+    // ─── Error handling (doc:253-277) ──────────────────────────────────────────────────────
+    {
+      name: err_software_reachable_no_alert
+      desc: '''**Goal**: the software-reachable error causes -- a meta SRAM access in ePMP mode,
+            outside the requester's region, PutPartialData, a capability store to the NVM that does
+            not match or whose NVM read fails -- answer d_error and raise no alert; an error
+            response to the engine's read of the swept memory only fails the sweep
+            (doc:259-261, 265, 268, 273-277).
+
+            **Check**: see meta_window_access_check, mode_gating_strict_mubi, nvm_cap_store and
+            err_tbre_read; no fatal_fault handshake in those runs (cases).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_access_check", "cms_mode_gating", "cms_nvm_cap_store", "cms_err_tbre_read"]
+    }
+    {
+      name: err_tag_path_device_error
+      desc: '''**Goal**: a device error on the tag path aborts the read-modify-write, answers
+            d_error to the core and raises fatal_fault (doc:262; rtl/cheriot_rmw_filter.sv:344;
+            rtl/cheriot_tag_filter.sv:380-400).
+
+            **Stimulus**, one per reset: d_error on the fill read of a store; on a capability
+            load's lookup; on the write-back.
+
+            **Check**: d_error to the core; no write-back after an errored fill; tag 0 on the
+            failed lookup; the tag unchanged and the data written ("a failed tag update leaves the
+            old tag next to the new data", doc:95-99); the alert; none before the injection; none
+            after reset; no sweep_err (no sweep running).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_tag_path"]
+    }
+    {
+      name: err_meta_sram_integrity
+      desc: '''**Goal**: a response integrity or data integrity fault on a meta SRAM response to
+            the RMW filter raises fatal_fault (doc:160-161, 263; rtl/cheriot_rmw_filter.sv:344-371).
+
+            **Stimulus**: rsp_intg and data_intg corrupted on a lookup and on a fill.
+
+            **Check**: the alert. Logged, not judged: a corrupted response to the software
+            bitmap window, which the subsystem passes to the requester unchecked -- the error
+            table's "a meta SRAM response" does not say whose.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_meta_intg"]
+    }
+    {
+      name: err_csr_integrity
+      desc: '''**Goal**: a command integrity fault on the CSR interface is answered with d_error,
+            does not write the register, and raises fatal_fault latched until reset (doc:264;
+            rtl/cheriot_mem_sys_regs_reg_top.sv:47-77, 119).
+
+            **Check**: d_error; TBRE_BASE_ADDR keeps its value; repeated alert handshakes for 500
+            cycles; none after reset.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_csr_intg"]
+    }
+    {
+      name: err_tbre_read
+      desc: '''**Goal**: a fault on a response to the engine's capability reads sets
+            TBRE_STATUS.sweep_err, the sweep still completes and is not counted in TBRE_EPOCH, and
+            a capability with a read that failed is not cleared. An error response to a read of
+            the swept memory (a device denying it, e.g. a read-protected NVM page) does only that;
+            an integrity fault, or an error from the meta SRAM path (an RMW filter fault during
+            the sweep), also raises fatal_fault (doc:268-269, 271, 273-277; pg:13, 52-54;
+            rtl/cheriot_tbre_mover.sv:271-278, 518-549; rtl/cheriot_mem_sys.sv:574-600).
+
+            **Stimulus**, one per reset: d_error on a capability's second word, on its first word;
+            rsp_intg and data_intg on its second word; d_error on its tag lookup; a sweep of the
+            last 8 capabilities of the NVM whose upper 4 deny every read (both words).
+
+            **Check**: busy falls; sweep_err set, the epoch still 0, sweep_err cleared by writing
+            1; the faulted capabilities keep their tag, the others are exact; no alert for the
+            d_error cases on the swept memory (within 200 cycles and the rest of the case), the
+            alert for the integrity and lookup cases.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_tbre_read", "cms_tbre_epoch", "cms_tbre_intr"]
+    }
+    {
+      name: err_tbre_bitmap_lookup
+      desc: '''**Goal**: an error, integrity fault or malformed response on the engine's bitmap
+            lookup counts the capability as revoked, sets TBRE_STATUS.sweep_err and raises
+            fatal_fault (doc:270; rtl/cheriot_trvk_tlul.sv:162; rtl/cheriot_trvk_core.sv:302).
+
+            **Stimulus**: four live capabilities (bits clear); d_error, rsp_intg or data_intg on the
+            first lookup.
+
+            **Check**: the first capability loses its tag, the other three keep theirs; sweep_err
+            and the epoch as err_tbre_read; the alert. A malformed response (wrong
+            d_opcode/d_size) is not injected: the TB meta model cannot produce one without breaking
+            TL-UL for the RMW filter as well.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_tbre_revbm"]
+    }
+    {
+      name: err_data_path
+      desc: '''**Goal**: errors on the data path (cored_tl_h) reach the core as d_error, raise no
+            alert, and do not stop the tag update ("a failed data write still updates the tag",
+            doc:95-99).
+
+            **Check**: d_error; the tag takes the store's value (0 and 1); the data is not
+            written; reads of an erroring window; no alert.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_err_data_path"]
+    }
+    {
+      name: alert_test
+      desc: '''**Goal**: a write of ALERT_TEST.fatal_fault raises exactly one fatal_fault
+            handshake and does not latch, while ALERT_TEST.regwen is set; writing 0 to regwen
+            (rw0c, reset 1) disables alert testing until reset, the write that clears it still
+            raising its own alert; regwen reads back; a write leaving out regwen's byte is refused
+            (regs:ALERT_TEST; rtl/cheriot_mem_sys_regs_reg_top.sv:236-282, 596; rtl/cheriot_mem_sys.sv:696-710).
+
+            **Stimulus**: ALERT_TEST written 0x8000_0001 twice, 0x8000_0000, 0x0 (regwen
+            cleared), 0x8000_0001 (locked); reset; 0x1 (alert, and locked), 0x8000_0001;
+            reads in between; a PutPartialData without byte 3 (cms_tbre_csr).
+
+            **Check**: alert handshakes per write (1, 1, 0, 0, 0, then 1, 0) over 600 cycles each;
+            every ALERT_TEST read against the model's regwen (0x8000_0000 out of reset, 0 once
+            cleared); d_error for the partial write, regwen still 1 after it.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_alert_test", "cms_tbre_csr"]
+    }
+    {
+      name: rsp_integrity
+      desc: '''**Goal**: every response the subsystem returns to a host port carries a correct
+            response integrity and data integrity, including the responses it makes or changes
+            itself: error responses of the access checkers and the register block, a failed tag
+            lookup's d_error merged into the data path's response (the integrity updated by the
+            difference), the WTRC's answers to capability stores to the NVM
+            (rtl/cheriot_tag_filter.sv:392-406; rtl/cheriot_wtrc.sv:236-268;
+            rtl/cheriot_mem_sys_regs_reg_top.sv:79-87; cheriot_mem_sys.hjson BUS.INTEGRITY).
+
+            **Stimulus**: every test, on cored_tl_d, revbm_tl_d, corerevbm_tl and regs_tl_d.
+
+            **Check**: cms_tl_host recomputes rsp_intg and data_intg of every response it takes
+            (always on). Off only for the one read of the software bitmap window whose meta SRAM
+            response cms_err_meta_intg corrupts on purpose, which the subsystem passes on.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_smoke", "cms_err_tag_path", "cms_err_meta_intg", "cms_err_csr_intg",
+              "cms_nvm_cap_store", "cms_access_check", "cms_random"]
+    }
+
+    // ─── Reset ─────────────────────────────────────────────────────────────────────────────
+    {
+      name: reset_mid_operation
+      desc: '''**Goal**: a reset during a sweep with core stores in flight returns the subsystem
+            to its reset state with no stale response, no alert, and no state the reset could not
+            have produced; it works normally afterwards.
+
+            **Check**: CSR reset values (TBRE_STATUS, TBRE_EPOCH and INTR_STATE 0); no TBRE read
+            after reset; the meta SRAM (kept across the subsystem's reset, as sram_ctrl would)
+            holds, per granule, either the old or the new value of an in-flight store, and per
+            swept capability either its tag or its clear; a further full sweep is exact.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_reset"]
+    }
+
+    // ─── Earl Grey 2 specification (eg2_toplevel_verification_spec.md, REQ_CMS block rows) ─
+    // Obligations from the specification's rows and RFC CHERIoT Memory Subsystem, not from the
+    // documents above; tb/cms_tests_eg2.svh.
+    {
+      name: tag_sideband_mubi
+      desc: '''**Goal**: REQ_CMS_01. The tag between the core's and the subsystem's lockstep
+            domains is MuBi4 in both directions; a tag is stored only for MuBi4True; any other
+            encoding than True or False sets no tag and raises fatal_fault (RFC "Transferring the
+            Capability Tag Bit", "End-To-End ECC and Lockstep Operation").
+
+            **Stimulus**: CSC and CLC with each of the 16 request encodings, over a granule tagged
+            0 and one tagged 1; a CLC whose two responses are forced to each of the 14 invalid
+            encodings.
+
+            **Check**: valid encodings store and return the tag (MuBi4True) or act as data accesses
+            (MuBi4False), no alert; every invalid one raises fatal_fault, sets no tag (meta SRAM
+            compare) and returns none; every response carries MuBi4True or MuBi4False. Needs
+            +define+CMS_TAG_MUBI and MuBi4 ports; with the pinned RTL's one-bit sideband the test
+            fails with the gap (upstream TODO(#31066)).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_tag_sideband_mubi"]
+    }
+    {
+      name: lockstep_glitch
+      desc: '''**Goal**: REQ_CMS_02. The subsystem, TBRE included, runs in lockstep; a divergence
+            raises fatal_fault before any meta SRAM write by the faulty copy completes (RFC
+            "Lockstepped CHERIoT Subsystem"; cheriot_mem_sys.hjson LOGIC.SHADOW).
+
+            **Stimulus**: one-cycle upsets of one bit of one flop, idle and under traffic, of each
+            group: the subsystem's control and its TBRE, in either copy; flop, bit and time drawn
+            per seed (+cms_ls_rounds=<n> repeats the set).
+
+            **Check**: fatal_fault within 256 cycles of every upset; for an upset of the copy that
+            drives the outputs, no meta SRAM write presented after it completes before
+            fatal_fault; the scoreboard before every upset and after the reset that follows it.
+            Needs +define+CMS_LOCKSTEP and CMS_LS_SHADOW for the second copy; with the pinned RTL
+            (one copy) the test fails with the gap (upstream TODO(#30572)).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_lockstep_glitch"]
+    }
+    {
+      name: trvk_fault
+      desc: '''**Goal**: REQ_CMS_02, with REQ_CIB_03's rule for the load filter. A single fault
+            in the TBRE's load filter (cheriot_trvk_core) is detected: fatal_fault, whether the
+            filter is protected by the subsystem's lockstep or by a countermeasure of its own.
+            Undetected, it lets a revoked capability keep its tag through a sweep. The core's
+            filter has the same test (core_ibex_trvk_fault_test).
+
+            **Stimulus**: the bitmap written (random words, or every bit set for the sites that
+            skip the lookup), 64 tagged memory capabilities with heap bases, swept. One site per
+            run, forced for one cycle at a random effective opportunity, three injections per run
+            with a reset after each: the verdict (revbm_revoked 0), the tag to the engine
+            (upstream_tag_o 1), the bit select (to a clear bit of the word), and in a lookup's
+            first cycle revbm_req_required 0, revbm_out_of_range 1, is_sealing_cap 1,
+            misalign_flag_out 0. +cms_tf_copy=shadow injects into the second copy.
+
+            **Check**: each injection hands the engine a tagged response for a revoked
+            capability in the forced cycle (counted; no effective injection fails the run);
+            fatal_fault within 256 cycles. The scoreboard before each injection and after the
+            reset that follows it. With the pinned RTL (one copy, nothing checking the filter's
+            logic) every site fails (upstream TODO(#30572)).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_trvk_fault_verdict", "cms_trvk_fault_tag_out", "cms_trvk_fault_bit_select",
+              "cms_trvk_fault_req_required", "cms_trvk_fault_out_of_range",
+              "cms_trvk_fault_sealing", "cms_trvk_fault_align"]
+    }
+    {
+      name: latency
+      desc: '''**Goal**: REQ_CMS_07. In CHERIoT mode the subsystem adds no cycle to data and
+            capability reads, nor to writes that leave the tag unchanged, and at most 4 cycles per
+            word to a write that changes it; in ePMP mode it adds none (RFC "Memory Access
+            Latency", Table 2).
+
+            **Stimulus**: every port at full speed, memories at their shortest latency; one at a
+            time, data read (word, sub-word), capability read, data write (word, sub-word,
+            PutPartialData), capability write with tag 0 or 1, over a granule tagged 0 or 1, in
+            CHERIoT mode, MuBi4False and an invalid encoding.
+
+            **Check**: per word, (core request presented -> core response) minus (crossbar request
+            presented -> crossbar response valid) against the row; every core request reaches the
+            crossbar once; the per-capability total is logged against Table 2. With the pinned RTL,
+            word 1 of a capability store adds one cycle even when its tag is unchanged, contrary
+            to REQ_CMS_07: a known gap (@xfail=REQ_CMS_07, cms_expected_failures.hjson).'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_latency"]
+    }
+    {
+      name: trvk_backpressure
+      desc: '''**Goal**: REQ_CMS_07, REQ_CMS_08 under back pressure (EG2 spec "Revocation",
+            "Corner cases"): the TBRE's load filter gives the reference's verdict for every
+            capability, keeps its requests in flight bounded, makes progress, and adds no cycle
+            when the bitmap answers at once.
+
+            **Stimulus**: sweeps of 32-128 capabilities of every class with long random latencies
+            (up to 160 cycles) on the TBRE's data memory, the meta SRAM and the core's data
+            memory, a_ready withheld at random and held at 0 (and the core's d_ready) for
+            stretches of up to 400 cycles, data and bitmap words arriving in either order; core
+            capability loads and stores, bitmap writes and core bitmap-port reads beside them.
+            Then a sweep with the meta SRAM answering at once, and core reads and writes one at a
+            time at full speed.
+
+            **Check**: the scoreboard and the meta SRAM after every sweep; at most 2 reads in
+            flight on tbre_tl_h and 2 bitmap lookups; while the engine is active a response on one
+            of its ports at least every 4 x (latency + stall) + 128 cycles, every sweep ends; with
+            the bitmap at once every verdict presented in the cycle its later word arrives; core
+            path per REQ_CMS_07 with 2 cycles per tag-changing word. +cms_sb_corrupt=backpressure,1
+            must fail.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_trvk_backpressure", "cms_trvk_backpressure_corrupt_backpressure"]
+    }
+
+    // ─── Random and scoreboard self-check ──────────────────────────────────────────────────
+    {
+      name: random_mix
+      desc: '''**Goal**: everything above at once: capability and data stores and loads to hot
+            meta words, SRAM, NVM (programmed or not) and untagged memory, every size and opcode,
+            bitmap reads and writes on both windows, sweeps of both regions (accepted and ignored)
+            running concurrently and waited for by polling or by the interrupt, epoch reads,
+            random handshake timing on all seven ports.
+
+            **Check**: the scoreboard on every response, the interrupt pin, the meta SRAM and data
+            memory in full at the end. 20 seeds of 4000 operations and 2 of 40000.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_random", "cms_random_long", "cms_random_cmodel", "cms_random_long_cmodel"]
+    }
+    {
+      name: scoreboard_fault_injection
+      desc: '''**Goal**: each class of scoreboard check can fail (a green run is evidence only once
+            the check has been seen to go red).
+
+            **Stimulus**: +cms_sb_corrupt=<kind>,<n> inverts the n-th prediction of one kind: a
+            load's tag, a swept capability's tag, a bitmap read, an expected d_error, a stored data
+            word, the tag a watched core write keeps through a sweep (race), a TBRE_EPOCH read;
+            and the first expectation of each Earl Grey 2 test: the tag a valid-encoding store
+            leaves (mubi), fatal_fault after an upset (lockstep), the cycles one access may take
+            (latency), and the first TRVK fault injection's effectiveness verdict (trvk).
+
+            **Check**: the run fails, the "CMS_CORRUPT ... corrupted <kind>" line is present and
+            no CMS_ERROR precedes it.'''
+      stage: V2
+      tags: ["blk"]
+      tests: ["cms_random_corrupt_load_tag", "cms_random_corrupt_sticky_tag",
+              "cms_random_cmodel_corrupt_cmodel", "cms_random_corrupt_sweep",
+              "cms_random_corrupt_revbm", "cms_random_corrupt_err", "cms_random_corrupt_data",
+              "cms_random_corrupt_race", "cms_random_corrupt_epoch",
+              "cms_tag_sideband_mubi_corrupt_mubi", "cms_lockstep_glitch_corrupt_lockstep",
+              "cms_latency_corrupt_latency", "cms_trvk_fault_verdict_corrupt_trvk"]
+    }
+    {
+      name: rtl_mutation
+      desc: '''**Goal**: the tests catch real bugs of the subsystem, not only a corrupted
+            prediction: every mutation is caught by at least one test, and by every test listed
+            for it.
+
+            **Stimulus**: +cms_mutate=<name> (cms_tb.sv) forces one internal signal of the
+            unmodified RTL to what a plausible design error would drive, for the whole run, one
+            per obligation area: the tag store (a partial store keeps the tag, a data store sets
+            it, a capability store loses it), the engine's bitmap lookup (the next granule's bit),
+            the engine (a sweep one capability short, no invalidation, the epoch not counted,
+            busy/tbre_done before the last clear), the watch of core writes (off), errors (meta
+            SRAM integrity not reported, the data path's d_error dropped, fatal_fault never
+            raised, an error response to a swept read treated as a fault, a request presented
+            between W1 and its tag write not flagged, ALERT_TEST.regwen ignored) and mode gating
+            (the core's bitmap window on a loose MuBi4 test). The
+            mutations, the RTL each replaces and the tests that must fail with each are in
+            hw/ip/cheriot_mem_sys/dv/cms/scripts/cms_mutation_check.py.
+
+            **Check**: each listed run prints "MUTATION <name> active" (the forced value differed
+            from the RTL's) and its CMS_RESULT is FAIL; a PASS is a miss, whatever an RTL
+            assertion reported. Graded by cms_mutation_check.py (make
+            cheriot-mem-subsys-mutation-check), not by this report: the runs are not in
+            cms_regress.list, so tests is empty here.'''
+      stage: V2
+      tags: ["blk"]
+      tests: []
+    }
+
+    // ─── Elsewhere ─────────────────────────────────────────────────────────────────────────
+    {
+      name: system_rtos_revocation
+      desc: '''**Goal**: the subsystem works with the real core, interconnect and allocator: the
+            RTOS's temporal safety (quarantine, sweeps through rev_ctl), the core's load barrier
+            on the corerevbm port, tags across real capability loads and stores.
+
+            Checked by the RTOS firmware: cheriot-rtos_testplan.hjson rtos_allocator_with_revocation,
+            load_barrier_both_directions, revocation_sweep, juliet_memory_safety,
+            cheri_c_semantics, mem_subsys_coverage_closure.'''
+      stage: V2
+      tags: ["cheriot-rtos"]
+      tests: []
+    }
+    {
+      name: sba_bypasses_tag_filter
+      desc: '''**Goal**: debug system-bus access, which bypasses the tag filter, does not clear
+            tags and is not watched by the revocation engine (doc:215-216, 243-251), is unreachable
+            while debug is disabled. Not a block property: cheriot-rtos_testplan.hjson
+            non_core_bus_masters (needs a SoC with a debug module).'''
+      stage: V3
+      tags: ["cheriot-rtos"]
+      tests: []
+    }
+    {
+      name: formal_properties
+      desc: '''**Goal**: proofs, not samples, of: meta SRAM requests only in strict CHERIoT mode
+            (all 16 encodings, every cycle); every tag-word write changes exactly one bit; the
+            engine never writes memory and stays in the tagged region it starts in; the epoch
+            counts only sweeps without an error (rtl/cheriot_mem_sys.sv:752-834 already state these as
+            assertions); the TRVK decision equals the CHERIoT base decoding for all inputs; no
+            clear removes the tag of a capability the core wrote after the engine presented the
+            read of its lower word (tbre_snoop_window). Not started; no formal flow for this block
+            exists in the repository yet.'''
+      stage: V3
+      tags: ["formal"]
+      tests: []
+    }
+  ]
+
+  covergroups: [
+    {
+      name: cms_core_access_cg
+      desc: '''Core accesses as the reference model judged them (block bench, cms_pkg.sv):
+            read / full write / partial write x size x region (SRAM, NVM, untagged) x tag x
+            CHERIoT on/off x alignment; returned tag; d_error.'''
+    }
+    {
+      name: cms_nvm_cap_cg
+      desc: '''Capability stores to the NVM: W0 / W1 x matched, data differs, partial, out of
+            sequence; outcome x the tag before.'''
+    }
+    {
+      name: cms_sweep_cap_cg
+      desc: '''Every swept capability: tag, sealing, base in the bitmap / below the heap / beyond,
+            revocation bit, revoked, exponent class, base correction.'''
+    }
+    {
+      name: cms_tbre_start_cg
+      desc: '''TBRE_START outcome: accepted, NUM 0, base below the SRAM / outside both regions,
+            not CHERIoT, while busy, wrote 0; accepted sweeps by region x clamped at its top.'''
+    }
+    {
+      name: cms_tbre_end_cg
+      desc: '''End of a sweep: with or without an injected error x region x interrupt enabled; a
+            failed sweep whose only faults were error responses to reads of the swept memory (no
+            alert), or another fault.'''
+    }
+    {
+      name: cms_meta_access_cg
+      desc: '''revbm / corerevbm accesses: allowed, not CHERIoT, below, tag region or above,
+            misaligned, sub-word, PutPartialData, crossed with read/write.'''
+    }
+    {
+      name: cms_sweep_race_cg
+      desc: '''Core stores during a sweep: outside the range, in range, in the meta word of the
+            capability being swept, over a capability the sweep revokes.'''
+    }
+    {
+      name: cms_sweep_snoop_cg
+      desc: '''Core writes to a swept capability, by when they were answered: before the engine
+            could present the lower word's read, around it, between it and the upper word's read,
+            after that; crossed with the word written and with whether the write stores a revoked
+            capability; region.'''
+    }
+    {
+      name: cms_tag_mubi_cg
+      desc: '''cms_tag_sideband_mubi: request encoding (16) x CSC / CLC, and the invalid response
+            encodings x the tag the response carried.'''
+    }
+    {
+      name: cms_lockstep_cg
+      desc: '''cms_lockstep_glitch: flop group (control / TBRE, either copy) x idle / traffic.'''
+    }
+    {
+      name: cms_latency_cg
+      desc: '''cms_latency: operation class x tag change x mode (CHERIoT, MuBi4False, invalid).'''
+    }
+    {
+      name: cms_trvk_fault_cg
+      desc: '''cms_trvk_fault: fault site (7) x detected / undetected.'''
+    }
+    {
+      name: cms_trvk_bp_cg
+      desc: '''cms_trvk_backpressure: which word reached the filter first (data, bitmap, same
+            cycle) x phase (back pressure, bitmap at once).'''
+    }
+    {
+      name: tag_filter_req_cg
+      desc: '''RTL-internal covergroups of the RTOS SoC flow (dv/cms/cov/
+            cheriot_mem_subsys_fcov.sv), bound into this bench too (tb/cms_fcov_bind.sv):
+            tag_filter_req_cg, tag_filter_rsp_cg, rmw_cg (including back-to-back reads),
+            tbre_mover_cg (including the snoop hits and error responses to reads),
+            access_check_cg, cheriot_top_cg (including start_err, epoch, interrupt and the clear
+            squash), wtrc_cg, and trvk_cg on the TBRE's TRVK filter. Listed once here; see
+            cheriot-rtos_testplan.hjson for their bins.'''
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+# CHERIoT memory subsystem bench regression: <name> <test> <seeds> [plusargs...] [@xfail=<finding>]
+# <name> is the result name the testplan (hw/ip/cheriot_mem_sys/data/cheriot_mem_sys_cms_testplan.hjson) uses;
+# seeds run from SEED_BASE (default 1). Names ending _corrupt_<kind> are scoreboard fault-injection
+# runs: they MUST fail, with the injected corruption the first error (cms_results.py).
+# @xfail=<finding> marks a declared expected failure (cms_expected_failures.hjson: its kind, reason
+# and error patterns). The run must fail with every error that finding's and reach its end; a
+# pass, crash, inactive check or any other error fails the regression. A known gap (every entry
+# today) grades FAIL (known gap <finding>): it does not fail the regression, and never counts as a pass.
+cms_smoke                    cms_smoke                    1
+cms_tag_store_load           cms_tag_store_load           3
+cms_tag_clear_subword        cms_tag_clear_subword        2
+cms_cap_load_hint            cms_cap_load_hint            3
+cms_mode_gating              cms_mode_gating              2
+cms_access_check             cms_access_check             3
+cms_rmw_same_word            cms_rmw_same_word            5
+cms_rmw_core_tbre_same_word  cms_rmw_core_tbre_same_word  5
+cms_tbre_sweep               cms_tbre_sweep               3
+cms_tbre_base_decode         cms_tbre_base_decode         5
+cms_tbre_csr                 cms_tbre_csr                 2
+cms_tbre_concurrent          cms_tbre_concurrent          5
+cms_tbre_store_race          cms_tbre_store_race          3
+cms_tbre_snoop_window        cms_tbre_snoop_window        5
+cms_tbre_epoch               cms_tbre_epoch               3
+cms_tbre_intr                cms_tbre_intr                3
+cms_nvm_cap_store            cms_nvm_cap_store            5
+cms_err_tag_path             cms_err_tag_path             2
+cms_err_meta_intg            cms_err_meta_intg            2
+cms_err_csr_intg             cms_err_csr_intg             1
+cms_err_tbre_read            cms_err_tbre_read            3
+cms_err_tbre_revbm           cms_err_tbre_revbm           2
+cms_err_data_path            cms_err_data_path            2
+cms_alert_test               cms_alert_test               1
+cms_reset                    cms_reset                    5
+cms_random                   cms_random                   20
+cms_random_long              cms_random                   2   +num_ops=40000
+# The same random traffic with the C reference model (hw/ip/cheriot_mem_sys/dv/cms/cmodel) as a second checker
+# whose mismatches fail the run (+cms_cmodel=2); its _corrupt_ twin must fail.
+cms_random_cmodel            cms_random                   10  +cms_cmodel=2
+cms_random_long_cmodel       cms_random                   2   +num_ops=40000 +cms_cmodel=2
+cms_random_cmodel_corrupt_cmodel cms_random               1   +cms_cmodel=2 +cms_sb_corrupt=cmodel,25
+# Earl Grey 2 specification REQ_CMS_01, 02, 07 (tb/cms_tests_eg2.svh). With the pinned RTL the first
+# two fail by design: no MuBi4 tag sideband (upstream TODO(#31066)), no lockstep copy (TODO(#30572)).
+cms_tag_sideband_mubi        cms_tag_sideband_mubi        1   @xfail=TAG_SIDEBAND_NOT_MUBI4
+cms_lockstep_glitch          cms_lockstep_glitch          5   @xfail=NO_LOCKSTEP_COPY
+# The pinned RTL adds one cycle to the second word of every capability store, including when the
+# tag stays unchanged; REQ_CMS_07 requires no cycle in that case.
+cms_latency                  cms_latency                  2   @xfail=REQ_CMS_07
+# One single-cycle fault in the TBRE's load filter (cheriot_trvk_core) per injection, one site per
+# run (tb/cms_tests_eg2.svh "cms_trvk_fault"). With the pinned RTL every site fails by design:
+# nothing checks the filter's logic and there is no second copy (TODO(#30572)).
+cms_trvk_fault_verdict       cms_trvk_fault               2   +cms_tf_site=verdict       @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_tag_out       cms_trvk_fault               2   +cms_tf_site=tag_out       @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_bit_select    cms_trvk_fault               2   +cms_tf_site=bit_select    @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_req_required  cms_trvk_fault               2   +cms_tf_site=req_required  @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_out_of_range  cms_trvk_fault               2   +cms_tf_site=out_of_range  @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_sealing       cms_trvk_fault               2   +cms_tf_site=sealing       @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_fault_align         cms_trvk_fault               2   +cms_tf_site=align         @xfail=TRVK_FAULT_UNDETECTED
+cms_trvk_backpressure        cms_trvk_backpressure        5   +timeout_cycles=40000000 @xfail=REQ_CMS_07
+cms_random_corrupt_load_tag  cms_cap_load_hint            1   +cms_sb_corrupt=load_tag,7
+cms_random_corrupt_sticky_tag cms_cap_load_hint           1   +cms_sb_corrupt=sticky_tag,7
+cms_random_corrupt_sweep     cms_tbre_sweep               1   +cms_sb_corrupt=sweep,11
+cms_random_corrupt_revbm     cms_access_check             1   +cms_sb_corrupt=revbm,3
+cms_random_corrupt_err       cms_access_check             1   +cms_sb_corrupt=err,5
+cms_random_corrupt_data      cms_tag_store_load           1   +cms_sb_corrupt=data,9
+cms_random_corrupt_race      cms_tbre_store_race          1   +cms_sb_corrupt=race,5
+cms_random_corrupt_epoch     cms_tbre_epoch               1   +cms_sb_corrupt=epoch,2
+cms_tag_sideband_mubi_corrupt_mubi    cms_tag_sideband_mubi  1   +cms_sb_corrupt=mubi,1
+cms_lockstep_glitch_corrupt_lockstep  cms_lockstep_glitch    1   +cms_sb_corrupt=lockstep,1
+cms_latency_corrupt_latency           cms_latency            1   +cms_sb_corrupt=latency,1
+cms_trvk_fault_verdict_corrupt_trvk   cms_trvk_fault         1   +cms_tf_site=verdict +cms_sb_corrupt=trvk,1
+cms_trvk_backpressure_corrupt_backpressure  cms_trvk_backpressure  1   +cms_bp_sweeps=0 +timeout_cycles=40000000 +cms_sb_corrupt=backpressure,1

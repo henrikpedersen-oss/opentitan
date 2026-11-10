@@ -1,0 +1,20 @@
+`verilator_config
+// Lint waivers for the CHERIoT memory subsystem bench (make lint). Each is a note
+// the linter raises on code this bench does not own, or a construct it does not implement.
+
+// Combinational-loop notices (a simulation-speed hint, not a defect): in the subsystem's RTL,
+// which OpenTitan waives in hw/ip/cheriot_mem_sys/lint/cheriot_mem_sys.vlt, in the prim and pulp cells it uses,
+// and in the bound covergroup interfaces that sample those signals.
+lint_off -rule UNOPTFLAT
+
+// Vendored library code, unchanged
+lint_off -rule ALWCOMBORDER -file "*prim_leading_one_ppc.sv"
+lint_off -rule WIDTHEXPAND  -file "*tlul_fifo_sync.sv"
+
+// Explicit cross bins (binsof/intersect) are ignored by the linter; Xcelium, which collects the
+// coverage, implements them.
+lint_off -rule COVERIGN -file "*cheriot_mem_sys/dv/cms/tb/*"
+lint_off -rule COVERIGN -file "*cheriot_mem_subsys_fcov.sv"
+// The TRVK covergroups (cms_dv.f takes them from the UVM bench) gained illegal cross bins on
+// 2026-10-09, and the lint has failed on them since.
+lint_off -rule COVERIGN -file "*core_ibex_trvk_fcov_if.sv"

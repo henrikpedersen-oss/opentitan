@@ -1,0 +1,18 @@
+CAPI=2:
+# Copyright lowRISC contributors (OpenTitan project).
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:cheriot_mem_sys_cmodel:0.1"
+description: "CHERIoT memory subsystem reference model (C++) and its DPI package"
+
+filesets:
+  files_dv:
+    files:
+      - cms_core.h: { file_type: cppSource, is_include_file: true }
+      - cms_dpi.cc: { file_type: cppSource }
+      - cms_cmodel_pkg.sv: { file_type: systemVerilogSource }
+
+targets:
+  default:
+    filesets:
+      - files_dv

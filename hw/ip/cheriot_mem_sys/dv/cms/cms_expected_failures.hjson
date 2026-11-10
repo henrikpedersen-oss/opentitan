@@ -1,0 +1,76 @@
+// Copyright lowRISC contributors.
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Expected failures of the CHERIoT memory subsystem bench. A run of cms_regress.list marked
+// @xfail=<id> must fail exactly as its entry here says; the one place the signatures live
+// (hw/ip/cheriot_mem_sys/dv/cms/scripts/cms_results.py grades the kept runs, and cms_xlm_run.sh -x
+// calls it for one run).
+//
+// A run matches only when all of these hold:
+//   - its CMS_RESULT line says FAIL, with at least one error;
+//   - every CMS_ERROR line matches one of the entry's `errors` patterns (Python regular
+//     expressions, searched in the line). A second, different error fails the run;
+//   - the test reached its end: no "test timed out" error, and as many CMS_ERROR lines as the
+//     CMS_RESULT line counts;
+//   - no simulator error and no SVA failure;
+//   - the scoreboard checked something (as for a passing run).
+//
+// kind (one per entry, with a one-line reason above it):
+//   self_check  the run is built to fail, to prove a checker works: graded "PASS (must fail)".
+//   known_gap   the RTL misses a requirement: graded "FAIL (known gap <id>)". Never a pass, the
+//               testpoint stays unmet; the regression does not go red for it. A run that passes
+//               grades "FAILED (known gap now passes, remove the declaration)".
+// Anything that is not explicitly a self-check is a known gap.
+{
+  expected_failures: [
+    {
+      id: TAG_SIDEBAND_NOT_MUBI4
+      // known_gap: the RTL's tag sideband is one bit, not MuBi4, so REQ_CMS_01 is not met.
+      kind: known_gap
+      requirement: REQ_CMS_01
+      reason: The core tag sideband is one bit each way, not MuBi4 (upstream TODO(#31066)).
+      errors: [
+        '''^CMS_ERROR @\d+ \[test\] REQ_CMS_01: the subsystem's core tag sideband is one bit each way \(.*TODO\(#31066\)\), not MuBi4'''
+      ]
+    }
+    {
+      id: NO_LOCKSTEP_COPY
+      // known_gap: the RTL has one copy of the subsystem, so REQ_CMS_02 is not met.
+      kind: known_gap
+      requirement: REQ_CMS_02
+      reason: The subsystem has no lockstep copy, so an upset is never detected (upstream TODO(#30572)).
+      errors: [
+        // The bench says why it cannot upset a second copy ...
+        '''^CMS_ERROR @\d+ \[test\] REQ_CMS_02: the subsystem has one copy \(cheriot_mem_sys LOGIC\.SHADOW, TODO\(#30572\)\): no second copy to upset and nothing to compare against'''
+        // ... and every upset of the one copy goes undetected,
+        '''^CMS_ERROR @\d+ \[test\] upset of main copy: \S+ \(\s*(idle|under traffic)\): fatal_fault not raised within 256 cycles, expected\s+raised$'''
+        // and lets the faulty copy's meta SRAM writes through.
+        '''^CMS_ERROR @\d+ \[test\] upset of main copy: \S+ \(under traffic\): \d+ meta SRAM write\(s\) by the faulty copy completed before fatal_fault$'''
+      ]
+    }
+    {
+      id: TRVK_FAULT_UNDETECTED
+      // known_gap: nothing checks the TBRE's load filter, so REQ_CMS_02 (and REQ_CIB_03's rule) is not met.
+      kind: known_gap
+      requirement: REQ_CMS_02
+      reason: A fault in the TBRE's load filter is never detected: no second copy, no check of its logic (upstream TODO(#30572)).
+      errors: [
+        '''^CMS_ERROR @\d+ \[test\] TRVK fault \d+ at Tf\w+ \(\s*main copy: .* forced to .* for one cycle, opportunity \d+\) undetected: a revoked capability reached the engine tagged and fatal_fault stayed low for 256 cycles \(REQ_CMS_02, REQ_CIB_03\)$'''
+      ]
+    }
+    {
+      id: REQ_CMS_07
+      // known_gap: the RTL adds a cycle REQ_CMS_07 does not allow.
+      kind: known_gap
+      requirement: REQ_CMS_07
+      reason: Word 1 of a capability store adds one cycle in CHERIoT mode even when its tag is unchanged (RFC Table 2, a preliminary measurement, says none).
+      errors: [
+        // Exactly the known case: a capability write, word 1 (which never changes the tag: word 0
+        // already stored it), CHERIoT mode, one cycle. Any other operation, word, mode or cycle
+        // count, or a tag-changing word over its bound, is a different failure.
+        '''^CMS_ERROR @\d+ \[test\] capability write at 0x[0-9a-f]+, tag [01] before, storing tag [01], cheriot_ena 0x6, word 1\s*: the subsystem added 1 cycle\(s\), REQ_CMS_07 allows 0\.\.0$'''
+      ]
+    }
+  ]
+}
