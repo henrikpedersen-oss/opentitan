@@ -39,6 +39,16 @@ class cheriot_mem_sys_cms_vseq extends cheriot_mem_sys_base_vseq;
       "cms_tbre_concurrent":         t_tbre_concurrent();
       "cms_tbre_snoop_window":       t_tbre_snoop_window();
       "cms_random":                  t_random();
+      "cms_alert_test":              t_alert_test();
+      "cms_err_csr_intg":            t_err_csr_intg();
+      "cms_err_data_path":           t_err_data_path();
+      "cms_err_meta_intg":           t_err_meta_intg();
+      "cms_err_tag_path":            t_err_tag_path();
+      "cms_err_tbre_read":           t_err_tbre_read();
+      "cms_err_tbre_revbm":          t_err_tbre_revbm();
+      "cms_nvm_cap_store":           t_nvm_cap_store();
+      "cms_tbre_epoch":              t_tbre_epoch();
+      "cms_tbre_intr":               t_tbre_intr();
       default: `uvm_fatal(`gfn, $sformatf("unknown cms test '%s'", cms_test))
     endcase
     wait_quiet();
@@ -106,7 +116,7 @@ class cheriot_mem_sys_cms_vseq extends cheriot_mem_sys_base_vseq;
       join
     end else begin
       other_inflight++;
-      tl_access(sqr, addr, t.opcode, t.size, t.mask, t.wdata, rsp);
+      tl_access(sqr, addr, t.opcode, t.size, t.mask, t.wdata, rsp, 1'b0, 1'b0, t.bad_cmd_intg);
     end
     r = t;
     r.rdata = rsp.d_data;
@@ -349,6 +359,108 @@ class cheriot_mem_sys_cms_vseq extends cheriot_mem_sys_base_vseq;
 
   protected task expect_no_alert(string why);
     if (cfg.fatal_alert_cnt != 0) cms_error("alert", $sformatf("%s: unexpected fatal_fault alert", why));
+  endtask
+
+  // ---- resets, alerts and injected faults ----
+  // A reset of the subsystem at a quiet point (every cms test resets after wait_quiet, but for
+  // cms_reset): the C model resets on rst_n (cheriot_mem_sys_cmodel_sb), the injections and the
+  // alert count are cleared.
+  protected task do_reset(int unsigned cycles = 5);
+    wait_quiet();
+    m_cored_h_seq.clear_injections();
+    m_tbre_h_seq.clear_injections();
+    m_meta_seq.clear_injections();
+    apply_reset("HARD");
+    cfg.fatal_alert_cnt = 0;
+    wait_cycles(2);
+  endtask
+
+  protected task expect_alert(string why, int unsigned max_wait = 200);
+    for (int unsigned i = 0; i < max_wait && cfg.fatal_alert_cnt == 0; i++) wait_cycles(1);
+    if (cfg.fatal_alert_cnt == 0) cms_error("alert", $sformatf("%s: no fatal_fault alert", why));
+  endtask
+
+  protected task wtrc_assertions(bit on);
+    cfg.side_vif.wtrc_sva_off = !on;
+    wait_cycles(1);
+  endtask
+
+  // The meta SRAM holds requests back (a_ready low) or takes them again.
+  protected task meta_stall(bit on);
+    cfg.m_meta_agent_cfg.a_ready_delay_min = on ? 1000 : 0;
+    cfg.m_meta_agent_cfg.a_ready_delay_max = on ? 1000 : 10;
+  endtask
+
+  // What the tests declare about the faults they inject, given to the C model.
+  protected function void cm_sweep_fail(bit denied = 1'b0);
+    if (cfg.cmodel_h != null) cms_cmodel_pkg::cms_sweep_error(cfg.cmodel_h, int'(!denied));
+  endfunction
+
+  protected function void cm_sweep_kept(int unsigned g);
+    if (cfg.cmodel_h != null) cms_cmodel_pkg::cms_sweep_keep(cfg.cmodel_h, granule_addr(g));
+  endfunction
+
+  protected function void cm_sweep_revoked(int unsigned g);
+    if (cfg.cmodel_h != null) cms_cmodel_pkg::cms_sweep_revoke(cfg.cmodel_h, granule_addr(g));
+  endfunction
+
+  protected task setup_tagged(logic [31:0] g, logic tag);
+    logic [31:0] w0, w1;
+    make_cap(NvmBase, 0, PermsMemRw, w0, w1);
+    core_store_cap(g, w0, w1, tag);
+    wait_quiet();
+  endtask
+
+  protected task check_failed_sweep(string why);
+    logic [31:0] d;
+    logic        e;
+    csr_read(CsrTbreStatus, d);
+    if (!d[StatusSweepErr]) cms_error("test", $sformatf("%s: TBRE_STATUS.sweep_err not set", why));
+    csr_read(CsrTbreEpoch, d);
+    if (d != 0) cms_error("test", $sformatf("%s: TBRE_EPOCH 0x%08x, the failed sweep counted", why, d));
+    csr_write(CsrTbreStatus, 32'h1 << StatusSweepErr, e);
+    csr_read(CsrTbreStatus, d);
+    if (d[StatusSweepErr]) cms_error("test", $sformatf("%s: TBRE_STATUS.sweep_err not cleared", why));
+  endtask
+
+  protected task alert_test_write(logic [31:0] data, int unsigned exp_alerts, string why);
+    logic        e;
+    int unsigned n0;
+    n0 = cfg.fatal_alert_cnt;
+    csr_write(CsrAlertTest, data, e);
+    wait_cycles(600);
+    if (cfg.fatal_alert_cnt - n0 != exp_alerts)
+      cms_error("test", $sformatf("ALERT_TEST 0x%08x (%s) gave %0d alert handshake(s), expected %0d",
+                                  data, why, cfg.fatal_alert_cnt - n0, exp_alerts));
+  endtask
+
+  // A capability store to the NVM, both words answered; nothing else issued meanwhile.
+  protected task nvm_cap_store_wait(logic [31:0] g, logic [31:0] w0, logic [31:0] w1,
+                                    output logic e0, output logic e1);
+    cms_txn_t r0, r1;
+    int unsigned tk0 = issue_ticket++;
+    int unsigned tk1 = issue_ticket++;
+    fork
+      run_ticket(PortCore, mk(tlul_pkg::PutFullData, {g[31:3], 3'b000}, 2'd2, w0, 1'b1), tk0, r0);
+      run_ticket(PortCore, mk(tlul_pkg::PutFullData, {g[31:3], 3'b100}, 2'd2, w1, 1'b1), tk1, r1);
+    join
+    e0 = r0.err;
+    e1 = r1.err;
+  endtask
+
+  protected task revoked_cap_at(logic [31:0] addr);
+    logic [31:0] cb, w0, w1;
+    heap_base(1, cb);
+    make_cap(cb, 0, PermsMemRw, w0, w1);
+    store_cap(addr, w0, w1, 1'b1);
+    wait_quiet();
+  endtask
+
+  protected task wait_intr_pin(bit level, int unsigned max_cycles, string why);
+    for (int unsigned i = 0; i < max_cycles && cfg.intr_vif.pins[0] != level; i++) wait_cycles(1);
+    if (cfg.intr_vif.pins[0] != level)
+      cms_error("test", $sformatf("%s: intr_tbre_done_o not %b after %0d cycles", why, level,
+                                  max_cycles));
   endtask
 
   // ---- the cms tests' own helpers (cms_tests.svh) ----
@@ -1020,6 +1132,515 @@ class cheriot_mem_sys_cms_vseq extends cheriot_mem_sys_base_vseq;
     wait_quiet();
     tbre_wait_idle();
     check_tags("random");
+  endtask
+
+  protected task t_alert_test();
+    logic [31:0] d;
+    cheriot_on();
+    wait_cycles(20);
+    expect_no_alert("before ALERT_TEST");
+    csr_read(CsrAlertTest, d);
+    if (d != 32'h8000_0000) cms_error("test", $sformatf("ALERT_TEST reads 0x%08x out of reset", d));
+    alert_test_write(32'h8000_0001, 1, "regwen kept");
+    alert_test_write(32'h8000_0001, 1, "again");
+    alert_test_write(32'h8000_0000, 0, "fatal_fault 0");
+    csr_read(CsrAlertTest, d);
+    alert_test_write(32'h0000_0000, 0, "regwen cleared");
+    csr_read(CsrAlertTest, d);
+    if (d != 32'h0) cms_error("test", $sformatf("ALERT_TEST reads 0x%08x after regwen cleared", d));
+    alert_test_write(32'h8000_0001, 0, "locked");
+    csr_read(CsrAlertTest, d);
+    // Reset sets regwen again; a write of 0x1 (fatal_fault 1, regwen 0) raises its alert and locks
+    do_reset();
+    csr_read(CsrAlertTest, d);
+    alert_test_write(32'h0000_0001, 1, "regwen cleared by the same write");
+    alert_test_write(32'h8000_0001, 0, "locked by the previous write");
+    csr_read(CsrAlertTest, d);
+  endtask
+  protected task t_err_csr_intg();
+    logic [31:0] d;
+    logic        e;
+    cms_txn_t    t, r;
+    int unsigned n0;
+    cheriot_on();
+    csr_write(CsrTbreBase, MainSramBase + 32'h100, e);
+    expect_no_alert("before injection");
+    t = mk(tlul_pkg::PutFullData, 32'(CsrTbreBase), 2'd2, MainSramBase + 32'h800);
+    t.bad_cmd_intg = 1'b1;
+    run(PortCsr, t, r);
+    if (!r.err) cms_error("test", "CSR write with bad integrity not answered with d_error");
+    csr_read(CsrTbreBase, d);      // the scoreboard expects the old value
+    expect_alert("CSR command integrity");
+    // Latched until reset
+    n0 = cfg.fatal_alert_cnt;
+    wait_cycles(500);
+    if (cfg.fatal_alert_cnt <= n0) cms_error("test", "fatal_fault not latched after a CSR integrity error");
+    do_reset();
+    wait_cycles(300);
+    expect_no_alert("after reset");
+  endtask
+  protected task t_err_data_path();
+    logic [31:0] g, d;
+    logic        t, e;
+    cms_txn_t    r;
+    cheriot_on();
+    for (int unsigned c = 0; c < 4; c++) begin
+      g = MainSramBase + 32'ha00 + 8 * c;
+      setup_tagged(g, 1'(c % 2));
+      m_cored_h_seq.inject(InjErr, g, g + 8, 0, 1);
+      cfg.cm_exp_core_err = 1;
+      if (c < 2) run(PortCore, mk(tlul_pkg::PutFullData, g, 2'd2, $urandom, !1'(c % 2)), r);
+      else       core_load(g, 2'd2, 1'b1, d, t, e);
+   
+      wait_quiet();
+    end
+    core_load(DataErrBase, 2'd2, 1'b0, d, t, e);
+    core_store(DataErrBase + 4, 2'd2, 32'h0, e);
+    core_load_cap(MainSramBase + 32'ha00, t);
+    core_load_cap(MainSramBase + 32'ha08, t);
+    wait_cycles(200);
+    check_tags("data path errors");
+    expect_no_alert("data path errors");
+  endtask
+  protected task t_err_meta_intg();
+    logic [31:0] g, ta, d;
+    logic        t, e;
+    cms_txn_t    r;
+    cheriot_on();
+    for (int unsigned c = 0; c < 4; c++) begin
+      g  = MainSramBase + 32'h600 + 8 * c;
+      ta = tag_word_addr(granule(g));
+      setup_tagged(g, 1'b1);
+      expect_no_alert("before injection");
+      m_meta_seq.inject(1'(c % 2) ? InjDataIntg : InjRspIntg, ta, ta + 4, 1, 1);
+      if (c < 2) core_load(g, 2'd2, 1'b1, d, t, e);                 // on a lookup
+      else       run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, 32'h0), r);  // on a fill
+      expect_alert($sformatf("meta SRAM integrity fault, case %0d", c));
+      wait_quiet();
+      do_reset();
+    end
+    // Observation only: an integrity fault on a response to the software bitmap window. The
+    // subsystem passes it to the requester, which checks it; whether it also raises fatal_fault is
+    // logged, not judged (the error table names "a meta SRAM response" without saying whose).
+    // The corrupted integrity reaches the host unchanged, so its check is off for this read.
+    m_meta_seq.inject(InjRspIntg, MetaRevbmBase, MetaNvmTagBase, 1, 1);
+    run(PortRevbm, mk(tlul_pkg::Get, MetaRevbmBase), r);
+    wait_cycles(100);
+    cms_info("test", $sformatf("revbm window response integrity fault: %0d alert(s)", cfg.fatal_alert_cnt));
+    do_reset();
+  endtask
+  protected task t_err_tag_path();
+    logic [31:0] g, ta, d;
+    logic        t, e;
+    int unsigned w0, inj0;
+    cms_txn_t    r;
+    cheriot_on();
+    for (int unsigned c = 0; c < 3; c++) begin
+      g  = MainSramBase + 32'h400 + 8 * c;
+      ta = tag_word_addr(granule(g));
+      setup_tagged(g, c != 2);
+      expect_no_alert("before injection");
+      w0   = m_meta_seq.n_writes;
+      inj0 = m_meta_seq.n_inj_applied;
+      case (c)
+        0: begin  // error on the fill read of a store: aborted, no write-back, tag unchanged
+          m_meta_seq.inject(InjErr, ta, ta + 4, 1, 1);
+          cfg.cm_exp_core_err = 1;
+          run(PortCore, mk(tlul_pkg::PutFullData, g, 2'd2, 32'h1111_2222), r);
+          if (m_meta_seq.n_writes != w0) cms_error("test", "write-back after an errored fill");
+        end
+        1: begin  // error on a capability load's lookup: d_error and tag 0
+          m_meta_seq.inject(InjErr, ta, ta + 4, 1, 1);
+          cfg.cm_exp_core_err = 1;
+          core_load(g, 2'd2, 1'b1, d, t, e);
+          if (t) cms_error("test", "tag 1 returned with a failed lookup");
+        end
+        default: begin  // error on the write-back: d_error; the tag write did not happen
+          m_meta_seq.inject(InjErr, ta, ta + 4, 2, 1);
+          cfg.cm_exp_core_err = 1;
+          run(PortCore, mk(tlul_pkg::PutFullData, g, 2'd2, 32'h3333_4444, 1'b1), r);
+        end
+      endcase
+      if (m_meta_seq.n_inj_applied != inj0 + 1) cms_error("test", "injection was not applied");
+      if (!r.err && c != 1) cms_error("test", "no d_error to the core");
+   
+      expect_alert($sformatf("tag path device error, case %0d", c));
+      wait_quiet();
+      check_tags("tag path error");
+      do_reset();
+      expect_no_alert("after reset");
+    end
+  endtask
+  protected task t_err_tbre_read();
+    logic [31:0] b, a, cb, w0, w1;
+    int unsigned k, n;
+    bit          denied;
+    cheriot_on();
+    for (int unsigned c = 0; c < 6; c++) begin
+      // Case 5 sweeps the top of the NVM, whose upper half denies every read
+      b = (c == 5) ? NvmTop - 8 * 8 : MainSramBase + 32'h800;
+      n = (c == 5) ? 8 : 4;
+      for (int unsigned i = 0; i < n; i++) begin
+        heap_base(1, cb);
+        make_cap(cb, 0, PermsMemRw, w0, w1);
+        store_cap(b + 8 * i, w0, w1, 1'b1);
+      end
+      wait_quiet();
+      expect_no_alert("before injection");
+      k = 1 + $urandom_range(2);
+      a = b + 8 * k + ((c == 1) ? 0 : 4);
+      denied = c inside {0, 1, 5};
+      case (c)
+        0, 1:    m_tbre_h_seq.inject(InjErr, a, a + 4, 1, 1);
+        2:       m_tbre_h_seq.inject(InjRspIntg, a, a + 4, 1, 1);
+        3:       m_tbre_h_seq.inject(InjDataIntg, a, a + 4, 1, 1);
+        4:       m_meta_seq.inject(InjErr, tag_word_addr(granule(b + 8 * k)),
+                               tag_word_addr(granule(b + 8 * k)) + 4, 1, 1);  // its tag lookup
+        default: m_tbre_h_seq.inject(InjErr, NvmTop - 8 * 4, NvmTop, 1, 8);    // both words of 4
+      endcase
+      tbre_sweep(b, n, 1'b0);
+      cm_sweep_fail(denied);
+      // A capability with a read that failed, on either word or on its tag lookup, is not cleared;
+      // the others are exact. Case 4: the four granules share one tag word, so the one-shot fault
+      // hits the first lookup of that word, which is granule b's, whatever k is.
+      if (c == 5)      for (int unsigned i = 4; i < 8; i++) cm_sweep_kept(granule(b + 8 * i));
+      else if (c == 4) cm_sweep_kept(granule(b));
+      else             cm_sweep_kept(granule(b + 8 * k));
+      tbre_wait_idle();   // the sweep still completes, with sweep_err and not counted
+      check_failed_sweep($sformatf("fault on a TBRE read, case %0d", c));
+      if (denied) begin
+        wait_cycles(200);
+        expect_no_alert($sformatf("error response to a TBRE read, case %0d", c));
+      end else begin
+        expect_alert($sformatf("fault on a TBRE read, case %0d", c));
+      end
+      wait_quiet();
+      check_tags("TBRE read fault");
+      do_reset();
+    end
+  endtask
+  protected task t_err_tbre_revbm();
+    logic [31:0] b, cb, w0, w1;
+    cheriot_on();
+    for (int unsigned c = 0; c < 3; c++) begin
+      b = MainSramBase + 32'h900;
+      for (int unsigned i = 0; i < 4; i++) begin
+        heap_base(0, cb);                          // live: only a failed lookup revokes it
+        make_cap(cb, 0, PermsMemRw, w0, w1);
+        core_store_cap(b + 8 * i, w0, w1, 1'b1);
+      end
+      wait_quiet();
+      expect_no_alert("before injection");
+      // The engine's lookup of the first capability is the next bitmap read.
+      m_meta_seq.inject(c == 0 ? InjErr : (c == 1 ? InjRspIntg : InjDataIntg),
+                    MetaRevbmBase, MetaNvmTagBase, 1, 1);
+      tbre_sweep(b, 4, 1'b0);
+      cm_sweep_fail();
+      cm_sweep_revoked(granule(b));
+      tbre_wait_idle();
+      check_failed_sweep($sformatf("fault on a TBRE bitmap lookup, case %0d", c));
+      expect_alert($sformatf("fault on a TBRE bitmap lookup, case %0d", c));
+      wait_quiet();
+      check_tags("TBRE bitmap lookup fault");
+      do_reset();
+    end
+  endtask
+  protected task t_nvm_cap_store();
+    logic [31:0] g, w0, w1, x0, x1;
+    logic        t, e0, e1;
+    bit          done;
+    cms_txn_t    r;
+    int unsigned id1;
+    cheriot_on();
+    // Directed: the answer of each word
+    g = NvmBase + 32'h100;
+    make_cap(MainSramBase, 0, PermsMemRw, w0, w1);
+    nvm_program(g, w0, w1, done);
+    nvm_cap_store_wait(g, w0, w1, e0, e1);
+    if (e0 || e1) cms_error("test", $sformatf("matching capability store answered d_error %b%b", e0, e1));
+    core_load_cap(g, t);
+    if (!t) cms_error("test", "matching capability store to the NVM did not set the tag");
+    nvm_cap_store_wait(g, w0 ^ 32'h1, w1, e0, e1);
+    if (!e0 || !e1) cms_error("test", $sformatf("W0 differs: d_error %b%b, expected 11", e0, e1));
+    nvm_cap_store_wait(g, w0, w1 ^ 32'h8000_0000, e0, e1);
+    if (e0 || !e1) cms_error("test", $sformatf("W1 differs: d_error %b%b, expected 01", e0, e1));
+    core_load_cap(g, t);
+    if (!t) cms_error("test", "failed capability stores changed the tag");
+    nvm_program(g, ~w0, ~w1, done);    // the NVM controller leaves the tag
+    core_load_cap(g, t);
+    if (!t) cms_error("test", "programming the NVM cleared the tag");
+    nvm_program(g, w0, w1, done);
+    run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1), r);   // a plain store: refused, tag cleared
+    if (!r.err) cms_error("test", "a plain store to the NVM was not refused");
+    core_load_cap(g, t);
+    if (t) cms_error("test", "a refused plain store to the NVM kept the tag");
+    nvm_cap_store_wait(g, ~w0, w1, e0, e1);
+    core_load_cap(g, t);
+    if (t) cms_error("test", "a failed capability store set the tag");
+    set_ena(prim_mubi_pkg::MuBi4False);
+    nvm_cap_store_wait(g, w0, w1, e0, e1);   // a plain store: refused, no lookup
+    if (!e0 || !e1) cms_error("test", "a tagged store to the NVM in ePMP mode was not refused");
+    cheriot_on();
+    core_load_cap(g, t);
+    if (t) cms_error("test", "a tagged store to the NVM in ePMP mode set the tag");
+    // The NVM read of a matching W0 fails: W0 and W1 answered with d_error, the tag left, no alert
+    nvm_program(g, w0, w1, done);
+    m_cored_h_seq.inject(InjErr, g, g + 4, 1, 1);
+    cfg.cm_exp_core_err = 2;
+    nvm_cap_store_wait(g, w0, w1, e0, e1);
+ 
+    if (!e0 || !e1)
+      cms_error("test", $sformatf("W0's NVM read failed: d_error %b%b, expected 11", e0, e1));
+    core_load_cap(g, t);
+    if (t) cms_error("test", "a capability store whose NVM read failed set the tag");
+    // Random: programmed or not, matching or differing in either word, plain stores and loads
+    for (int unsigned rep = 0; rep < 3; rep++) begin
+      randomize_timing(rep == 0);
+      for (int unsigned i = 0; i < 96; i++) begin
+        g = rand_granule(NvmBase, NvmTop);
+        make_cap(MainSramBase + 8 * $urandom_range(SramCaps - 1), 0, PermsMemRw, w0, w1);
+        x0 = w0;
+        x1 = w1;
+        case ($urandom_range(9))
+          0: x0 = w0 ^ (32'h1 << $urandom_range(31));
+          1: x1 = w1 ^ (32'h1 << $urandom_range(31));
+          2: begin x0 = ~w0; x1 = ~w1; end
+          default: ;
+        endcase
+        case ($urandom_range(9))
+          0:       core_issue(mk(tlul_pkg::PutFullData, g + 4 * rbit(), 2'd2, $urandom));
+          1:       core_issue(mk(tlul_pkg::PutFullData, g + $urandom_range(7), 2'd0, $urandom));
+          2, 3:    begin
+            core_issue(mk(tlul_pkg::Get, g, 2'd2, 32'h0, 1'b1));
+            core_issue(mk(tlul_pkg::Get, g + 4, 2'd2, 32'h0, 1'b1));
+          end
+          4:       core_store_cap(g, w0, w1, 1'b1);   // whatever the NVM holds
+          default: begin
+            nvm_program(g, x0, x1, done);
+            core_store_cap(g, w0, w1, 1'b1);
+          end
+        endcase
+        throttle(4);
+      end
+      wait_quiet();
+      check_tags($sformatf("NVM capability stores, pass %0d", rep));
+      load_all_caps(NvmBase, 32);
+    end
+    expect_no_alert("capability stores to the NVM");
+    // What the core does not produce, one per reset: d_error, the tag left as it was, fatal_fault
+    for (int unsigned c = 0; c < 4; c++) begin
+      g = NvmBase + 32'h200 + 8 * c;
+      make_cap(MainSramBase, 0, PermsMemRw, w0, w1);
+      nvm_program(g, w0, w1, done);
+      nvm_cap_store_wait(g, w0, w1, e0, e1);
+      expect_no_alert("before the fault");
+      case (c)
+        0: begin   // W0 a tlul_pkg::PutPartialData
+          core_issue(mk(tlul_pkg::PutPartialData, g, 2'd2, w0, 1'b1, 4'b0111));
+          run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1, 1'b1), r);
+        end
+        1: begin   // W0 a halfword
+          core_issue(mk(tlul_pkg::PutFullData, g, 2'd1, w0, 1'b1));
+          run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1, 1'b1), r);
+        end
+        2: run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1, 1'b1), r);   // W1 alone
+        default: begin
+          // A verified capability store whose W1 is not held: a load of untagged memory is
+          // presented once W0 is answered, while W1 waits for its tag write, which the meta SRAM
+          // holds back for 100 cycles. The load could otherwise reach the meta port first; the
+          // WTRC flags it as soon as it is presented. Every answer is the usual one (the
+          // scoreboard's): W1 sets the tag, cleared first by a plain store, and the load returns
+          // its data.
+          run(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1), r);
+          wait_quiet();
+          wtrc_assertions(1'b0);
+          meta_stall(1'b1);
+          core_issue(mk(tlul_pkg::PutFullData, g, 2'd2, w0, 1'b1));
+          id1 = issue_ticket++;
+          fork run_ticket(PortCore, mk(tlul_pkg::PutFullData, g + 4, 2'd2, w1, 1'b1), id1, r); join_none
+          #0;
+          core_issue(mk(tlul_pkg::Get, UntaggedBase + 32'h40, 2'd2));
+          wait_cycles(100);
+          meta_stall(1'b0);
+          wait_core_quiet();
+          wtrc_assertions(1'b1);
+          core_load_cap(g, t);
+          if (!t) cms_error("test", "fault case 3: the verified capability store set no tag");
+        end
+      endcase
+      if (c < 3 && !r.err)
+        cms_error("test", $sformatf("fault case %0d: W1 not answered with d_error", c));
+      if (c == 3 && r.err) cms_error("test", "fault case 3: verified W1 answered with d_error");
+      expect_alert($sformatf("capability store to the NVM the core cannot produce, case %0d", c));
+      wait_quiet();
+      check_tags("NVM capability store fault");
+      do_reset();
+    end
+  endtask
+  protected task t_tbre_epoch();
+    logic [31:0] d, ep, b, a, cb, w0, w1;
+    logic        e;
+    int unsigned n, k;
+    cheriot_on();
+    randomize_timing(0);
+    fill_caps(MainSramBase, 128);
+    fill_caps(NvmBase, 64);
+    ep = 0;
+    for (int unsigned i = 0; i < 9; i++) begin
+      // Sweeps of either region, waited for by polling busy, by the epoch, or by the interrupt
+      b = rbit() ? MainSramBase + 8 * $urandom_range(96) : NvmBase + 8 * $urandom_range(32);
+      n = 1 + $urandom_range(31);
+      tbre_sweep(b, n, 1'b0);
+      csr_read(CsrTbreEpoch, d);   // odd, or already the next even value
+      case (i % 3)
+        0: tbre_wait_idle();
+        1: for (int unsigned p = 0; p < 100000 && d[0]; p++) csr_read(CsrTbreEpoch, d);
+        default: tbre_wait_intr();
+      endcase
+      csr_read(CsrTbreEpoch, d);
+      ep += 2;
+      if (d != ep) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x after %0d sweeps", d, i + 1));
+    end
+    check_tags("epoch sweeps");
+    // A start while the engine is active and ignored starts leave the epoch alone
+    tbre_sweep(MainSramBase, SramCaps, 1'b0);
+    csr_write(CsrTbreStart, 32'h1, e);
+    csr_read(CsrTbreEpoch, d);
+    if (d != ep + 1) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x during a sweep, expected 0x%08x",
+                                                 d, ep + 1));
+    tbre_wait_idle();
+    ep += 2;
+    tbre_sweep(MainSramBase, 0);
+    tbre_sweep(NvmTop, 4);
+    set_ena(prim_mubi_pkg::MuBi4False);
+    tbre_sweep(MainSramBase, 4);
+    cheriot_on();
+    csr_read(CsrTbreEpoch, d);
+    if (d != ep) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x after ignored starts", d));
+    csr_read(CsrTbreStatus, d);
+    if (d != 32'h100) cms_error("test", $sformatf("TBRE_STATUS 0x%08x after ignored starts", d));
+    csr_write(CsrTbreStatus, 32'h1 << StatusStartErr, e);
+    // A sweep with an error is not counted: the epoch goes back to its even value. The error is an
+    // error response to one of the engine's reads, which fails the sweep without an alert.
+    b = MainSramBase + 32'h800;
+    for (int unsigned i = 0; i < 4; i++) begin
+      heap_base(1, cb);
+      make_cap(cb, 0, PermsMemRw, w0, w1);
+      core_store_cap(b + 8 * i, w0, w1, 1'b1);
+    end
+    wait_quiet();
+    k = 1 + $urandom_range(2);
+    a = b + 8 * k + 4;
+    m_tbre_h_seq.inject(InjErr, a, a + 4, 1, 1);
+    tbre_sweep(b, 4, 1'b0);
+    cm_sweep_fail(1'b1);
+    cm_sweep_kept(granule(b + 8 * k));
+    tbre_wait_idle();
+    csr_read(CsrTbreEpoch, d);
+    if (d != ep) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x after a failed sweep, expected 0x%08x",
+                                             d, ep));
+    csr_read(CsrTbreStatus, d);
+    if (d != 32'h200) cms_error("test", $sformatf("TBRE_STATUS 0x%08x after a failed sweep", d));
+    wait_cycles(200);
+    expect_no_alert("error response to a TBRE read");
+    // sweep_err stays set over a sweep without an error, which counts again
+    tbre_sweep(MainSramBase, 16);
+    ep += 2;
+    csr_read(CsrTbreEpoch, d);
+    if (d != ep) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x after a good sweep, expected 0x%08x",
+                                             d, ep));
+    csr_read(CsrTbreStatus, d);
+    if (d != 32'h200) cms_error("test", "TBRE_STATUS.sweep_err not sticky");
+    csr_write(CsrTbreStatus, 32'h1 << StatusSweepErr, e);
+    csr_read(CsrTbreStatus, d);
+    if (d != 32'h0) cms_error("test", "TBRE_STATUS.sweep_err not cleared");
+    check_tags("epoch");
+    do_reset();
+    csr_read(CsrTbreEpoch, d);
+    if (d != 0) cms_error("test", $sformatf("TBRE_EPOCH 0x%08x after reset", d));
+  endtask
+  protected task t_tbre_intr();
+    logic [31:0] d, a, b, cb, w0, w1;
+    logic        e;
+    int unsigned n;
+    cheriot_on();
+    cfg.m_meta_agent_cfg.a_ready_delay_max = 2;
+    m_meta_seq.min_rsp_delay = 4;
+    m_meta_seq.max_rsp_delay = 12;
+    fill_caps(MainSramBase, 64);
+    fill_caps(NvmBase, 32);
+    revoked_cap_at(MainSramBase + 8 * 63);
+    // Enabled: every tag is final when it is raised
+    csr_write(CsrIntrEnable, 32'h1, e);
+    tbre_sweep(MainSramBase, 64, 1'b0);
+    wait_intr_pin(1, 200000, "sweep with the interrupt enabled");
+    csr_read(CsrTbreStatus, d);
+    if (d[StatusBusy]) cms_error("test", "TBRE_STATUS.busy high at the tbre_done interrupt");
+    check_tags("at the tbre_done interrupt");
+    csr_read(CsrIntrState, d);
+    if (d != 32'h1) cms_error("test", $sformatf("INTR_STATE 0x%08x at the interrupt", d));
+    // A level: it stays until acknowledged
+    wait_cycles(200);
+    if (!cfg.intr_vif.pins[0]) cms_error("test", "cfg.intr_vif.pins[0]_o dropped before it was acknowledged");
+    csr_write(CsrIntrState, 32'h1, e);
+    wait_intr_pin(0, 4, "INTR_STATE written 1");
+    // Masked: the state is set, the pin stays low until enabled
+    csr_write(CsrIntrEnable, 32'h0, e);
+    tbre_sweep(NvmBase, 32);
+    csr_read(CsrIntrState, d);
+    if (d != 32'h1) cms_error("test", "INTR_STATE not set by a sweep with the interrupt masked");
+    if (cfg.intr_vif.pins[0]) cms_error("test", "cfg.intr_vif.pins[0]_o high with INTR_ENABLE 0");
+    csr_write(CsrIntrEnable, 32'h1, e);
+    wait_intr_pin(1, 4, "INTR_ENABLE written 1 with INTR_STATE set");
+    csr_write(CsrIntrState, 32'h1, e);
+    // INTR_TEST forces it; writing 0 does nothing
+    csr_write(CsrIntrTest, 32'h1, e);
+    wait_intr_pin(1, 4, "INTR_TEST written 1");
+    csr_read(CsrIntrState, d);
+    if (d != 32'h1) cms_error("test", "INTR_STATE not set by INTR_TEST");
+    csr_write(CsrIntrState, 32'h1, e);
+    csr_write(CsrIntrTest, 32'h0, e);
+    // Ignored starts raise none
+    tbre_sweep(MainSramBase, 0);
+    tbre_sweep(MainSramTop, 4);
+    wait_cycles(100);
+    if (cfg.intr_vif.pins[0]) cms_error("test", "cfg.intr_vif.pins[0]_o raised by an ignored start");
+    csr_read(CsrIntrState, d);
+    if (d != 32'h0) cms_error("test", "INTR_STATE set by an ignored start");
+    csr_write(CsrTbreStatus, 32'h1 << StatusStartErr, e);
+    // Acknowledged while the sweep runs: raised at its end
+    tbre_sweep(MainSramBase, SramCaps, 1'b0);
+    csr_write(CsrIntrState, 32'h1, e);
+    tbre_wait_intr();
+    // Sweeps of both regions waited for by the interrupt
+    for (int unsigned i = 0; i < 6; i++) begin
+      b = rbit() ? MainSramBase + 8 * $urandom_range(32) : NvmBase + 8 * $urandom_range(16);
+      n = 1 + $urandom_range(15);
+      revoked_cap_at(b + 8 * (n - 1));
+      tbre_sweep(b, n, 1'b0);
+      tbre_wait_intr();
+      check_tags($sformatf("sweep %0d by interrupt", i));
+    end
+    // A sweep that ends with an error raises it too
+    b = MainSramBase + 32'h800;
+    for (int unsigned i = 0; i < 4; i++) begin
+      heap_base(1, cb);
+      make_cap(cb, 0, PermsMemRw, w0, w1);
+      core_store_cap(b + 8 * i, w0, w1, 1'b1);
+    end
+    wait_quiet();
+    a = b + 8 * 2 + 4;
+    m_tbre_h_seq.inject(InjErr, a, a + 4, 1, 1);
+    tbre_sweep(b, 4, 1'b0);
+    cm_sweep_fail(1'b1);
+    cm_sweep_kept(granule(b + 8 * 2));
+    tbre_wait_intr();
+    wait_cycles(200);
+    expect_no_alert("error response to a TBRE read");
+    check_tags("failed sweep by interrupt");
+    do_reset();
+    wait_cycles(4);
+    if (cfg.intr_vif.pins[0]) cms_error("test", "cfg.intr_vif.pins[0]_o high after reset");
   endtask
 
 endclass

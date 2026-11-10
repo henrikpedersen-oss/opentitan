@@ -18,13 +18,49 @@
 // its error range [err_lo, err_hi) and a write to the NVM [ro_lo, ro_hi) with d_error and does not
 // apply such a write; writes are acknowledged with no data, as tlul_adapter_sram does. n_reads and
 // n_writes count the requests (tests check that some modes leave the meta SRAM untouched).
+//
+// Fault injection, as the cms memories (inject()): the next `count` requests in [lo, hi) of the
+// selected direction (op: 0 any, 1 reads, 2 writes) are answered with d_error (a write is then not
+// applied), a corrupted rsp_intg, or a corrupted data_intg.
 class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   `uvm_object_utils(cheriot_mem_sys_mem_device_seq)
   `uvm_object_new
 
   bit [31:0]   err_lo, err_hi;  // empty when equal
   bit [31:0]   ro_lo, ro_hi;
-  int unsigned n_reads, n_writes;
+  int unsigned n_reads, n_writes, n_inj_applied;
+
+  typedef struct {
+    inj_kind_e   kind;
+    bit [31:0]   lo, hi;
+    int unsigned op, count;
+  } inj_t;
+  protected inj_t inj_q[$];
+
+  function void inject(inj_kind_e kind, bit [31:0] lo, bit [31:0] hi, int unsigned op,
+                       int unsigned count);
+    inj_t i;
+    i.kind = kind; i.lo = lo; i.hi = hi; i.op = op; i.count = count;
+    inj_q.push_back(i);
+  endfunction
+
+  function void clear_injections();
+    inj_q.delete();
+  endfunction
+
+  protected function int match_injection(bit [31:0] addr, bit write);
+    foreach (inj_q[i]) begin
+      if (inj_q[i].count > 0 && addr >= inj_q[i].lo && addr < inj_q[i].hi &&
+          (inj_q[i].op == 0 || (inj_q[i].op == 1 && !write) || (inj_q[i].op == 2 && write))) begin
+        inj_q[i].count--;
+        n_inj_applied++;
+        `uvm_info(`gfn, $sformatf("injected %s on the %s of 0x%08x", inj_q[i].kind.name(),
+                                  write ? "write" : "read", addr), UVM_LOW)
+        return int'(inj_q[i].kind);
+      end
+    end
+    return -1;
+  endfunction
 
   // The response is a clone of the request, randomised with its A-channel fields fixed: a request
   // with a gapped mask (TL-UL allows one; the subsystem forwards the core's) must not fail
@@ -37,11 +73,13 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   virtual function void update_mem(cip_tl_seq_item rsp);
     bit [31:0] word_addr = {rsp.a_addr[31:2], 2'b00};
     bit        write = rsp.a_opcode inside {tlul_pkg::PutFullData, tlul_pkg::PutPartialData};
+    int        inj;
     if (mem == null) return;
+    inj = match_injection(rsp.a_addr, write);
     if (write) n_writes++;
     else n_reads++;
     rsp.d_error = (rsp.a_addr >= err_lo && rsp.a_addr < err_hi) ||
-                  (write && rsp.a_addr >= ro_lo && rsp.a_addr < ro_hi);
+                  (write && rsp.a_addr >= ro_lo && rsp.a_addr < ro_hi) || inj == int'(InjErr);
     if (write) begin
       if (!rsp.d_error) begin
         for (int i = 0; i < 4; i++) begin
@@ -58,6 +96,12 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
     // Every response, write acknowledgements included: the subsystem's RMW filter checks the data
     // integrity of each response from the meta SRAM.
     rsp.d_user = rsp.compute_d_user();
+    if (inj inside {int'(InjRspIntg), int'(InjDataIntg)}) begin
+      tlul_pkg::tl_d_user_t u = tlul_pkg::tl_d_user_t'(rsp.d_user);
+      if (inj == int'(InjRspIntg)) u.rsp_intg[0] = !u.rsp_intg[0];
+      else                         u.data_intg[0] = !u.data_intg[0];
+      rsp.d_user = u;
+    end
   endfunction
 
 endclass

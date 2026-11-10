@@ -94,6 +94,13 @@ module tb;
     .meta_sram_tl_i       (meta_tl_if.d2h)
   );
 
+  // The WTRC's assertions state what Ibex does; a test that drives what the core cannot turns
+  // them off around it (cheriot_mem_sys_cms_vseq::wtrc_assertions).
+  always @(side_if.wtrc_sva_off) begin
+    if (side_if.wtrc_sva_off) $assertoff(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
+    else                      $asserton(0, dut.u_cheriot_tag_filter.gen_wtrc.u_cheriot_wtrc);
+  end
+
   // Which cause set TBRE_STATUS.sweep_err (rare; printed for the C-model scoreboard's reports).
   always @(posedge clk) begin
     if (rst_n && dut.tbre_sweep_err) begin

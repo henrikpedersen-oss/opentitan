@@ -159,6 +159,76 @@
       name: cheriot_mem_sys_smoke
       uvm_test_seq: cheriot_mem_sys_smoke_vseq
     }
+    {
+      name: cheriot_mem_sys_cms_alert_test
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_alert_test"]
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_cms_err_csr_intg
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_csr_intg"]
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_cms_err_data_path
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_data_path"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_err_meta_intg
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_meta_intg"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_err_tag_path
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_tag_path"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_err_tbre_read
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_tbre_read"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_err_tbre_revbm
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_err_tbre_revbm"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_nvm_cap_store
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_nvm_cap_store"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_epoch
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_epoch"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_intr
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_intr"]
+      reseed: 3
+    }
     // Constrained-random traffic on every port against the C reference model (testpoint
     // cmodel_random): the model scoreboard is the checker (the RAL scoreboard covers `regs` only).
     {
@@ -185,7 +255,7 @@
     }
     {
       name: cms
-      tests: ["cheriot_mem_sys_cms_smoke", "cheriot_mem_sys_cms_tag_store_load", "cheriot_mem_sys_cms_tag_clear_subword", "cheriot_mem_sys_cms_cap_load_hint", "cheriot_mem_sys_cms_access_check", "cheriot_mem_sys_cms_mode_gating", "cheriot_mem_sys_cms_rmw_same_word", "cheriot_mem_sys_cms_rmw_core_tbre_same_word", "cheriot_mem_sys_cms_tbre_sweep", "cheriot_mem_sys_cms_tbre_base_decode", "cheriot_mem_sys_cms_tbre_csr", "cheriot_mem_sys_cms_tbre_concurrent", "cheriot_mem_sys_cms_tbre_snoop_window", "cheriot_mem_sys_cms_random"]
+      tests: ["cheriot_mem_sys_cms_smoke", "cheriot_mem_sys_cms_tag_store_load", "cheriot_mem_sys_cms_tag_clear_subword", "cheriot_mem_sys_cms_cap_load_hint", "cheriot_mem_sys_cms_access_check", "cheriot_mem_sys_cms_mode_gating", "cheriot_mem_sys_cms_rmw_same_word", "cheriot_mem_sys_cms_rmw_core_tbre_same_word", "cheriot_mem_sys_cms_tbre_sweep", "cheriot_mem_sys_cms_tbre_base_decode", "cheriot_mem_sys_cms_tbre_csr", "cheriot_mem_sys_cms_tbre_concurrent", "cheriot_mem_sys_cms_tbre_snoop_window", "cheriot_mem_sys_cms_random", "cheriot_mem_sys_cms_alert_test", "cheriot_mem_sys_cms_err_csr_intg", "cheriot_mem_sys_cms_err_data_path", "cheriot_mem_sys_cms_err_meta_intg", "cheriot_mem_sys_cms_err_tag_path", "cheriot_mem_sys_cms_err_tbre_read", "cheriot_mem_sys_cms_err_tbre_revbm", "cheriot_mem_sys_cms_nvm_cap_store", "cheriot_mem_sys_cms_tbre_epoch", "cheriot_mem_sys_cms_tbre_intr"]
     }
   ]
 }

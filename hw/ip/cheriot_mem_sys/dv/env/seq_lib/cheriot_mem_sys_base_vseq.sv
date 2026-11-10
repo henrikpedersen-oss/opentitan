@@ -103,9 +103,10 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
   protected task tl_access(tl_sequencer sqr, bit [31:0] addr, tlul_pkg::tl_a_op_e op,
                            bit [1:0] size, bit [3:0] mask, bit [31:0] data,
                            output tl_seq_item rsp, input bit cored_tag = 1'b0,
-                           input bit cored = 1'b0);
+                           input bit cored = 1'b0, input bit bad_cmd_intg = 1'b0);
     cheriot_mem_sys_tl_host_seq seq;
     `uvm_create_on(seq, sqr)
+    if (bad_cmd_intg) seq.tl_intg_err_type = TlIntgErrCmd;
     seq.control_addr_alignment = 1'b1;
     seq.control_rand_size = 1'b1;
     seq.control_rand_opcode = 1'b1;

@@ -30,6 +30,9 @@ class cheriot_mem_sys_env_cfg extends cip_base_env_cfg #(.RAL_T(cheriot_mem_sys_
   chandle      cmodel_h;  // the model, once cheriot_mem_sys_cmodel_sb has built it
   // fatal_fault alerts the alert agent saw (not its pings), counted by cheriot_mem_sys_cmodel_sb.
   int unsigned fatal_alert_cnt;
+  // The next n core transactions carry an error the test injected on the meta path: the model is
+  // told (meta_err), as the cms testbench's scoreboard was (sb.exp_core_err).
+  int unsigned cm_exp_core_err;
   int unsigned cmodel_corrupt = 0;
 
   // The device on cored_tl_h drives known (random) idle response fields, not X: the WTRC's d_ready

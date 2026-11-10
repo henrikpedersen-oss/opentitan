@@ -22,6 +22,7 @@ interface cheriot_mem_sys_side_if (
 
   bit tag_q[$];
   event a_taken;  // a request was accepted on the core data port
+  bit   wtrc_sva_off;  // the WTRC's assertions off (a test drives what the core cannot)
   // Per source ID, in order: each accepted request's tag and mode, each response's tag. A source
   // answers in order, so the scoreboard pops them as it takes the monitor's items (get_*() wait if
   // the entry is not recorded yet in this time step).

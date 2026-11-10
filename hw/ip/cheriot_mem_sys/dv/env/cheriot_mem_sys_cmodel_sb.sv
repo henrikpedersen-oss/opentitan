@@ -108,6 +108,14 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
         regs_fifo.get(it);
         check_csr(it);
       end
+      // A reset of the subsystem: its registers and sweep go back, the memories stay.
+      forever begin
+        @(negedge cfg.clk_rst_vif.rst_n);
+        cms_cmodel_pkg::cms_dut_reset(h);
+        host_err_q.delete();
+        cfg.cm_exp_core_err = 0;
+        note("reset");
+      end
       // A real alert, not the answer to the agent's ping (as cip_base_scoreboard counts them).
       forever begin
         alert_agent_pkg::alert_seq_item it;
@@ -121,13 +129,15 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
   endtask
 
   protected task check_core(tl_seq_item it);
-    bit                    tag, rtag, host_err;
+    bit                    tag, rtag, host_err, meta_err;
     prim_mubi_pkg::mubi4_t ena;
     bit [31:0]             rdata = it.d_data;
     cfg.side_vif.get_req(it.a_source, tag, ena);
     cfg.side_vif.get_rsp_tag(it.d_source, rtag);
     wait (host_err_q.size() > 0);
     host_err = host_err_q.pop_front();
+    meta_err = cfg.cm_exp_core_err > 0;
+    if (meta_err) cfg.cm_exp_core_err--;
     if (it.a_opcode == tlul_pkg::Get && !it.d_error && it.a_mask != 0) begin
       n_reads++;
       if (cfg.cmodel_corrupt != 0 && n_reads == cfg.cmodel_corrupt) begin
@@ -143,7 +153,8 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
                    rdata, it.d_error, rtag));
     report_mismatch(cms_cmodel_pkg::cms_core(h, int'(it.a_opcode), it.a_addr, int'(it.a_size),
                                     int'(it.a_mask), it.a_data, int'(tag), int'(ena),
-                                    int'(host_err), 0, int'(it.d_error), rdata, int'(rtag)),
+                                    int'(host_err), int'(meta_err), int'(it.d_error), rdata,
+                                    int'(rtag)),
            $sformatf("core %s 0x%08x", op_name(it.a_opcode), it.a_addr));
   endtask
 
