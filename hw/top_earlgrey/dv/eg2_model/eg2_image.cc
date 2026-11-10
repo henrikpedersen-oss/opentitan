@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 
+#include "eg2_elf.h"
 #include "eg2_regblock.h"
 #include "eg2_targets.h"
 
@@ -17,60 +18,39 @@ namespace eg2_sim {
 // Copy every loadable segment of a 32-bit ELF to its load address (p_paddr); collect its symbols.
 bool load_elf(const std::string &path, std::vector<Eg2Memory *> &mems,
               std::map<std::string, uint32_t> *symbols, bool segments) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f) {
-    std::fprintf(stderr, "eg2sim: cannot open %s\n", path.c_str());
+  eg2_model::ElfImage image;
+  if (!image.open(path)) {
+    std::fprintf(stderr, "eg2sim: %s: %s\n", path.c_str(), image.error().c_str());
     return false;
   }
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd32 = [&](size_t off) {
-    uint32_t v = 0;
-    if (off + 4 <= elf.size()) std::memcpy(&v, &elf[off], 4);
-    return v;
-  };
-  auto rd16 = [&](size_t off) {
-    uint16_t v = 0;
-    if (off + 2 <= elf.size()) std::memcpy(&v, &elf[off], 2);
-    return v;
-  };
-  if (elf.size() < 52 || std::memcmp(elf.data(), "\x7f" "ELF", 4) != 0 || elf[4] != 1) {
-    std::fprintf(stderr, "eg2sim: %s is not a 32-bit ELF\n", path.c_str());
-    return false;
-  }
-  uint32_t phoff = rd32(28);
-  uint16_t phentsize = rd16(42), phnum = rd16(44);
   if (symbols) {
-    uint32_t shoff = rd32(32);
-    uint16_t shentsize = rd16(46), shnum = rd16(48);
-    for (uint16_t i = 0; i < shnum; ++i) {
-      size_t sh = shoff + size_t(i) * shentsize;
-      if (rd32(sh + 4) != 2) continue;  // SHT_SYMTAB
-      uint32_t off = rd32(sh + 16), size = rd32(sh + 20), link = rd32(sh + 24);
-      size_t strsh = shoff + size_t(link) * shentsize;
-      uint32_t stroff = rd32(strsh + 16), strsize = rd32(strsh + 20);
-      for (uint32_t e = 0; e + 16 <= size; e += 16) {
-        uint32_t name = rd32(off + e), value = rd32(off + e + 4);
-        if (name == 0 || name >= strsize || stroff + name >= elf.size()) continue;
-        const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-        size_t len = strnlen(n, elf.size() - (stroff + name));
-        (*symbols)[std::string(n, len)] = value;
+    for (const auto &entry : image.symbols()) (*symbols)[entry.first] = entry.second.address;
+  }
+  if (!segments) return true;
+  // Validate every destination before changing memory. BSS is deliberately not
+  // loaded: boot code initializes runtime memory from these physical load images.
+  std::vector<Eg2Memory *> destinations;
+  for (const auto &segment : image.segments()) {
+    if (!segment.file_size) continue;
+    Eg2Memory *destination = nullptr;
+    for (auto *memory : mems) {
+      if (segment.physical >= memory->base() &&
+          uint64_t(segment.physical - memory->base()) + segment.file_size <= memory->size()) {
+        destination = memory;
+        break;
       }
     }
-  }
-  if (!segments) return true;  // symbols only: the image is loaded another way
-  for (uint16_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd32(ph), offset = rd32(ph + 4), paddr = rd32(ph + 12),
-             filesz = rd32(ph + 16);
-    if (type != 1 || filesz == 0) continue;
-    if (size_t(offset) + filesz > elf.size()) return false;
-    bool done = false;
-    for (Eg2Memory *m : mems) done = done || m->write(paddr, &elf[offset], filesz);
-    if (!done) {
-      std::fprintf(stderr, "eg2sim: %s: segment at 0x%08x is in no memory\n", path.c_str(),
-                   paddr);
+    if (!destination) {
+      std::fprintf(stderr, "eg2sim: %s: segment at 0x%08x is in no memory\n",
+                   path.c_str(), segment.physical);
       return false;
     }
+    destinations.push_back(destination);
+  }
+  size_t index = 0;
+  for (const auto &segment : image.segments()) {
+    if (segment.file_size)
+      destinations[index++]->write(segment.physical, image.data(segment), segment.file_size);
   }
   return true;
 }
@@ -161,95 +141,22 @@ bool save_otp(const std::string &path, std::vector<Eg2RegBlock *> &blocks) {
 
 // The size of a symbol of a 32-bit ELF (st_size), or 0 if there is no such symbol.
 uint32_t elf_symbol_size(const std::string &path, const std::string &symbol) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return 0;
-  uint32_t shoff = rd(32, 4), shentsize = rd(46, 2), shnum = rd(48, 2);
-  for (uint32_t i = 0; i < shnum; ++i) {
-    size_t sh = shoff + size_t(i) * shentsize;
-    if (rd(sh + 4, 4) != 2) continue;  // SHT_SYMTAB
-    uint32_t off = rd(sh + 16, 4), size = rd(sh + 20, 4), link = rd(sh + 24, 4);
-    uint32_t stroff = rd(shoff + size_t(link) * shentsize + 16, 4);
-    for (uint32_t e = 0; e + 16 <= size; e += 16) {
-      uint32_t name = rd(off + e, 4);
-      if (name == 0 || stroff + name >= elf.size()) continue;
-      const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-      if (symbol == std::string(n, strnlen(n, elf.size() - (stroff + name)))) {
-        return rd(off + e + 8, 4);
-      }
-    }
-  }
-  return 0;
+  eg2_model::ElfImage image;
+  if (!image.open(path)) return 0;
+  const auto found = image.symbols().find(symbol);
+  return found == image.symbols().end() ? 0 : found->second.size;
 }
 
-// The initial bytes of a symbol of a 32-bit ELF (its value in the file's loadable segments): false
-// if there is no such symbol or its bytes are not in the file.
 bool elf_symbol_bytes(const std::string &path, const std::string &symbol, size_t len,
                       std::vector<uint8_t> *out) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return false;
-  uint32_t shoff = rd(32, 4), shentsize = rd(46, 2), shnum = rd(48, 2), addr = 0;
-  bool found = false;
-  for (uint32_t i = 0; i < shnum && !found; ++i) {
-    size_t sh = shoff + size_t(i) * shentsize;
-    if (rd(sh + 4, 4) != 2) continue;  // SHT_SYMTAB
-    uint32_t off = rd(sh + 16, 4), size = rd(sh + 20, 4), link = rd(sh + 24, 4);
-    uint32_t stroff = rd(shoff + size_t(link) * shentsize + 16, 4);
-    for (uint32_t e = 0; e + 16 <= size && !found; e += 16) {
-      uint32_t name = rd(off + e, 4);
-      if (name == 0 || stroff + name >= elf.size()) continue;
-      const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-      if (symbol == std::string(n, strnlen(n, elf.size() - (stroff + name)))) {
-        addr = rd(off + e + 4, 4);
-        found = true;
-      }
-    }
-  }
-  if (!found) return false;
-  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
-  for (uint32_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd(ph, 4), offset = rd(ph + 4, 4), va = rd(ph + 8, 4), filesz = rd(ph + 16, 4);
-    if (type != 1 || addr < va || addr - va + len > filesz) continue;
-    size_t at = size_t(offset) + (addr - va);
-    if (at + len > elf.size()) return false;
-    out->assign(elf.begin() + at, elf.begin() + at + len);
-    return true;
-  }
-  return false;
+  eg2_model::ElfImage image;
+  return image.open(path) && image.symbol_bytes(symbol, len, out);
 }
 
-// The load address of run-time address vaddr in a 32-bit ELF: a symbol of an initialised data
-// section (.data) lives at its run-time address only after the start-up code has copied it from
-// its load image, so a write before the run must go to the load image (p_paddr). vaddr unchanged if
-// no segment with a different load address holds it.
+// Initialized data may have different runtime and physical load addresses.
 uint32_t elf_load_address(const std::string &path, uint32_t vaddr) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return vaddr;
-  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
-  for (uint32_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd(ph, 4), va = rd(ph + 8, 4), pa = rd(ph + 12, 4), filesz = rd(ph + 16, 4);
-    if (type == 1 && va != pa && vaddr >= va && vaddr - va < filesz) return pa + (vaddr - va);
-  }
-  return vaddr;
+  eg2_model::ElfImage image;
+  return image.open(path) ? image.load_address(vaddr) : vaddr;
 }
 
 // Write a 32-bit little-endian word at a symbol of the test image, as the bench's

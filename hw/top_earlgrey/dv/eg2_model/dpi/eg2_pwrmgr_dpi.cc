@@ -297,7 +297,14 @@ class PwrDpi : public Eg2PwrmgrPort {
     }
     esc_lvl_ = esc;
     if (!main_pok && main_pok_ && pd_n_req_) {
-      call([&] { core_.main_pok_glitch(); });
+      call([&] {
+        if (!core_.main_pok_glitch()) {
+          // This binding does not inject events inside lowpower_event(). If
+          // that changes, none of the ensuing reset state is predictable.
+          for (auto &mask : unk_) mask = 0xffffffffu;
+          note_ = "undocumented: main power glitch during deep-sleep entry";
+        }
+      });
       r_[I(kFaultStatus)] |= kMainPdGlitch;  // the request to the AST says power is meant to be on
     }
     main_pok_ = main_pok;

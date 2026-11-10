@@ -2,30 +2,34 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Eg2RegBlock: a device's register block in the EG2 SystemC model, from its generated description
-// (eg2_model_regs.h, from the IP's hjson by reggen). Milestone M2 of the system model plan: every
-// register has its reset value and every field its software access; writes are gated by the
-// register's REGWEN; the memory windows inside the block are plain memory. What hardware does to a
-// register is not modelled yet: a register hardware updates keeps the value software or reset gave
-// it. on_read and on_write are the hooks milestone M3 fills, per block, by register index
-// (eg2_regs::<block>::k<Register>).
+// Eg2RegBlock: a device's register block in the EG2 SystemC model, built from its generated
+// description (eg2_model_regs.h, from the IP's hjson by reggen), never written by hand. Every
+// register has its reset value and every field its software access (rw, rw1c, rw0c, ...); the
+// memory windows inside the block are plain memory. On its own the block holds what software or
+// reset last gave a register: what the hardware does to it is the IP model's (eg2_ip_model.h).
 //
-// An access to an offset with no register and no window answers TLM_ADDRESS_ERROR_RESPONSE, as the
-// register block answers d_error.
+// The rules of a software access, as reggen's register top applies them:
+// - REGWEN: a write to a register its REGWEN locks changes nothing and reaches no hook, so a
+//   locked command has no side effect either (util/reggen/README.md, "regwen").
+// - Byte enables: a write that leaves out a byte up to the register's highest field bit
+//   (REG_PERMIT) answers d_error and changes nothing.
+// - An offset with no register and no window answers TLM_ADDRESS_ERROR_RESPONSE, as the block
+//   answers d_error; so does a payload the bus could not carry (eg2_transaction.h: not a read or a
+//   write, no data, byte-enable arrays, bursts, an address above 32 bits), before any storage or
+//   hook is touched.
 //
-// Milestone M3 builds the IP models on this block (eg2_ip_model.h): before_read lets a model bring a
-// register up to date before software reads it (a timer's count), after_read and on_write let it act
-// on the access, before_write lets it refuse a write; on_win_read lets it answer a read of one of the
-// block's memory windows itself (a FIFO behind a window pops on a read), on_win_write acts on a
-// write into one. A register a model keeps up to date is marked modelled (set_modelled) and no
-// longer counts as polled.
-//
-// Any hook can make the access answer an error (fail_access): the bus then gets
-// TLM_ADDRESS_ERROR_RESPONSE, as the block answers d_error, and the core takes its access fault.
+// The IP models act through hooks, by register index (eg2_regs::<block>::k<Register>):
+// before_read brings a register up to date before software reads it (a timer's count),
+// after_read and on_write act on the access, before_write can refuse a write; on_win_read can
+// answer a read of one of the block's windows itself (a FIFO behind a window pops on a read),
+// on_win_write acts on a write into one. Any hook can make the access answer d_error
+// (fail_access): then nothing is stored and no later hook runs, so a failed read does not pop a
+// FIFO or clear a read-clear field.
 //
 // To find what to model next, the block counts reads of the registers hardware updates. A read
-// loop on one of them (the software polls for hardware that is not there) stops the run once the
-// register has been read kPollLimit times, naming it.
+// loop on one the model does not keep up to date (the software polls for hardware that is not
+// there) stops the run after kPollLimit reads, naming it; a model marks the registers it does
+// keep up to date with set_modelled.
 
 #ifndef EG2_MODEL_EG2_REGBLOCK_H_
 #define EG2_MODEL_EG2_REGBLOCK_H_
@@ -107,8 +111,10 @@ class Eg2RegBlock : public sc_core::sc_module {
   bool win_write(const std::string &win, uint32_t off, const uint8_t *data, size_t len) {
     for (uint16_t i = 0; i < desc_.nwins; ++i) {
       if (win != desc_.wins[i].name) continue;
-      if (uint64_t(off) + len > win_mem_[i].size()) return false;
-      std::memcpy(&win_mem_[i][off], data, len);
+      if (!eg2_model::range_fits(off, len, win_mem_[i].size())) return false;
+      if (!len) return true;
+      if (!data) return false;
+      std::memcpy(win_mem_[i].data() + off, data, len);
       return true;
     }
     return false;
@@ -117,8 +123,10 @@ class Eg2RegBlock : public sc_core::sc_module {
   bool win_read(const std::string &win, uint32_t off, uint8_t *data, size_t len) const {
     for (uint16_t i = 0; i < desc_.nwins; ++i) {
       if (win != desc_.wins[i].name) continue;
-      if (uint64_t(off) + len > win_mem_[i].size()) return false;
-      std::memcpy(data, &win_mem_[i][off], len);
+      if (!eg2_model::range_fits(off, len, win_mem_[i].size())) return false;
+      if (!len) return true;
+      if (!data) return false;
+      std::memcpy(data, win_mem_[i].data() + off, len);
       return true;
     }
     return false;
@@ -132,7 +140,7 @@ class Eg2RegBlock : public sc_core::sc_module {
   virtual void load_event(uint32_t /*off*/, uint32_t /*data*/) {}
 
  protected:
-  // M3 hooks. before_read: a register is about to be read (bring it up to date). after_read: it
+  // Device hooks. before_read: a register is about to be read (bring it up to date). after_read: it
   // has been read. on_write: it has been written; wdata is the data written, shifted to its byte
   // lanes, and wmask the lanes written (the register's new value is value(reg)).
   virtual void before_read(uint16_t /*reg*/) {}
@@ -157,6 +165,11 @@ class Eg2RegBlock : public sc_core::sc_module {
 
  private:
   void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+    if (!eg2_model::valid_transaction(trans)) return;
+    if (trans.get_address() > UINT32_MAX) {
+      trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+      return;
+    }
     if (access_frozen()) {  // the block's clock is off: the access never completes
       trans.set_response_status(tlm::TLM_OK_RESPONSE);
       return;
@@ -199,6 +212,7 @@ class Eg2RegBlock : public sc_core::sc_module {
     uint32_t bytes_mask = (len >= 4 ? 0xffffffffu : ((1u << (8 * len)) - 1)) << shift;
     if (trans.is_read()) {
       before_read(r);
+      if (fail_) return;
       uint32_t v = read_reg(r);
       v >>= shift;
       std::memcpy(data, &v, len);
@@ -223,7 +237,7 @@ class Eg2RegBlock : public sc_core::sc_module {
           (val_[reg.regwen] & reg.regwen_mask) != reg.regwen_true) {
         return;
       }
-      if (!before_write(r, w << shift, bytes_mask)) return;
+      if (!before_write(r, w << shift, bytes_mask) || fail_) return;
       write_reg(r, w << shift, bytes_mask);
       on_write(r, old, w << shift, bytes_mask);
     }

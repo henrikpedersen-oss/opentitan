@@ -34,6 +34,7 @@
 #include <tlm_utils/simple_initiator_socket.h>
 
 #include "eg2_dvlog.h"
+#include "eg2_elf.h"
 #include "eg2_ip_model.h"
 #include "eg2_irq_predict.h"
 #include "eg2_regblock.h"
@@ -218,35 +219,24 @@ Model *model(void *h) {
 
 // Every segment of a 32-bit ELF at its load address (p_paddr), as eg2sim's load_elf.
 bool load_elf(Model &m, const std::string &path) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f) {
-    create_error("cannot open %s", path.c_str());
+  eg2_model::ElfImage image;
+  if (!image.open(path)) {
+    create_error("%s: %s", path.c_str(), image.error().c_str());
     return false;
   }
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52 || std::memcmp(elf.data(), "\x7f" "ELF", 4) != 0 || elf[4] != 1) {
-    create_error("%s is not a 32-bit ELF", path.c_str());
-    return false;
-  }
-  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
-  for (uint32_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd(ph, 4), offset = rd(ph + 4, 4), paddr = rd(ph + 12, 4),
-             filesz = rd(ph + 16, 4);
-    if (type != 1 || filesz == 0) continue;
-    if (size_t(offset) + filesz > elf.size()) return false;
-    Window *w = m.find(paddr);
-    if (!w || !w->mem || !w->mem->write(paddr, &elf[offset], filesz)) {
-      create_error("%s: segment at 0x%08x is in no memory", path.c_str(),
-                   paddr);
+  for (const auto &segment : image.segments()) {
+    if (!segment.file_size) continue;
+    Window *window = m.find(segment.physical);
+    if (!window || !window->mem ||
+        uint64_t(segment.physical - window->base) + segment.file_size > window->size) {
+      create_error("%s: segment at 0x%08x is in no memory", path.c_str(), segment.physical);
       return false;
     }
-    m.mark(paddr, filesz, true);
+  }
+  for (const auto &segment : image.segments()) {
+    if (!segment.file_size) continue;
+    m.find(segment.physical)->mem->write(segment.physical, image.data(segment), segment.file_size);
+    m.mark(segment.physical, segment.file_size, true);
   }
   return true;
 }

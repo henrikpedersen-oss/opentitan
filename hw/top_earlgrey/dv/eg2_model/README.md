@@ -4,6 +4,9 @@ This directory models the software-visible behavior of Earl Grey 2 in C++ and
 SystemC. It lets firmware configure registers, access memory, receive interrupts,
 and interact with peripherals without running an RTL simulation.
 
+This directory is the functional reference model. The UVM testbench that can
+consume its DPI predictions lives outside it.
+
 The same IP implementations serve three entry points:
 
 | Entry point | What drives the model | Typical use |
@@ -21,6 +24,9 @@ Start with [the architecture guide](docs/architecture.md) for a walk through one
 bus access, an interrupt and a reset. [The review record](docs/review.md) separates
 confirmed fixes, open findings and validation limits. The generated register and
 interrupt tables are reference data; they are not the recommended reading order.
+The [follow-up review](docs/review-followup.md) records the latest transport,
+image-loading and OTP fixes and the remaining fidelity gaps. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the evidence and tests expected with changes.
 
 Expected behavior comes from the IP documentation, register descriptions and top
 configuration. Any RTL-derived exception must be identified in its source comment.
@@ -76,6 +82,8 @@ hardware check. Read the reason in the run output before interpreting a result.
 |---|---|
 | `eg2sim.cc` | Standalone board setup, command-line options, the run and its report |
 | `eg2_image.{h,cc}` | ELF loading and symbols, RRAM images, OTP loading and persistence |
+| `eg2_elf.h` | Validated ELF32 reader shared by the standalone and DPI loaders |
+| `eg2_transaction.h` | Contiguous TLM payload validation and overflow-safe range checks |
 | `eg2_stimulus.{h,cc}` | Triggered stimulus descriptions, parsing and image-symbol expansion |
 | `eg2_spike_cpu.{h,cc}` | Spike as TLM initiator: Ibex reset state, interrupt lines, WFI and sleep, chip resets |
 | `eg2_spike_debug.cc` | Spike debug entry/resume, register access and program-buffer execution |
@@ -88,6 +96,7 @@ hardware check. Read the reason in the run output before interpreting a result.
 | `eg2_ip_models.cc` | The registry: which window gets which model |
 | `eg2_dvlog.h` | The software's DV log (LOG_* through the DV window), decoded from the images' `.logs.fields` to stdout and `<log-dir>/sw.model.log` |
 | `ip/*.h` | The IP models |
+| `ip/eg2_otp_crypto.h` | Shared PRESENT-128 cipher and specified OTP partition digest |
 | `ip/*_core.h`, `dpi/*_test.cc` | Reusable behavioral cores and their focused tests; many cores do not need SystemC |
 | `tests/` | Shared-model and public-API regressions, plus the core-test runner |
 | `eg2_model_regs.h` | Generated: every register block (`scripts/gen_eg2_model_regs.py`) |

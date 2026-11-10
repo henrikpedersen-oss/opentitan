@@ -142,19 +142,21 @@ class Eg2PwrmgrCore {
   // theory_of_operation.md "Main Power Unstable Reset Requests": an internal reset, like the
   // escalation's, only while the main domain is meant to be on; FAULT_STATUS.MAIN_PD_GLITCH is
   // sticky (pwrmgr is on the POR reset tree).
-  void main_pok_glitch() {
+  // False means the reset classification is undocumented at the entry boundary;
+  // the binding must stop judging it instead of selecting LOW_POWER_EXIT.
+  bool main_pok_glitch() {
     if (low_power_ && deep_sleep_ && !entering_) {
       p_.note("pwrmgr: main power-ok low while the main domain is powered down: no glitch reset");
-      return;
+      return true;
     }
     p_.wr(Eg2PwrReg::kFaultStatus, p_.rd(Eg2PwrReg::kFaultStatus) | (1u << 2));
-    // Assumption: a glitch during the entry counts as a triggered low-power-entry reset, so rstmgr
-    // also records LOW_POWER_EXIT. The documents do not define that point in the entry.
+    if (entering_ && deep_sleep_) return false;
     bool lp_reset = low_power_reset();
     exit_low_power();
     p_.note("pwrmgr: main power glitch: internal reset request");
     p_.request_reset(Eg2PwrReset::kHwRequest, "main power glitch (pwrmgr internal reset)", 2,
                      lp_reset);
+    return true;
   }
 
   // The core asks for low power (WFI). `idle`: otp_ctrl, lc_ctrl and the NVM controller idle

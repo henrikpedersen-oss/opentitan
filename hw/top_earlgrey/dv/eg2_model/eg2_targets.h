@@ -12,6 +12,7 @@
 #ifndef EG2_MODEL_EG2_TARGETS_H_
 #define EG2_MODEL_EG2_TARGETS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -21,6 +22,8 @@
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
+
+#include "eg2_transaction.h"
 
 class Eg2Memory : public sc_core::sc_module {
  public:
@@ -84,13 +87,17 @@ class Eg2Memory : public sc_core::sc_module {
 
   // Backdoor write at an absolute address (image loading); false outside the memory.
   bool write(uint32_t addr, const uint8_t *data, size_t len) {
-    if (addr < base_ || uint64_t(addr - base_) + len > size_) return false;
+    if (addr < base_ || !eg2_model::range_fits(addr - base_, len, size_)) return false;
+    if (!len) return true;
+    if (!data) return false;
     std::memcpy(bytes() + (addr - base_), data, len);
     return true;
   }
   // Backdoor read at an absolute address (the bench's backdoor reads); false outside the memory.
   bool read(uint32_t addr, uint8_t *out, size_t len) {
-    if (addr < base_ || uint64_t(addr - base_) + len > size_) return false;
+    if (addr < base_ || !eg2_model::range_fits(addr - base_, len, size_)) return false;
+    if (!len) return true;
+    if (!out) return false;
     std::memcpy(out, bytes() + (addr - base_), len);
     return true;
   }
@@ -99,9 +106,10 @@ class Eg2Memory : public sc_core::sc_module {
   uint8_t *bytes() { return data().data(); }
 
   void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+    if (!eg2_model::valid_transaction(trans)) return;
     uint64_t off = trans.get_address();
     unsigned len = trans.get_data_length();
-    if (off + len > size_ || trans.get_byte_enable_ptr() ||
+    if (!eg2_model::range_fits(off, len, size_) ||
         (word_only_ && trans.is_write() && (off % 4 != 0 || len == 0 || len % 4 != 0)) ||
         (read_only_ && trans.is_write() && !cap_store_tagged()) ||
         (len && off < err_hi_ && off + len > err_lo_)) {
@@ -122,12 +130,12 @@ class Eg2Memory : public sc_core::sc_module {
   }
 
   bool get_direct_mem_ptr(tlm::tlm_generic_payload &trans, tlm::tlm_dmi &dmi) {
-    if (word_only_) return false;
     uint64_t off = trans.get_address();
+    if (word_only_ || off >= size_ || (trans.is_write() && read_only_)) return false;
     uint64_t start = 0, end = size_ - 1;
     if (err_hi_ > err_lo_) {
       if (off >= err_lo_ && off < err_hi_) return false;  // the error range: never a direct pointer
-      if (off < err_lo_) end = err_lo_ - 1;
+      if (off < err_lo_) end = std::min(end, uint64_t(err_lo_) - 1);
       else start = err_hi_;
     }
     dmi.set_dmi_ptr(bytes() + start);

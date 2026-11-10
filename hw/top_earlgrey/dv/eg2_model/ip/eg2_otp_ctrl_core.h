@@ -2,10 +2,11 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The OTP controller's behaviour as the EG2 model has it, in plain C++ (no SystemC), so that eg2sim
-// (Eg2OtpCtrl in eg2_mem_otp.h, a thin adapter) and a self-test (dpi/eg2_otp_ctrl_core_test.cc)
-// share it. The core reaches the outside only through Eg2OtpCtrlPort; the OTP array is a byte
-// vector the binding owns (eg2sim: the SW_CFG_WINDOW memory, which --otp loads).
+// Plain C++ OTP controller core, exercised by dpi/eg2_otp_ctrl_core_test.cc.
+// It reaches external signals through Eg2OtpCtrlPort and uses the binding's
+// byte vector as the OTP array. The SystemC Eg2OtpCtrl remains a separate
+// controller implementation; both share the cipher and digest in eg2_otp_crypto.h.
+// Core-test coverage must not be attributed to the SystemC adapter automatically.
 //
 // From the documents only, never the RTL: hw/top_earlgrey/ip_autogen/otp_ctrl/doc
 // (theory_of_operation.md "ToO", programmers_guide.md "PG", interfaces.md "IF", registers.md "REG",
@@ -49,12 +50,10 @@
 // partition stops that partition's consistency checks until reset (ToO "Checks on Zeroized
 // Partitions").
 //
-// The digest the DIGEST command writes is a model value (FNV-1a over the partition's scrambled form,
-// never 0): the chip's PRESENT Davies-Meyer digest needs the IV and finalisation netlist constants,
-// which no document the model may read gives. The integrity check therefore checks that the buffer
-// still matches the model digest computed over it at initialisation (ToO "Integrity": it checks
-// "whether the buffer register contents remain consistent with the calculated digest"), not the
-// stored digest itself.
+// DIGEST uses PRESENT Davies-Meyer over the stored partition bytes, with the
+// public Earl Grey simulation constants (eg2_otp_crypto.h). Integrity compares
+// the re-scrambled buffer against the independently stored digest, including
+// the first check at power-up (ToO "Buffered Partition").
 //
 // Checks (ToO "Partition Checks", REG CHECK_TRIGGER). Integrity: HW_CFG* and SECRET* with a digest,
 // not zeroized at initialisation. Consistency: LIFE_CYCLE (whole partition against its buffer;
@@ -81,6 +80,8 @@
 #define EG2_MODEL_IP_EG2_OTP_CTRL_CORE_H_
 
 #include <cstdint>
+
+#include "eg2_otp_crypto.h"
 #include <cstring>
 #include <string>
 #include <vector>
@@ -213,8 +214,9 @@ class Eg2OtpCtrlCore {
           set64(&buf_[p][a - pt.off], descramble(dword(a), p));
         }
       }
-      snapshot_[p] = buffer_digest(p);
+      expected_digest_[p] = dg;
     }
+    check_trigger(1);
     update_status();
   }
 
@@ -391,23 +393,15 @@ class Eg2OtpCtrlCore {
 
   // ---- PRESENT scrambling (ToO "Scrambling": 128-bit key, 31 rounds, a netlist key per secret
   // partition; the testing keys of top_earlgrey.secrets.testing.gen.hjson) ----
-  static uint64_t scramble(uint64_t data, int p) {
-    PresentKey keys[32];
-    present_round_keys(p, keys);
-    for (unsigned i = 0; i < 31; ++i) data = present_perm(present_sbox(data ^ keys[i].hi));
-    return data ^ keys[31].hi;
+  static uint64_t scramble(uint64_t data, int partition) {
+    return eg2_model::OtpCrypto::encrypt(data,
+        eg2_model::OtpCrypto::partition_key(partition - kEg2OtpSecret0));
   }
-  static uint64_t descramble(uint64_t data, int p) {
-    PresentKey keys[32];
-    present_round_keys(p, keys);
-    data ^= keys[31].hi;
-    for (int i = 30; i >= 0; --i) {
-      data = present_inv_perm(data);
-      data = present_inv_sbox(data);
-      data ^= keys[i].hi;
-    }
-    return data;
+  static uint64_t descramble(uint64_t data, int partition) {
+    return eg2_model::OtpCrypto::decrypt(data,
+        eg2_model::OtpCrypto::partition_key(partition - kEg2OtpSecret0));
   }
+
 
   static int part_of(uint32_t a) {
     for (int p = 0; p < kEg2OtpNumParts; ++p) {
@@ -550,12 +544,10 @@ class Eg2OtpCtrlCore {
   }
 
   // ---- Checks ----
-  static uint64_t model_digest(const uint8_t *b, uint32_t n) {
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (uint32_t i = 0; i < n; ++i) h = (h ^ b[i]) * 0x100000001b3ull;
-    return h ? h : 1;
+  static uint64_t model_digest(const uint8_t *bytes, uint32_t length) {
+    return eg2_model::OtpCrypto::digest(bytes, length);
   }
-  // The model digest over partition p's buffer in its scrambled form (ToO "Secret Partition
+  // The PRESENT digest over partition p's buffer in its scrambled form (ToO "Secret Partition
   // Integrity Checks": "re-scrambling the data before passing it through the digest").
   uint64_t buffer_digest(int p) const {
     const Eg2OtpPart &pt = kEg2OtpParts[p];
@@ -577,7 +569,7 @@ class Eg2OtpCtrlCore {
       if (part_err_[p] != kNoError || zeroized_[p]) continue;
       const Eg2OtpPart &pt = kEg2OtpParts[p];
       bool bad_i = false, bad_c = false;
-      if ((which & 1) && pt.has_digest && locked_[p]) bad_i = buffer_digest(p) != snapshot_[p];
+      if ((which & 1) && pt.has_digest && locked_[p]) bad_i = buffer_digest(p) != expected_digest_[p];
       if ((which & 2) && !zer_started_[p]) {
         if (p == kEg2OtpLifeCycle) {
           if (!port_->lc(Eg2OtpLc::kCheckBypEn)) {
@@ -601,55 +593,6 @@ class Eg2OtpCtrlCore {
     }
   }
 
-  // ---- PRESENT ----
-  struct PresentKey {
-    uint64_t hi, lo;
-  };
-  static PresentKey present_next_key(PresentKey k, unsigned round) {
-    static constexpr uint8_t kSbox[16] = {0xc, 0x5, 0x6, 0xb, 0x9, 0x0, 0xa, 0xd,
-                                          0x3, 0xe, 0xf, 0x8, 0x4, 0x7, 0x1, 0x2};
-    uint64_t hi = ((k.hi & 7) << 61) | (k.lo >> 3);
-    uint64_t lo = ((k.lo & 7) << 61) | (k.hi >> 3);
-    hi = (hi & 0x00ffffffffffffffull) | (uint64_t(kSbox[hi >> 60]) << 60) |
-         (uint64_t(kSbox[(hi >> 56) & 0xf]) << 56);
-    hi ^= uint64_t(round) >> 2;
-    lo ^= uint64_t(round) << 62;
-    return {hi, lo};
-  }
-  static uint64_t present_sbox(uint64_t d) {
-    static constexpr uint8_t kSbox[16] = {0xc, 0x5, 0x6, 0xb, 0x9, 0x0, 0xa, 0xd,
-                                          0x3, 0xe, 0xf, 0x8, 0x4, 0x7, 0x1, 0x2};
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 16; ++i) out |= uint64_t(kSbox[(d >> (4 * i)) & 0xf]) << (4 * i);
-    return out;
-  }
-  static uint64_t present_inv_sbox(uint64_t d) {
-    static constexpr uint8_t kInv[16] = {0x5, 0xe, 0xf, 0x8, 0xc, 0x1, 0x2, 0xd,
-                                         0xb, 0x4, 0x6, 0x3, 0x0, 0x7, 0x9, 0xa};
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 16; ++i) out |= uint64_t(kInv[(d >> (4 * i)) & 0xf]) << (4 * i);
-    return out;
-  }
-  static uint64_t present_perm(uint64_t d) {
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 64; ++i) out |= ((d >> i) & 1) << (i == 63 ? 63 : (16 * i) % 63);
-    return out;
-  }
-  static uint64_t present_inv_perm(uint64_t d) {
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 64; ++i) out |= ((d >> i) & 1) << (i == 63 ? 63 : (4 * i) % 63);
-    return out;
-  }
-  static void present_round_keys(int p, PresentKey keys[32]) {
-    static constexpr PresentKey kKeys[] = {
-        {0xf9089cf2787c6c14ull, 0xb7d1a6c0618e831full},
-        {0xc8129e7a4149ba28ull, 0x31fe2e9fb3b2a1d2ull},
-        {0x5254f861ba80f82bull, 0x303da30635aa3d3aull},
-    };
-    keys[0] = kKeys[p - kEg2OtpSecret0];
-    for (unsigned i = 1; i < 32; ++i) keys[i] = present_next_key(keys[i - 1], i);
-  }
-
   Eg2OtpCtrlPort *port_;
   std::vector<uint8_t> *mem_;
   uint32_t r_[kNumRegs] = {};
@@ -657,7 +600,7 @@ class Eg2OtpCtrlCore {
   bool locked_[kEg2OtpNumParts] = {}, zeroized_[kEg2OtpNumParts] = {},
        zer_started_[kEg2OtpNumParts] = {};
   std::vector<uint8_t> buf_[kEg2OtpNumParts];
-  uint64_t snapshot_[kEg2OtpNumParts] = {};
+  uint64_t expected_digest_[kEg2OtpNumParts] = {};
   bool terminal_ = false;
   unsigned lci_inject_ = 0;
 };

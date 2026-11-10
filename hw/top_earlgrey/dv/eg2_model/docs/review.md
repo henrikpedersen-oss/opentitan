@@ -1,5 +1,10 @@
 # Model review — 10 November 2026
 
+This is the historical record of the first pass and subsequent file split.
+The [follow-up review](review-followup.md) records the later OTP digest,
+power-boundary, transport and ELF fixes against checked-in commit `da6c4d0e4d`.
+Its remaining-findings table supersedes the open findings below.
+
 This review fixes shared register, interrupt, GPIO, memory-alias and replay
 behavior and provides a reading guide and a repeatable local test entry point.
 It does **not** establish complete chip equivalence. The open findings below

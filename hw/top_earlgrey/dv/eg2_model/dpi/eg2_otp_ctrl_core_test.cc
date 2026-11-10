@@ -149,12 +149,12 @@ void test_digest_and_lock() {
   Dut d;
   const Eg2OtpPart &s0 = kEg2OtpParts[kEg2OtpSecret0];
   check(d.wr(kEg2OtpTestUnlockToken, 0xaaaa5555, 0x12345678) == C::kNoError, "WR SECRET0 token");
+  check(d.wr(kEg2OtpTestExitToken, 1, 2) == C::kNoError, "provision second token before digest");
   check(d.cmd(4, kCreatorSwCfg) == C::kAccessError, "DIGEST on a software-digest partition");
   check(d.cmd(4, s0.off) == C::kNoError, "DIGEST SECRET0");
   check(d.rd(eg2_otp_digest_off(s0)) == C::kNoError && d.rdata() != 0, "digest programmed");
   check(d.cmd(4, s0.off) == C::kAccessError, "a second DIGEST: AccessError");
   check(!d.core.partition_locked(kEg2OtpSecret0), "the lock waits for the next initialisation");
-  check(d.wr(kEg2OtpTestExitToken, 1, 2) == C::kNoError, "still writable before the reset");
   uint64_t dg = d.rdata();
   d.core.power_up();
   check(d.core.partition_locked(kEg2OtpSecret0), "locked after initialisation");
@@ -178,6 +178,26 @@ void test_digest_and_lock() {
   check(d.core.partition_locked(1) && d.wr(kCreatorSwCfg + 8, 1) == C::kAccessError,
         "a software digest locks writes after initialisation");
   check(d.rd(kCreatorSwCfg) == C::kNoError, "a locked non-secret partition still reads");
+
+  // The old model adopted a checksum of the already-corrupt image at reset.
+  // Changing data after DIGEST must instead fail against the stored digest.
+  Dut corrupt;
+  check(corrupt.cmd(4, s0.off) == C::kNoError, "digest before corruption");
+  check(corrupt.wr(kEg2OtpTestExitToken, 1, 2) == C::kNoError,
+        "partition remains writable until reset");
+  corrupt.core.power_up();
+  check(corrupt.err(kEg2OtpSecret0) == C::kCheckFailError,
+        "reset detects data changed after digest calculation");
+  check(!corrupt.core.lc_data().test_tokens_valid &&
+        corrupt.port.alerts["fatal_check_error"] == 1,
+        "corrupt token partition raises fatal alert and withholds tokens");
+
+  Dut known;
+  check(known.cmd(4, kEg2OtpParts[kEg2OtpHwCfg1].off) == C::kNoError,
+        "digest short HW_CFG1 partition");
+  known.rd(eg2_otp_digest_off(kEg2OtpParts[kEg2OtpHwCfg1]));
+  check(known.rdata() == 0x0bfbee58d4257c23ull,
+        "DAI digest matches independent PRESENT reference for eight zero bytes");
 }
 
 void test_outputs() {

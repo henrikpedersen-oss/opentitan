@@ -248,7 +248,10 @@ class Eg2Pwrmgr : public Eg2IpModel, private Eg2PwrmgrPort {
     // The AST's main power-ok dips for a moment (the chip bench's ast_supply_if
     // glitch_vcmain_pok): eg2sim --stim pwrmgr.main_pok_glitch=1@<point>.
     sys_.stim_handlers["pwrmgr.main_pok_glitch"] = [this](const std::string &) {
-      core_.main_pok_glitch();
+      if (!core_.main_pok_glitch()) {
+        Eg2ModelStop::request("undocumented: main power glitch during deep-sleep entry: "
+                              "LOW_POWER_EXIT reset classification");
+      }
       return true;
     };
   }

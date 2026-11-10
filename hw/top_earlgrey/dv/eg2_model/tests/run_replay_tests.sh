@@ -8,9 +8,16 @@ replay=${1:?usage: run_replay_tests.sh <replay binary> <output directory>}
 out=${2:?output directory required}
 mkdir -p "$out"
 cd "$out"
-# The loader only needs the ELF32 identification and an empty program table.
-printf '\177ELF\001' > empty.elf
-dd if=/dev/zero bs=1 count=47 status=none >> empty.elf
+# Valid ELF32 little-endian RISC-V header, with no program or section table.
+printf '\177ELF\001\001\001' > empty.elf
+dd if=/dev/zero bs=1 count=9 status=none >> empty.elf
+printf '\002\000\363\000\001\000\000\000' >> empty.elf
+dd if=/dev/zero bs=1 count=16 status=none >> empty.elf
+printf '\064\000' >> empty.elf
+dd if=/dev/zero bs=1 count=10 status=none >> empty.elf
+# Previously accepted as an empty image despite its missing identification fields.
+printf '\177ELF\001' > malformed.elf
+dd if=/dev/zero bs=1 count=47 status=none >> malformed.elf
 : > empty.trace
 printf 'core   0: 3 0x00040000 (0x00000013)\n' > no-loads.trace
 # Read UART0.INTR_ENABLE at its reset value. This is an independent comparison.
@@ -37,3 +44,4 @@ run_case bus-error 1 bus-error.trace
 run_case empty-trace 1 empty.trace
 run_case no-comparisons 1 no-loads.trace
 run_case missing-expected-output 1 good.trace --expect uart0=does-not-exist.log
+run_case malformed-image 1 good.trace --rom malformed.elf

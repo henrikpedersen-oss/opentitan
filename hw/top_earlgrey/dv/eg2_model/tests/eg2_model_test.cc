@@ -16,6 +16,7 @@
 #include "ip/eg2_core_system.h"
 #include "ip/eg2_mem.h"
 #include "ip/eg2_periph_gpio.h"
+#include "ip/eg2_pwrmgr_core.h"
 
 namespace {
 unsigned checks = 0;
@@ -205,6 +206,31 @@ void check_tbre_error_race(eg2_model::Eg2CheriotMemSys &tbre, Bus &bus) {
   check(bus.read("TBRE_EPOCH") == 0, "a faulty sweep does not advance the epoch");
   system.unschedule(&tbre);
 }
+
+void check_power_entry_glitch() {
+  struct Port : Eg2PwrmgrPort {
+    uint32_t registers[10] = {};
+    Eg2PwrmgrCore *core = nullptr;
+    bool classified = true;
+    unsigned resets = 0;
+    uint32_t rd(Eg2PwrReg reg) override { return registers[unsigned(reg)]; }
+    void wr(Eg2PwrReg reg, uint32_t value) override { registers[unsigned(reg)] = value; }
+    void set_wakeup_intr() override {}
+    void request_reset(Eg2PwrReset, const std::string &, int, bool) override { ++resets; }
+    void lowpower_event() override { classified = core->main_pok_glitch(); }
+  } port;
+  Eg2PwrmgrCore core(port);
+  port.core = &core;
+  port.wr(Eg2PwrReg::kControl, 1);  // hint set, main domain powered down
+  check(core.enter_low_power(), "deep-sleep entry requested");
+  check(!port.classified && port.resets == 0,
+        "glitch at entry cannot predict an undocumented reset classification");
+  check(port.rd(Eg2PwrReg::kFaultStatus) == 4,
+        "documented MAIN_PD_GLITCH bit is still recorded");
+  core.after_reset(true, false, 0);
+  check(core.main_pok_glitch() && port.resets == 1,
+        "active-state power glitch still predicts the documented reset");
+}
 }  // namespace
 
 int sc_main(int, char **) {
@@ -224,6 +250,7 @@ int sc_main(int, char **) {
   check_alert_test(uart, uart_bus);
   check_gpio(gpio_bus);
   check_plic_claim(plic, plic_bus);
+  check_power_entry_glitch();
   check_tbre_error_race(tbre, tbre_bus);
   Eg2System::get().close_logs();
   std::printf("eg2_model_test: %u checks, %u failures\n", checks, failures);

@@ -15,6 +15,7 @@
 #ifndef EG2_MODEL_EG2_ROUTER_H_
 #define EG2_MODEL_EG2_ROUTER_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -24,6 +25,8 @@
 #include <tlm>
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
+
+#include "eg2_transaction.h"
 
 class Eg2Router : public sc_core::sc_module {
  public:
@@ -64,11 +67,12 @@ class Eg2Router : public sc_core::sc_module {
   }
 
   void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &delay) {
+    if (!eg2_model::valid_transaction(trans)) return;
     const uint64_t address = trans.get_address();
     const int index = decode(address);
     if (index < 0 || (windows_[index].size != 0 &&
-                     address + trans.get_data_length() >
-                         uint64_t(windows_[index].base) + windows_[index].size)) {
+                     !eg2_model::range_fits(address - windows_[index].base,
+                                           trans.get_data_length(), windows_[index].size))) {
       trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
       return;
     }
@@ -81,10 +85,22 @@ class Eg2Router : public sc_core::sc_module {
     const uint64_t address = trans.get_address();
     const int index = decode(address);
     if (index < 0) return false;
+    // DMI could bypass an earlier overlapping window (for example the bitmap's
+    // word-write restriction). Keep overlapping regions on the checked path.
+    const auto &window = windows_[index];
+    if (!window.size) return false;
+    for (int i = 0; i < index; ++i) {
+      if (uint64_t(windows_[i].base) < uint64_t(window.base) + window.size &&
+          uint64_t(window.base) < uint64_t(windows_[i].base) + windows_[i].size)
+        return false;
+    }
     trans.set_address(address - windows_[index].base);
     const bool granted = (*sockets_[index])->get_direct_mem_ptr(trans, dmi);
     trans.set_address(address);
     if (granted) {
+      if (dmi.get_start_address() > address - window.base ||
+          dmi.get_end_address() < address - window.base) return false;
+      dmi.set_end_address(std::min<uint64_t>(dmi.get_end_address(), uint64_t(window.size) - 1));
       dmi.set_start_address(dmi.get_start_address() + windows_[index].base);
       dmi.set_end_address(dmi.get_end_address() + windows_[index].base);
     }

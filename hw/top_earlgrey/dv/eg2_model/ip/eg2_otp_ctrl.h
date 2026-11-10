@@ -15,6 +15,7 @@
 #include "../eg2_ip_model.h"
 #include "hw/ip/kmac/dv/dpi/vendor/kerukuro_digestpp/algorithm/shake.hpp"
 #include "eg2_otp_data.h"
+#include "eg2_otp_crypto.h"
 
 namespace eg2_model {
 
@@ -33,7 +34,7 @@ namespace eg2_model {
 // MacroWriteBlankError (4): a write that would clear a programmed bit; the model keeps the old bits
 // and sets the new ones. Each command sets otp_operation_done; an error sets otp_error,
 // STATUS.DAI_ERROR and ERR_CODE_11 (the DAI's error code). The digest the DIGEST command writes is
-// a model value (FNV-1a over the partition, never zero), not the chip's PRESENT-based digest.
+// the PRESENT-based digest with the public simulation constants (eg2_otp_crypto.h).
 // Locks: a partition with a non-zero digest is write-locked, and a secret one read-locked, from the
 // next reset on ("the effect of locking a partition via the digest only takes effect after the
 // next system reset"); at reset the *_DIGEST CSRs take the digests from OTP. SW_CFG_WINDOW reads
@@ -109,7 +110,8 @@ class Eg2OtpCtrl : public Eg2IpModel {
       set_dword(off + 8 * w, scramble(v, p));
     }
     const Eg2OtpPart &pt = kEg2OtpParts[p];
-    set_dword(eg2_otp_digest_off(pt), 1);
+    const uint32_t digest_offset = eg2_otp_digest_off(pt);
+    set_dword(digest_offset, OtpCrypto::digest(otp().data() + pt.off, digest_offset - pt.off));
   }
 
   std::vector<uint8_t> lc_token(uint32_t off) {
@@ -237,79 +239,13 @@ class Eg2OtpCtrl : public Eg2IpModel {
     return read_lock_reg_[p] >= 0 && !(value(uint16_t(read_lock_reg_[p])) & 1);
   }
 
-  struct PresentKey {
-    uint64_t hi, lo;
-  };
-  static PresentKey present_next_key(PresentKey k, unsigned round) {
-    static constexpr uint8_t kSbox[16] = {0xc, 0x5, 0x6, 0xb, 0x9, 0x0, 0xa, 0xd,
-                                          0x3, 0xe, 0xf, 0x8, 0x4, 0x7, 0x1, 0x2};
-    uint64_t hi = ((k.hi & 7) << 61) | (k.lo >> 3);
-    uint64_t lo = ((k.lo & 7) << 61) | (k.hi >> 3);
-    hi = (hi & 0x00ffffffffffffffull) | (uint64_t(kSbox[hi >> 60]) << 60) |
-         (uint64_t(kSbox[(hi >> 56) & 0xf]) << 56);
-    hi ^= uint64_t(round) >> 2;
-    lo ^= uint64_t(round) << 62;
-    return {hi, lo};
+  static uint64_t scramble(uint64_t data, int partition) {
+    return eg2_model::OtpCrypto::encrypt(data,
+        eg2_model::OtpCrypto::partition_key(partition - kEg2OtpSecret0));
   }
-  static uint64_t present_inv_sbox(uint64_t data) {
-    static constexpr uint8_t kInv[16] = {0x5, 0xe, 0xf, 0x8, 0xc, 0x1, 0x2, 0xd,
-                                         0xb, 0x4, 0x6, 0x3, 0x0, 0x7, 0x9, 0xa};
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 16; ++i) out |= uint64_t(kInv[(data >> (4 * i)) & 0xf]) << (4 * i);
-    return out;
-  }
-  static uint64_t present_inv_perm(uint64_t data) {
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 64; ++i) {
-      unsigned to = i == 63 ? 63 : (4 * i) % 63;
-      out |= ((data >> i) & 1) << to;
-    }
-    return out;
-  }
-  static uint64_t present_sbox(uint64_t data) {
-    static constexpr uint8_t kSbox[16] = {0xc, 0x5, 0x6, 0xb, 0x9, 0x0, 0xa, 0xd,
-                                          0x3, 0xe, 0xf, 0x8, 0x4, 0x7, 0x1, 0x2};
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 16; ++i) out |= uint64_t(kSbox[(data >> (4 * i)) & 0xf]) << (4 * i);
-    return out;
-  }
-  static uint64_t present_perm(uint64_t data) {
-    uint64_t out = 0;
-    for (unsigned i = 0; i < 64; ++i) {
-      unsigned to = i == 63 ? 63 : (16 * i) % 63;
-      out |= ((data >> i) & 1) << to;
-    }
-    return out;
-  }
-  // otp_ctrl theory of operation "Scrambling" uses standard 31-round PRESENT-128 with a distinct
-  // netlist key for each secret partition. These are the testing keys published in
-  // top_earlgrey.secrets.testing.gen.hjson, not values inferred from RTL. The DAI scrambles a
-  // secret partition's 64-bit words on write and descrambles them on read.
-  static void present_round_keys(int p, PresentKey keys[32]) {
-    static constexpr PresentKey kKeys[] = {
-        {0xf9089cf2787c6c14ull, 0xb7d1a6c0618e831full},
-        {0xc8129e7a4149ba28ull, 0x31fe2e9fb3b2a1d2ull},
-        {0x5254f861ba80f82bull, 0x303da30635aa3d3aull},
-    };
-    keys[0] = kKeys[p - kEg2OtpSecret0];
-    for (unsigned i = 1; i < 32; ++i) keys[i] = present_next_key(keys[i - 1], i);
-  }
-  static uint64_t scramble(uint64_t data, int p) {
-    PresentKey keys[32];
-    present_round_keys(p, keys);
-    for (unsigned i = 0; i < 31; ++i) data = present_perm(present_sbox(data ^ keys[i].hi));
-    return data ^ keys[31].hi;
-  }
-  static uint64_t descramble(uint64_t data, int p) {
-    PresentKey keys[32];
-    present_round_keys(p, keys);
-    data ^= keys[31].hi;
-    for (int i = 30; i >= 0; --i) {
-      data = present_inv_perm(data);
-      data = present_inv_sbox(data);
-      data ^= keys[i].hi;
-    }
-    return data;
+  static uint64_t descramble(uint64_t data, int partition) {
+    return eg2_model::OtpCrypto::decrypt(data,
+        eg2_model::OtpCrypto::partition_key(partition - kEg2OtpSecret0));
   }
 
   uint32_t dai_read() {
@@ -365,9 +301,7 @@ class Eg2OtpCtrl : public Eg2IpModel {
     const Eg2OtpPart &pt = kEg2OtpParts[p];
     uint32_t da = eg2_otp_digest_off(pt);
     if (dword(da)) return kAccessError;  // already computed; locks at the next reset
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (uint32_t i = pt.off; i < da; ++i) h = (h ^ otp()[i]) * 0x100000001b3ull;
-    if (!h) h = 1;
+    const uint64_t h = OtpCrypto::digest(otp().data() + pt.off, da - pt.off);
     for (unsigned i = 0; i < 8; ++i) otp()[da + i] = uint8_t(h >> (8 * i));
     return kNoError;
   }

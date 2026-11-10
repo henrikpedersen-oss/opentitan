@@ -23,7 +23,7 @@
 //             output_key, and health_st_measurement, lc_ctrl's 128-bit diversification constant per
 //             life-cycle group (invalid, TEST_UNLOCKED*, DEV, PROD/PROD_END, RMA; interfaces.md
 //             RndCnstLcKeymgrDiv*). The padding to AdvDataWidth / GenDataWidth is not reproduced
-//             and the OTP shares are not descrambled, so the keys are not the chip's keys.
+//             so the keys are not the chip's keys. OTP root shares are descrambled by Eg2OtpCtrl.
 //             Generated keys: share 0 holds the key, share 1 zero.
 //             NumBootStages = 4 (Earl Grey since the upstream merge of 2026-11-05: Creator, CreatorInt,
 //             OwnerInt, Owner, Runtime; theory_of_operation.md "Advance").

@@ -197,4 +197,27 @@ sysmodel_test: $(OUT)/eg2_sysmodel_test
 replay_test: $(OUT)/eg2_sysmodel_replay
 	bash tests/run_replay_tests.sh $(abspath $(OUT))/eg2_sysmodel_replay $(abspath $(OUT))/replay-test-logs
 
-check: core_tests model_test sysmodel_test replay_test
+# Parser and cryptographic known-answer checks need only a C++17 compiler.
+.PHONY: utility_tests
+utility_tests: $(OUT)/eg2_elf_test $(OUT)/eg2_otp_crypto_test
+	$(OUT)/eg2_elf_test
+	$(OUT)/eg2_otp_crypto_test
+
+$(OUT)/eg2_elf_test: tests/eg2_elf_test.cc eg2_elf.h
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) $< -o $@
+
+$(OUT)/eg2_otp_crypto_test: tests/eg2_otp_crypto_test.cc ip/eg2_otp_crypto.h
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) $< -o $@
+
+$(OUT)/eg2_transport_test: tests/eg2_transport_test.cc $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $< -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+
+.PHONY: transport_test
+transport_test: $(OUT)/eg2_transport_test
+	$(OUT)/eg2_transport_test
+
+check: core_tests model_test sysmodel_test replay_test utility_tests transport_test
