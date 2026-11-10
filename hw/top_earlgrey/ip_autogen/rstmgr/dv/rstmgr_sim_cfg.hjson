@@ -98,6 +98,42 @@
       name: rstmgr_leaf_rst_shadow_attack
       uvm_test_seq: rstmgr_leaf_rst_shadow_attack_vseq
     }
+    // rstmgr against the reset manager reference model (env/rstmgr_cmodel_sb.sv, the C++ model
+    // hw/top_earlgrey/dv/eg2_model/ip/eg2_rstmgr_core.h). The random tests have no other checker
+    // (+en_scb=0); the smoke and reset tests run the existing sequences with the model checking next
+    // to the scoreboard. _inject_fail corrupts one prediction: it must fail.
+    {
+      name: rstmgr_cmodel_smoke
+      uvm_test_seq: rstmgr_smoke_vseq
+      run_opts: ["+rstmgr_cmodel=1"]
+      reseed: 5
+    }
+    {
+      name: rstmgr_cmodel_reset
+      uvm_test_seq: rstmgr_reset_vseq
+      run_opts: ["+rstmgr_cmodel=1"]
+      reseed: 5
+    }
+    {
+      name: rstmgr_cmodel_random
+      uvm_test_seq: rstmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=500000000", "+en_scb=0", "+rstmgr_cmodel=1"]
+      reseed: 20
+    }
+    {
+      name: rstmgr_cmodel_random_inject_fail
+      uvm_test_seq: rstmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=500000000", "+en_scb=0", "+rstmgr_cmodel=1",
+                 "+rstmgr_cmodel_corrupt=1"]
+      reseed: 1
+    }
+    {
+      name: rstmgr_cmodel_random_dump_inject_fail
+      uvm_test_seq: rstmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=500000000", "+en_scb=0", "+rstmgr_cmodel=1",
+                 "+rstmgr_cmodel_corrupt_dump=1"]
+      reseed: 1
+    }
   ]
 
   // List of regressions.
@@ -105,6 +141,10 @@
     {
       name: smoke
       tests: ["rstmgr_smoke"]
+    }
+    {
+      name: cmodel
+      tests: ["rstmgr_cmodel_smoke", "rstmgr_cmodel_reset", "rstmgr_cmodel_random"]
     }
   ]
 }

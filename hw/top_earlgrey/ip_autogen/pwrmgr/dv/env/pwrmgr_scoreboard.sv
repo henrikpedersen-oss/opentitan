@@ -9,6 +9,10 @@ class pwrmgr_scoreboard extends cip_base_scoreboard #(
 );
   `uvm_component_utils(pwrmgr_scoreboard)
 
+  // INTR_STATE reads not compared because the sequence does not predict them.
+  bit            intr_rd_unpredicted;
+  int unsigned   intr_skipped_reads;
+
   // local variables
 
   // TLM agent fifos
@@ -244,6 +248,18 @@ class pwrmgr_scoreboard extends cip_base_scoreboard #(
       // add individual case item for each csr
       "intr_state": begin
         if (skip_intr_chk) return;
+        // A read the sequence does not predict (cfg.intr_not_predicted, recorded at the address
+        // phase while the read is outstanding): not compared, counted. The sequence's
+        // write-1-to-clear that follows brings exp_intr back in step.
+        if (addr_phase_read) intr_rd_unpredicted = cfg.intr_not_predicted;
+        if (data_phase_read && intr_rd_unpredicted) begin
+          intr_rd_unpredicted = 1'b0;
+          intr_skipped_reads++;
+          `uvm_info(`gfn, $sformatf("INTR_STATE read 0x%0h not compared: not predicted by the sequence",
+                                    item.d_data), UVM_MEDIUM)
+          do_read_check = 1'b0;
+          return;
+        end
         if (data_phase_write) begin
           exp_intr &= ~item.a_data;
         end else if (data_phase_read) begin
@@ -360,6 +376,8 @@ class pwrmgr_scoreboard extends cip_base_scoreboard #(
 
   function void check_phase(uvm_phase phase);
     super.check_phase(phase);
+    `uvm_info(`gfn, $sformatf("INTR_STATE reads not compared (not predicted by the sequence): %0d",
+                              intr_skipped_reads), UVM_LOW)
     // post test checks - ensure that all local fifos and queues are empty
   endfunction
 

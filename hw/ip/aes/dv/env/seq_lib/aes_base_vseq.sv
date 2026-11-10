@@ -91,6 +91,10 @@ class aes_base_vseq extends cip_base_vseq #(
     csr_wr(.ptr(ral.ctrl_aux_shadowed.key_touch_forces_reseed), .value(cfg.do_reseed),
         .en_shadow_wr(1'b1), .blocking(1));
     csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+    // A reset injected between the write and the read (stress_all_with_rand_reset) returns the
+    // register's reset value: stop here, as the rest of this vseq does under reset (EG2,
+    // 2026-11-07: aes_stress_all_with_rand_reset seed 2 failed this check at the reset).
+    if (cfg.under_reset) return;
     `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
     // Lock auxiliary control register and try overwriting it afterwards.
     if (lock_ctrl_aux) begin
@@ -101,6 +105,7 @@ class aes_base_vseq extends cip_base_vseq #(
           .en_shadow_wr(1'b1), .blocking(1));
       // Read the current value back to ensure the contents of the register didn't change.
       csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+      if (cfg.under_reset) return;
       `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
       // Try unlocking the auxiliary control register and overwriting it afterwards. This is not
       // possible either as the lock persists until the next reset.
@@ -108,6 +113,7 @@ class aes_base_vseq extends cip_base_vseq #(
       csr_wr(.ptr(ral.ctrl_aux_shadowed.key_touch_forces_reseed), .value(!cfg.do_reseed),
           .en_shadow_wr(1'b1), .blocking(1));
       csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+      if (cfg.under_reset) return;
       `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
     end else begin
       // Don't lock it. This is the default value after reset. The write is mostly for coverage.

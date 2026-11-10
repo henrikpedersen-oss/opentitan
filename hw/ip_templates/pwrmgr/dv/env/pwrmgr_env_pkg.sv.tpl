@@ -22,6 +22,7 @@ package pwrmgr_env_pkg;
   import prim_mubi_pkg::MuBi4Width;
   import sec_cm_pkg::*;
   import pwrmgr_reg_pkg::NumRomInputs;
+  import eg2_pwrmgr_cmodel_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"
@@ -90,6 +91,8 @@ package pwrmgr_env_pkg;
   `include "pwrmgr_env_cov.sv"
   `include "pwrmgr_virtual_sequencer.sv"
   `include "pwrmgr_scoreboard.sv"
+  `include "pwrmgr_reg_cov.sv"
+  `include "pwrmgr_cmodel_sb.sv"
   `include "pwrmgr_env.sv"
   `include "pwrmgr_vseq_list.sv"
 

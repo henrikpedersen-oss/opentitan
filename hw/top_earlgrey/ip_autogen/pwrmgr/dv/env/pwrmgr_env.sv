@@ -11,6 +11,7 @@ class pwrmgr_env extends cip_base_env #(
   `uvm_component_utils(pwrmgr_env)
 
   esc_agent m_esc_agent;
+  pwrmgr_cmodel_sb m_cmodel_sb;
 
   `uvm_component_new
 
@@ -48,11 +49,21 @@ class pwrmgr_env extends cip_base_env #(
     m_esc_agent = esc_agent::type_id::create("m_esc_agent", this);
     uvm_config_db#(esc_agent_cfg)::set(this, "m_esc_agent", "cfg", cfg.m_esc_agent_cfg);
     cfg.m_esc_agent_cfg.en_cov = cfg.en_cov;
+    if (cfg.en_cmodel) begin
+      m_cmodel_sb = pwrmgr_cmodel_sb::type_id::create("m_cmodel_sb", this);
+      m_cmodel_sb.cfg = cfg;
+    end
 
   endfunction
 
   function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
+    if (cfg.en_cmodel) begin
+      foreach (m_tl_agents[i]) begin
+        m_tl_agents[i].monitor.a_chan_port.connect(m_cmodel_sb.tl_a_fifo.analysis_export);
+        m_tl_agents[i].monitor.d_chan_port.connect(m_cmodel_sb.tl_d_fifo.analysis_export);
+      end
+    end
   endfunction
 
 endclass

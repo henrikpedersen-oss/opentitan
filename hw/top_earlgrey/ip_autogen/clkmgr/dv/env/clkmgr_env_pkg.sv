@@ -21,6 +21,7 @@ package clkmgr_env_pkg;
   import lc_ctrl_pkg::lc_tx_t;
   import lc_ctrl_pkg::On;
   import lc_ctrl_pkg::Off;
+  import eg2_clkmgr_cmodel_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"
@@ -154,6 +155,8 @@ package clkmgr_env_pkg;
   `include "clkmgr_env_cov.sv"
   `include "clkmgr_virtual_sequencer.sv"
   `include "clkmgr_scoreboard.sv"
+  `include "clkmgr_cmodel_cov.sv"
+  `include "clkmgr_cmodel_sb.sv"
   `include "clkmgr_env.sv"
   `include "clkmgr_vseq_list.sv"
 

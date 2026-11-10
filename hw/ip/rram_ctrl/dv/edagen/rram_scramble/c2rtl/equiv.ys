@@ -1,0 +1,14 @@
+# C-to-RTL equivalence of rram_ctrl's scrambling mask: Bambu's core from rram_gf_mask_hls.c against
+# rram_scramble (through rram_scramble_unit), for every key, address and output word. @RTL@ and
+# @HLS@ are filled in by the Makefile.
+read_slang --top rram_scramble_unit -I@INC@ @RTL@
+read_verilog -defer @HLS@ @MITER@
+prep -top rram_gf_mask_equiv
+flatten
+memory_map
+async2sync
+opt_clean
+# The first proof: the two never disagree. The second: both answer within the bound, so the first
+# is not vacuous.
+sat -verify -seq @SEQ@ -set-init-zero -prove bad 0 -show-inputs
+sat -verify -seq @SEQ@ -set-init-zero -prove-skip @SKIP@ -prove done_seen 1 -show-inputs

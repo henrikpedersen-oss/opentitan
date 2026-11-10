@@ -14,6 +14,8 @@ class alert_handler_env extends cip_base_env #(
 
   alert_agent alert_host_agent[];
   esc_agent   esc_device_agent[];
+  // EG2: the alert handler reference model's scoreboard (+alert_handler_cmodel=1).
+  alert_handler_cmodel_sb m_cmodel_sb;
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -39,6 +41,11 @@ class alert_handler_env extends cip_base_env #(
       cfg.esc_device_cfg[i].en_cov = cfg.en_cov;
     end
 
+    if (cfg.en_cmodel) begin
+      m_cmodel_sb = alert_handler_cmodel_sb::type_id::create("m_cmodel_sb", this);
+      m_cmodel_sb.cfg = cfg;
+    end
+
     // get vifs
     if (!uvm_config_db#(crashdump_vif)::get(this, "", "crashdump_vif", cfg.crashdump_vif)) begin
       `uvm_fatal(get_full_name(), "failed to get crashdump_vif from uvm_config_db")
@@ -57,6 +64,17 @@ class alert_handler_env extends cip_base_env #(
       end
       foreach (esc_device_agent[i]) begin
         esc_device_agent[i].m_esc_port.connect(scoreboard.esc_fifo[i].analysis_export);
+      end
+    end
+    if (cfg.en_cmodel) begin
+      foreach (m_tl_agents[i]) begin
+        m_tl_agents[i].monitor.d_chan_port.connect(m_cmodel_sb.tl_d_fifo.analysis_export);
+      end
+      foreach (alert_host_agent[i]) begin
+        alert_host_agent[i].m_alert_port.connect(m_cmodel_sb.alert_fifo[i].analysis_export);
+      end
+      foreach (esc_device_agent[i]) begin
+        esc_device_agent[i].m_esc_port.connect(m_cmodel_sb.esc_fifo[i].analysis_export);
       end
     end
     if (cfg.is_active) begin

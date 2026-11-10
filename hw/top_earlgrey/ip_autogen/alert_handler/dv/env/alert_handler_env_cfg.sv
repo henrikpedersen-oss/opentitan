@@ -12,6 +12,10 @@ class alert_handler_env_cfg extends cip_base_env_cfg #(.RAL_T(alert_handler_reg_
 
   alert_handler_vif alert_handler_vif;
 
+  // EG2: also check the block against the alert handler reference model (alert_handler_cmodel_sb,
+  // hw/top_earlgrey/dv/eg2_model/ip/eg2_alert_core.h): +alert_handler_cmodel=1.
+  bit en_cmodel = 1'b0;
+
   `uvm_object_utils_begin(alert_handler_env_cfg)
     `uvm_field_array_object(alert_host_cfg, UVM_DEFAULT)
     `uvm_field_array_object(esc_device_cfg, UVM_DEFAULT)
@@ -21,6 +25,7 @@ class alert_handler_env_cfg extends cip_base_env_cfg #(.RAL_T(alert_handler_reg_
 
   virtual function void initialize(bit inherit_ral_models = 1'b0);
     num_edn = 1;
+    void'($value$plusargs("alert_handler_cmodel=%b", en_cmodel));
     super.initialize(inherit_ral_models);
     shadow_update_err_status_fields[ral.loc_alert_cause[LocalShadowRegUpdateErr].la] = 1;
     shadow_storage_err_status_fields[ral.loc_alert_cause[LocalShadowRegStorageErr].la] = 1;

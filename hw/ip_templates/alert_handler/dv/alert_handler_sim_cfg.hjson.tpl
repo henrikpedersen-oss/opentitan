@@ -150,6 +150,57 @@
       run_opts: ["+en_scb=0"]
       reseed: 20
     }
+
+    // EG2: the block against the alert handler reference model (env/alert_handler_cmodel_sb.sv,
+    // the C++ model hw/top_earlgrey/dv/eg2_model/ip/eg2_alert_core.h shared with eg2sim), next to
+    // OpenTitan's scoreboard, with OpenTitan's sequences as constrained-random stimulus. Not with
+    // alert_accum_saturation (it forces the accumulator inside the design) nor entropy_stress.
+    {
+      name: ${module_instance_name}_cmodel_smoke
+      uvm_test_seq: alert_handler_smoke_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_random_alerts
+      uvm_test_seq: alert_handler_random_alerts_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_random_classes
+      uvm_test_seq: alert_handler_random_classes_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_esc_intr_timeout
+      uvm_test_seq: alert_handler_esc_intr_timeout_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_esc_alert_accum
+      uvm_test_seq: alert_handler_esc_alert_accum_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_sig_int_fail
+      uvm_test_seq: alert_handler_sig_int_fail_vseq
+      run_opts: ["+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_ping_timeout
+      uvm_test_seq: alert_handler_ping_timeout_vseq
+      run_opts: ["+test_timeout_ns=1_000_000_000", "+alert_handler_cmodel=1"]
+    }
+    {
+      name: ${module_instance_name}_cmodel_lpg
+      uvm_test_seq: alert_handler_lpg_vseq
+      run_opts: ["+test_timeout_ns=1_000_000_000", "+alert_handler_cmodel=1"]
+    }
+    {
+      // Must fail: the first exactly predicted read is expected with bit 0 inverted.
+      name: ${module_instance_name}_cmodel_smoke_inject_fail
+      uvm_test_seq: alert_handler_smoke_vseq
+      run_opts: ["+alert_handler_cmodel=1", "+alert_handler_cmodel_corrupt=1"]
+    }
   ]
 
   // List of regressions.
@@ -157,6 +208,16 @@
     {
       name: smoke
       tests: ["${module_instance_name}_smoke"]
+    }
+    {
+      name: cmodel
+      tests: ["${module_instance_name}_cmodel_smoke", "${module_instance_name}_cmodel_random_alerts",
+              "${module_instance_name}_cmodel_random_classes",
+              "${module_instance_name}_cmodel_esc_intr_timeout",
+              "${module_instance_name}_cmodel_esc_alert_accum",
+              "${module_instance_name}_cmodel_sig_int_fail",
+              "${module_instance_name}_cmodel_ping_timeout", "${module_instance_name}_cmodel_lpg",
+              "${module_instance_name}_cmodel_smoke_inject_fail"]
     }
   ]
 }

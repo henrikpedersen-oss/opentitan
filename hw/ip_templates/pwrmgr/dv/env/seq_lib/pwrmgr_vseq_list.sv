@@ -21,3 +21,4 @@
 `include "pwrmgr_disable_rom_integrity_check_vseq.sv"
 `include "pwrmgr_reset_invalid_vseq.sv"
 `include "pwrmgr_lowpower_invalid_vseq.sv"
+`include "pwrmgr_cmodel_random_vseq.sv"

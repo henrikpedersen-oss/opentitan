@@ -1,0 +1,78 @@
+# edagen's configuration for rram_ctrl's life-cycle manager hardware plug: rram_ctrl_lcmgr (the init
+# FSM that fetches the scrambling keys from OTP and reads the creator and owner seeds for the key
+# manager, and the RMA FSM that wipes the creator, owner and isolated info pages and the non-OTP data
+# pages), wrapped as rtl/rram_ctrl_lcmgr_unit.sv. Generate and run (edagen is eg2_top_verification's
+# scripts/edagen), on nyx:
+#   python3 scripts/edagen/edagen.py generate --config <this file> --out scratch/edagen/rram_ctrl_lcmgr
+#   make -C scratch/edagen/rram_ctrl_lcmgr all LOWRISC_ROOT=<fork> NANGATE45_DIR=<liberty dir>
+# The bench is edagen's generated UVM skeleton with a hand-written part (dv/rram_ctrl_lcmgr_cmodel_pkg.sv):
+# otp_ctrl's key side answers the key requests, life cycle and software drive INIT.VAL,
+# lc_seed_hw_rd_en, rma_req / rma_seed and rram_disable, a model of the controller path (rram_ctrl_arb,
+# rram_ctrl_rd / rram_ctrl_wr, the RRAM words) answers the plug's requests, and the scoreboard checks
+# every request and every output against the life-cycle manager reference model
+# (hw/top_earlgrey/dv/eg2_model/ip/eg2_rram_lcmgr_core.h).
+module: rram_ctrl_lcmgr
+clock_frequency_hz: 100_000_000
+top: rram_ctrl_lcmgr_unit
+description: "rram_ctrl life-cycle manager plug (rram_ctrl_lcmgr), checked against the lcmgr reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rram_ctrl_lcmgr_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+# clk_i is rram_ctrl's clock; clk_otp_i otp_ctrl's (io_div4, 24 MHz in Earl Grey), asynchronous: the
+# key requests cross with a req/ack synchronizer (theory_of_operation.md "StReqAddrKey").
+clocks:
+  - {name: clk, port: clk_i}
+  - {name: otp, port: clk_otp_i, freq_hz: 24_000_000, group: otp}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_otp, port: rst_otp_ni, active_low: true, sync_to: otp}
+
+# One signal-level interface per clock domain: the hand-written stimulus (dv/) drives them directly
+# and the generated monitors sample every signal each cycle of their clock for the scoreboard.
+interfaces:
+  - {name: ok, protocol: generic, prefix: ok_, clock: otp, reset: rst_otp}
+  - {name: ct, protocol: generic, prefix: ct_, clock: clk, reset: rst}
+
+dv:
+  files:
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_lcmgr_dpi.cc
+    - dv/rram_ctrl_lcmgr_cmodel_pkg.sv
+  packages: [rram_ctrl_lcmgr_cmodel_pkg]
+  tests: [rram_ctrl_lcmgr_cmodel_random_test, rram_ctrl_lcmgr_cmodel_random_inject_fail_test,
+          rram_ctrl_lcmgr_cmodel_rma_test]
+
+# FPV properties (formal/), and the CDC/RDC domains of the ports whose domain is not their interface's
+# clock: the life-cycle signals come from lc_ctrl (another clock), rated async, so CDC checks that
+# lcmgr synchronizes them (theory_of_operation.md: lc_seed_hw_rd_en, rma_req; rma_seed is the data the
+# RMA request qualifies).
+formal:
+  files: [formal/rram_ctrl_lcmgr_fpv.sv]
+  cdc_ports:
+    ct_seed_hw_rd_en_i: async
+    ct_rma_req_i: async
+    ct_rma_seed_i: async
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv, reset]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# rram_ctrl_lcmgr_cmodel_random_inject_fail_test corrupts one prediction and must fail: not listed
+# (edagen has no expected failure); run it with make sim TEST=rram_ctrl_lcmgr_cmodel_random_inject_fail_test.
+tests:
+  - {name: cmodel_random, uvm_test: rram_ctrl_lcmgr_cmodel_random_test, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 1800}
+  - {name: cmodel_rma, uvm_test: rram_ctrl_lcmgr_cmodel_rma_test, seeds: [11, 12], timeout: 7200}

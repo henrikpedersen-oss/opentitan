@@ -9,6 +9,7 @@ filesets:
     depend:
       - lowrisc:dv:ralgen
       - lowrisc:dv:cip_lib
+      - lowrisc:dv:eg2_clkmgr_cmodel
       - ${instance_vlnv("lowrisc:ip:pwrmgr_pkg")}
       - ${instance_vlnv("lowrisc:ip:clkmgr_pkg")}
       - ${instance_vlnv("lowrisc:constants:top_pkg")}
@@ -19,6 +20,8 @@ filesets:
       - clkmgr_env_cov.sv: {is_include_file: true}
       - clkmgr_virtual_sequencer.sv: {is_include_file: true}
       - clkmgr_scoreboard.sv: {is_include_file: true}
+      - clkmgr_cmodel_cov.sv: {is_include_file: true}
+      - clkmgr_cmodel_sb.sv: {is_include_file: true}
       - clkmgr_env.sv: {is_include_file: true}
       - seq_lib/clkmgr_vseq_list.sv: {is_include_file: true}
       - seq_lib/clkmgr_base_vseq.sv: {is_include_file: true}
@@ -34,6 +37,7 @@ filesets:
       - seq_lib/clkmgr_smoke_vseq.sv: {is_include_file: true}
       - seq_lib/clkmgr_stress_all_vseq.sv: {is_include_file: true}
       - seq_lib/clkmgr_trans_vseq.sv: {is_include_file: true}
+      - seq_lib/clkmgr_cmodel_random_vseq.sv: {is_include_file: true}
       - clkmgr_if.sv
     file_type: systemVerilogSource
 

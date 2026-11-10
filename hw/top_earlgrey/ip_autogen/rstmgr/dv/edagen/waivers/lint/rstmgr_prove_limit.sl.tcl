@@ -1,0 +1,2 @@
+# reason: a time limit for Superlint's automatic formal checks (dead code, overflow, FSM reachability), not a waiver of any check: on pwrmgr one of them ran more than 40 minutes without an answer (2026-11-07); rstmgr has more state machines (one per leaf consistency checker), so the same bound applies; checks still open at the limit end undetermined and the report lists them owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+set_prove_time_limit 10m

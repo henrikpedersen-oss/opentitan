@@ -10,6 +10,7 @@ filesets:
       - lowrisc:dv:ralgen
       - lowrisc:dv:cip_lib
       - lowrisc:dv:esc_agent
+      - lowrisc:dv:eg2_pwrmgr_cmodel
       - lowrisc:ip:rv_core_ibex_pkg
       - ${instance_vlnv("lowrisc:ip:pwrmgr_pkg")}
       - ${instance_vlnv("lowrisc:constants:top_pkg")}
@@ -20,6 +21,8 @@ filesets:
       - pwrmgr_if.sv
       - pwrmgr_virtual_sequencer.sv: {is_include_file: true}
       - pwrmgr_scoreboard.sv: {is_include_file: true}
+      - pwrmgr_reg_cov.sv: {is_include_file: true}
+      - pwrmgr_cmodel_sb.sv: {is_include_file: true}
       - pwrmgr_env.sv: {is_include_file: true}
       - seq_lib/pwrmgr_vseq_list.sv: {is_include_file: true}
       - seq_lib/pwrmgr_base_vseq.sv: {is_include_file: true}
@@ -41,6 +44,7 @@ filesets:
       - seq_lib/pwrmgr_disable_rom_integrity_check_vseq.sv: {is_include_file: true}
       - seq_lib/pwrmgr_reset_invalid_vseq.sv: {is_include_file: true}
       - seq_lib/pwrmgr_lowpower_invalid_vseq.sv: {is_include_file: true}
+      - seq_lib/pwrmgr_cmodel_random_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 generate:

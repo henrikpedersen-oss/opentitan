@@ -1,0 +1,4 @@
+// reason: a HAL check that reports no design error in this unit (the hit, 2026-11-07, is below); every other HAL check stays on owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// NEGIDX (1), prim_mubi_pkg.sv:1001: the static assertion CheckMuBi32ValsComplementary_A (ASSERT_STATIC_IN_PACKAGE declares an unused_bit array indexed by the enum comparison), not design logic (as the scrambling unit's waiver).
+// Not waived: NSLOOP (2), rram_ctrl_otp.sv:652 and :687, for loops bounded by the register otp_size_q, a finding (status/rtl_tickets.md); HAL's -NOCHECK does not cover this synthesis error, and HAL stops its synthesis checks there.
+-NOCHECK NEGIDX

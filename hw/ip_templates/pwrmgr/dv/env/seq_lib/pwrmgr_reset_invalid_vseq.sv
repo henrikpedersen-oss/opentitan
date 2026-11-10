@@ -84,7 +84,9 @@ class pwrmgr_reset_invalid_vseq extends pwrmgr_base_vseq;
               ), UVM_MEDIUM)
 
     `uvm_info(`gfn, "Trying to write to reset_en CSR", UVM_MEDIUM)
-    csr_wr(.ptr(ral.reset_en.en_0), .value(resets_en));
+    // The whole register: a write of field en_0 alone left en_1 at 0 although resets_en enabled it
+    // (EG2, 2026-11-07: pwrmgr_reset seed 2 waited for ever for a reset only en_1 enables).
+    csr_wr(.ptr(ral.reset_en), .value(resets_en));
     // This is necessary to propagate reset_en.
     wait_for_csr_to_propagate_to_slow_domain();
 

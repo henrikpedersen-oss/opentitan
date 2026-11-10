@@ -1,0 +1,3 @@
+// reason: CBPAHI (combinational path through several units drives an output) is HAL's design-style rule, not a correctness check: OpenTitan's IPs drive outputs combinationally by design (TL-UL adapters, prim FIFOs and syncs, OTBN's register top and memory interfaces), its lint flows (AscentLint, Verilator, Verible) do not ask for registered outputs, and the timing of these paths is synthesis' (Genus) owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// 1152 hits in otbn, 2026-11-07 (first full flow, before this waiver). The same waiver as rv_dm's waivers/lint/rv_dm_style.halrc. Each line below is one HAL argument.
+-NOCHECK CBPAHI

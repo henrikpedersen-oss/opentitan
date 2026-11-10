@@ -1,0 +1,2 @@
+// reason: NEGIDX (negative array index) has one hit, prim_mubi_pkg.sv line 1001: the ASSERT_STATIC_IN_PACKAGE macro's array whose index goes negative only if the static assertion is false (MuBi32True == ~MuBi32False, true); a static-assertion idiom, no array access owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+-NOCHECK NEGIDX

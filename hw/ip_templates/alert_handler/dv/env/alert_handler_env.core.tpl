@@ -10,6 +10,7 @@ filesets:
       - lowrisc:dv:ralgen
       - lowrisc:dv:cip_lib
       - lowrisc:dv:esc_agent
+      - lowrisc:dv:eg2_alert_cmodel
       - ${instance_vlnv(f"lowrisc:ip:{module_instance_name}_pkg:0.1")}
       - lowrisc:prim:mubi_pkg
       - ${instance_vlnv("lowrisc:constants:top_pkg")}
@@ -20,6 +21,8 @@ filesets:
       - ${module_instance_name}_env_cov.sv: {is_include_file: true}
       - ${module_instance_name}_virtual_sequencer.sv: {is_include_file: true}
       - ${module_instance_name}_scoreboard.sv: {is_include_file: true}
+      - alert_handler_cmodel_cov.sv: {is_include_file: true}
+      - alert_handler_cmodel_sb.sv: {is_include_file: true}
       - ${module_instance_name}_env.sv: {is_include_file: true}
       - seq_lib/alert_handler_vseq_list.sv: {is_include_file: true}
       - seq_lib/alert_handler_base_vseq.sv: {is_include_file: true}

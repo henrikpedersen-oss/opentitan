@@ -1,0 +1,7 @@
+// reason: HAL checks that report no design error in this unit (the hits, 2026-11-08, are below); every other HAL check stays on owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// NEGIDX (1), prim_mubi_pkg.sv:1001: the static assertion CheckMuBi32ValsComplementary_A (ASSERT_STATIC_IN_PACKAGE declares an unused_bit array indexed by the enum comparison), not design logic (as the scrambling and OTP units' waivers).
+// TERMST (1), prim_fifo_sync.sv:152: gen_normal_fifo.under_rst, the FIFO's one-way "out of reset" flag, a terminal state by design (prim primitive, shared by every block).
+// CBPAHI (65): combinational paths through rram_ctrl_arb, rram_ctrl_rd, rram_ctrl_wr and the write FIFO (e.g. rram_done -> rd op_done -> arbiter -> sw_done; FIFO pass-through -> wr request). The unit wraps these modules exactly as rram_ctrl.sv connects them, so the same paths exist in rram_ctrl; they are design structure, not an error of this unit. Timing is checked by synthesis (Genus / Yosys reports).
+-NOCHECK NEGIDX
+-NOCHECK TERMST
+-NOCHECK CBPAHI

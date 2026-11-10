@@ -145,6 +145,29 @@
       uvm_test_seq: pwrmgr_lowpower_invalid_vseq
       run_opts: ["+test_timeout_ns=1000000"]
     }
+    // pwrmgr against the power manager reference model (env/pwrmgr_cmodel_sb.sv, the C++ model
+    // hw/top_earlgrey/dv/eg2_model/ip/eg2_pwrmgr_core.h). The random tests have no other checker
+    // (+en_scb=0); the smoke test runs the existing sequence with the model checking next to the
+    // scoreboard. _inject_fail corrupts one prediction: it must fail.
+    {
+      name: pwrmgr_cmodel_smoke
+      uvm_test_seq: pwrmgr_smoke_vseq
+      run_opts: ["+test_timeout_ns=1000000", "+pwrmgr_cmodel=1"]
+      reseed: 5
+    }
+    {
+      name: pwrmgr_cmodel_random
+      uvm_test_seq: pwrmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+pwrmgr_cmodel=1"]
+      reseed: 20
+    }
+    {
+      name: pwrmgr_cmodel_random_inject_fail
+      uvm_test_seq: pwrmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+pwrmgr_cmodel=1",
+                 "+pwrmgr_cmodel_corrupt=1"]
+      reseed: 1
+    }
   ]
 
   // List of regressions.
@@ -152,6 +175,10 @@
     {
       name: smoke
       tests: ["pwrmgr_smoke"]
+    }
+    {
+      name: cmodel
+      tests: ["pwrmgr_cmodel_smoke", "pwrmgr_cmodel_random", "pwrmgr_cmodel_random_inject_fail"]
     }
   ]
 }

@@ -12,6 +12,15 @@ class pwrmgr_env_cfg extends cip_base_env_cfg #(
   // Invalid state test. Used to disable interrupt check.
   bit invalid_st_test = 0;
 
+  // Set by check_and_clear_interrupt(.check_expected(0)) while it reads INTR_STATE: the sequence
+  // makes no prediction for that read, so the scoreboard does not compare it (EG2 decision
+  // 2026-11-08: the documents do not define the wakeup interrupt after a reset ends low power, a
+  // fall through or an abort; the C-model scoreboard checks it within the documented bounds).
+  bit intr_not_predicted = 0;
+
+  // Also check pwrmgr against the power manager reference model (pwrmgr_cmodel_sb): +pwrmgr_cmodel=1.
+  bit en_cmodel = 1'b0;
+
   // ext component cfgs
   esc_agent_cfg m_esc_agent_cfg;
 
@@ -46,6 +55,7 @@ class pwrmgr_env_cfg extends cip_base_env_cfg #(
     `DV_CHECK_RANDOMIZE_FATAL(m_esc_agent_cfg)
     // Disable escalation ping coverage.
     m_esc_agent_cfg.en_ping_cov = 0;
+    void'($value$plusargs("pwrmgr_cmodel=%b", en_cmodel));
   endfunction
 
 endclass

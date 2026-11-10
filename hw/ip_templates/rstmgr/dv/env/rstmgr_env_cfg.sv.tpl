@@ -9,6 +9,9 @@ class rstmgr_env_cfg extends cip_base_env_cfg #(
   // This scoreboard handle is used to flag expected errors.
   rstmgr_scoreboard  scoreboard;
 
+  // Also check rstmgr against the reset manager reference model (rstmgr_cmodel_sb): +rstmgr_cmodel=1.
+  bit en_cmodel = 1'b0;
+
   // ext component cfgs
 
   `uvm_object_utils_begin(rstmgr_env_cfg)
@@ -29,6 +32,7 @@ class rstmgr_env_cfg extends cip_base_env_cfg #(
 
     tl_intg_alert_fields[ral.err_code.reg_intg_err] = 1;
     m_tl_agent_cfg.max_outstanding_req = 1;
+    void'($value$plusargs("rstmgr_cmodel=%b", en_cmodel));
   endfunction
 
 endclass

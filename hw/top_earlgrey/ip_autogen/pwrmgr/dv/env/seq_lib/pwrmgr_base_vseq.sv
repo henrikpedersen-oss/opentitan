@@ -256,7 +256,10 @@ class pwrmgr_base_vseq extends cip_base_vseq #(
       csr_rd_check(.ptr(ral.intr_state.wakeup), .compare_value(expected),
                    .err_msg("interrupt mismatch"));
     end else begin
+      // No prediction: the scoreboard does not compare this read (cfg.intr_not_predicted).
+      cfg.intr_not_predicted = 1'b1;
       csr_rd(.ptr(ral.intr_state.wakeup), .value(expected));
+      cfg.intr_not_predicted = 1'b0;
     end
     csr_rd(.ptr(ral.intr_enable.wakeup), .value(enable));
     `DV_CHECK_EQ(cfg.pwrmgr_vif.intr_wakeup, expected && enable)

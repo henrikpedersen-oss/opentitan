@@ -127,6 +127,70 @@
       name: clkmgr_regwen
       uvm_test_seq: clkmgr_regwen_vseq
     }
+    // clkmgr against the clock manager reference model (env/clkmgr_cmodel_sb.sv, the C++ model
+    // hw/top_earlgrey/dv/eg2_model/ip/eg2_clkmgr_core.h). The random tests have no other checker
+    // (+en_scb=0); the smoke, trans, peri, extclk and frequency tests run their sequences with the
+    // model checking next to the scoreboard. _inject_fail corrupts one prediction and _mutate runs
+    // a mutated model: both must fail. +clkmgr_cmodel_mask_known=1 counts the known RTL finding
+    // (EXTCLK_CTRL.SEL: another value reaches all_clk_byp_req_o) instead of failing on it.
+    {
+      name: clkmgr_cmodel_smoke
+      uvm_test_seq: clkmgr_smoke_vseq
+      run_opts: ["+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+    }
+    {
+      name: clkmgr_cmodel_trans
+      uvm_test_seq: clkmgr_trans_vseq
+      run_opts: ["+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+    }
+    {
+      name: clkmgr_cmodel_peri
+      uvm_test_seq: clkmgr_peri_vseq
+      run_opts: ["+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+    }
+    {
+      name: clkmgr_cmodel_extclk
+      uvm_test_seq: clkmgr_extclk_vseq
+      run_opts: ["+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+    }
+    // The extclk sequence with the known finding not masked: fails on it until it is fixed.
+    {
+      name: clkmgr_cmodel_extclk_unmasked
+      uvm_test_seq: clkmgr_extclk_vseq
+      run_opts: ["+clkmgr_cmodel=1"]
+    }
+    {
+      name: clkmgr_cmodel_frequency
+      uvm_test_seq: clkmgr_frequency_vseq
+      run_opts: ["+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+    }
+    {
+      name: clkmgr_cmodel_random
+      uvm_test_seq: clkmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1"]
+      reseed: 20
+    }
+    {
+      name: clkmgr_cmodel_random_inject_fail
+      uvm_test_seq: clkmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1",
+                 "+clkmgr_cmodel_corrupt=1"]
+      reseed: 1
+    }
+    {
+      name: clkmgr_cmodel_random_mutate_jitter
+      uvm_test_seq: clkmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1",
+                 "+clkmgr_cmodel_mutate=1"]
+      reseed: 1
+    }
+    {
+      name: clkmgr_cmodel_random_mutate_hints
+      uvm_test_seq: clkmgr_cmodel_random_vseq
+      run_opts: ["+test_timeout_ns=200000000", "+en_scb=0", "+clkmgr_cmodel=1", "+clkmgr_cmodel_mask_known=1",
+                 "+clkmgr_cmodel_mutate=2"]
+      reseed: 1
+    }
   ]
 
   // List of regressions.
@@ -134,6 +198,13 @@
     {
       name: smoke
       tests: ["clkmgr_smoke"]
+    }
+    {
+      name: cmodel
+      tests: ["clkmgr_cmodel_smoke", "clkmgr_cmodel_trans", "clkmgr_cmodel_peri",
+              "clkmgr_cmodel_extclk", "clkmgr_cmodel_frequency", "clkmgr_cmodel_random",
+              "clkmgr_cmodel_random_inject_fail", "clkmgr_cmodel_random_mutate_jitter",
+              "clkmgr_cmodel_random_mutate_hints"]
     }
   ]
 }

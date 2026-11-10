@@ -1,0 +1,60 @@
+# edagen's configuration for rram_ctrl's memory-protection unit: rram_ctrl_region_cfg,
+# rram_ctrl_mp and rram_ctrl_mp_region_sel, wrapped as rram_ctrl.sv connects them
+# (rtl/rram_ctrl_mp_unit.sv). Generate and run (edagen is eg2_top_verification's scripts/edagen;
+# make block-flow takes hw/ip/<BLOCK>/dv/edagen/<BLOCK>.yaml, so this unit runs directly):
+#   python3 scripts/edagen/edagen.py generate --config <this file> --out scratch/edagen/rram_ctrl_mp
+#   make -C scratch/edagen/rram_ctrl_mp all LOWRISC_ROOT=<fork> NANGATE45_DIR=<liberty dir>
+# The bench is edagen's generated UVM skeleton with a hand-written stimulus and a scoreboard that
+# checks every cycle against the memory-protection reference model (dv/rram_ctrl_mp_cmodel_pkg.sv;
+# the model is hw/top_earlgrey/dv/eg2_model/ip/eg2_rram_mp_core.h, eg2sim's too).
+module: rram_ctrl_mp
+clock_frequency_hz: 100_000_000
+top: rram_ctrl_mp_unit
+description: "rram_ctrl memory protection (region_cfg + mp + region_sel), checked against the memory-protection reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rram_ctrl_mp_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+clocks:
+  - {name: clk, port: clk_i}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+# One signal-level interface with every port: the hand-written driver (dv/) drives it directly and
+# the generated monitor samples every signal each cycle for the scoreboard.
+interfaces:
+  - {name: mp, protocol: generic, prefix: mp_}
+
+dv:
+  files:
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_dpi.cc
+    - dv/rram_ctrl_mp_cmodel_pkg.sv
+  packages: [rram_ctrl_mp_cmodel_pkg]
+  tests: [rram_ctrl_mp_cmodel_random_test, rram_ctrl_mp_cmodel_random_inject_fail_test]
+
+formal:
+  files: [formal/rram_ctrl_mp_fpv.sv]
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# rram_ctrl_mp_cmodel_random_inject_fail_test corrupts one prediction and must fail: not listed
+# (edagen has no expected failure); run it with make sim TEST=rram_ctrl_mp_cmodel_random_inject_fail_test.
+tests:
+  - {name: cmodel_random, uvm_test: rram_ctrl_mp_cmodel_random_test, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 1800}
+  - {name: cmodel_random_long, uvm_test: rram_ctrl_mp_cmodel_random_test, seeds: [11, 12], plusargs: ["+num_cycles=200000"], timeout: 3600}

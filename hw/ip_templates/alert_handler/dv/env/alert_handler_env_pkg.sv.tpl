@@ -101,6 +101,8 @@ package ${module_instance_name}_env_pkg;
   `include "${module_instance_name}_env_cov.sv"
   `include "${module_instance_name}_virtual_sequencer.sv"
   `include "${module_instance_name}_scoreboard.sv"
+  `include "alert_handler_cmodel_cov.sv"
+  `include "alert_handler_cmodel_sb.sv"
   `include "${module_instance_name}_env.sv"
   `include "alert_handler_vseq_list.sv"
 

@@ -1,0 +1,139 @@
+# edagen's configuration for otbn, the OpenTitan Big Number Accelerator (eg2_top_verification: make
+# block-flow BLOCK=otbn; edagen is eg2_top_verification's scripts/edagen). Ported from
+# lowRISC/eg2-git-proposal crypto-engines/otbn/config/otbn.yaml to the EG2 fork, 2026-11-07, the
+# same way as aes. It reuses otbn's block bench (hw/ip/otbn/dv/uvm), whose scoreboard checks the RTL
+# against otbnsim, OTBN's Python instruction set simulator (hw/ip/otbn/dv/otbnsim), run in lockstep
+# through DPI (otbn_core_model.sv, hw/ip/otbn/dv/model: every retired instruction, the register
+# files, the status and error bits and the end of each run are compared). The programs come from
+# the random instruction generator (otbn-rig, hw/ip/otbn/dv/rig) and the fixed smoke, multi-error
+# and WFI programs, assembled with OTBN's assembler and linker (hw/ip/otbn/util) and the RV32
+# binutils Bazel fetches (get-toolchain-paths.sh). It generates the lint, formal, synthesis and
+# equivalence flows from otbn_rtl.f.
+#
+# EG2's configuration (hw/top_earlgrey/rtl/autogen/top_earlgrey.sv): OtbnStub 0, OtbnRegFile
+# RegFileFF, SecOtbnFixMaiOpSeq 0, SecOtbnFixMacOpSeq 0, SecOtbnSkipUrndReseedAtStart 0,
+# OtbnFeatStubMai 0: all RTL defaults, so no parameter is set below. The bench builds the same.
+module: otbn
+clock_frequency_hz: 100_000_000
+top: otbn
+description: "otbn, the big number accelerator: its block bench, checked against otbnsim, OTBN's instruction set simulator"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  # otbn and its dependencies (TL-UL, primitives, the life-cycle, EDN, OTP, keymgr_dpe and KMAC
+  # packages, the SHA-3 core of its KMAC interface), from FuseSoC (otbn_rtl.f says how). The
+  # simulation builds the RTL through DVSim; lint, formal and synthesis read this list.
+  filelist: otbn_rtl.f
+  filelist_vars: {REPO: ../../../../..}
+
+# EG2 (top_earlgrey.hjson otbn clock_srcs): clk_i and clk_edn_i are clk_main (100 MHz), clk_otp_i is
+# clk_io_div4 (24 MHz). EDN's and OTP's are separate domains in the RTL (their interfaces
+# synchronize).
+clocks:
+  - {name: clk, port: clk_i}
+  - {name: clk_edn, port: clk_edn_i, freq_hz: 100_000_000, group: edn}
+  - {name: clk_otp, port: clk_otp_i, freq_hz: 24_000_000, group: otp}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_edn, port: rst_edn_ni, active_low: true, sync_to: clk_edn}
+  - {name: rst_otp, port: rst_otp_ni, active_low: true, sync_to: clk_otp}
+
+interfaces:
+  - name: tl
+    kind: tl
+    ports: {h2d: tl_i, d2h: tl_o}
+    vip: lowrisc
+    ral_package: otbn_ral_pkg
+    ral_core: "lowrisc:dv:otbn_env:0.1"
+
+# otbn.hjson's interrupt and alerts.
+interrupts:
+  - {name: done, type: event, desc: "OTBN has completed the operation, met a WFI or locked itself"}
+alerts:
+  - {name: fatal, fatal: true, desc: "A fatal error, asserted until a hard reset"}
+  - {name: recov, fatal: false, desc: "A recoverable error"}
+
+dv:
+  lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
+  reuse_sim_cfg: hw/ip/otbn/dv/uvm/otbn_sim_cfg.hjson
+  reuse_core: "lowrisc:dv:otbn_sim:0.1"
+  reuse_testplan: hw/ip/otbn/data/otbn_testplan.hjson
+
+# Synthesis with NanGate45 (NANGATE45_DIR: eg2_top_verification sets it to the fork's
+# hw/top_earlgrey/syn/tech-lib/nangate45).
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  vcs: {}
+  imc: {version: "24.03"}
+  # Superlint, UNR of the simulations' coverage holes, CDC (clk, the EDN and the OTP clocks), and FPV
+  # with the generated property stub and the RTL's own assertions (OpenTitan has no OTBN FPV bench).
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  # Yosys maps to its generic gates: its scripts cannot take NANGATE45_DIR.
+  yosys: {frontend: slang, flatten: true}
+
+# DVSim tests of otbn's bench (otbn_sim_cfg.hjson) and the common CIP tests it imports. DVSim's own
+# reseed counts are for nightly regressions (otbn_single 100, otbn_multi 10, the rest mostly 10);
+# this first pass runs one to five seeds each, the random-program tests most. Upstream marks some
+# tests known broken (otbn_sim_cfg.hjson "ci" regression: otbn_mem_walk, otbn_multi_err,
+# otbn_escalate, otbn_passthru_mem_tl_intg_err; otbn_stress_all_with_rand_reset is V3); they run
+# here too, one seed each, so their state on EG2 is known.
+tests:
+  # Fixed programs.
+  - {name: otbn_smoke, uvm_test: otbn_smoke, seeds: [1], timeout: 3600}
+  - {name: otbn_smoke_vectorized, uvm_test: otbn_smoke_vectorized, seeds: [1], timeout: 3600}
+  - {name: otbn_wfi_smoke, uvm_test: otbn_wfi_smoke, seeds: [1], timeout: 3600}
+  - {name: otbn_wfi_sec_wipe, uvm_test: otbn_wfi_sec_wipe, seeds: [1], timeout: 3600}
+  - {name: otbn_wfi_back_to_back, uvm_test: otbn_wfi_back_to_back, seeds: [1], timeout: 3600}
+  # Random programs (otbn-rig) against otbnsim.
+  - {name: otbn_single, uvm_test: otbn_single, seeds: [1, 2, 3, 4, 5], timeout: 3600}
+  - {name: otbn_multi, uvm_test: otbn_multi, seeds: [1, 2], timeout: 5400}
+  - {name: otbn_reset, uvm_test: otbn_reset, seeds: [1, 2], timeout: 3600}
+  - {name: otbn_stress_all, uvm_test: otbn_stress_all, seeds: [1, 2], timeout: 5400}
+  - {name: otbn_partial_wipe, uvm_test: otbn_partial_wipe, seeds: [1], timeout: 3600}
+  # Errors and countermeasures.
+  - {name: otbn_multi_err, uvm_test: otbn_multi_err, seeds: [1], timeout: 3600}
+  - {name: otbn_imem_err, uvm_test: otbn_imem_err, seeds: [1, 2], timeout: 3600}
+  - {name: otbn_dmem_err, uvm_test: otbn_dmem_err, seeds: [1, 2], timeout: 3600}
+  - {name: otbn_escalate, uvm_test: otbn_escalate, seeds: [1], timeout: 3600}
+  - {name: otbn_illegal_mem_acc, uvm_test: otbn_illegal_mem_acc, seeds: [1], timeout: 3600}
+  - {name: otbn_zero_state_err_urnd, uvm_test: otbn_zero_state_err_urnd, seeds: [1], timeout: 3600}
+  - {name: otbn_sw_errs_fatal_chk, uvm_test: otbn_sw_errs_fatal_chk, seeds: [1], timeout: 3600}
+  - {name: otbn_sw_no_acc, uvm_test: otbn_sw_no_acc, seeds: [1], timeout: 3600}
+  - {name: otbn_alu_bignum_mod_err, uvm_test: otbn_alu_bignum_mod_err, seeds: [1], timeout: 3600}
+  - {name: otbn_controller_ispr_rdata_err, uvm_test: otbn_controller_ispr_rdata_err, seeds: [1], timeout: 3600}
+  - {name: otbn_mac_bignum_acc_err, uvm_test: otbn_mac_bignum_acc_err, seeds: [1], timeout: 3600}
+  - {name: otbn_rf_bignum_intg_err, uvm_test: otbn_rf_bignum_intg_err, seeds: [1], timeout: 3600}
+  - {name: otbn_rf_base_intg_err, uvm_test: otbn_rf_base_intg_err, seeds: [1], timeout: 3600}
+  - {name: otbn_pc_ctrl_flow_redun, uvm_test: otbn_pc_ctrl_flow_redun, seeds: [1], timeout: 3600}
+  - {name: otbn_rnd_sec_cm, uvm_test: otbn_rnd_sec_cm, seeds: [1], timeout: 3600}
+  - {name: otbn_ctrl_redun, uvm_test: otbn_ctrl_redun, seeds: [1], timeout: 3600}
+  - {name: otbn_sec_wipe_err, uvm_test: otbn_sec_wipe_err, seeds: [1], timeout: 3600}
+  - {name: otbn_urnd_err, uvm_test: otbn_urnd_err, seeds: [1], timeout: 3600}
+  - {name: otbn_mem_gnt_acc_err, uvm_test: otbn_mem_gnt_acc_err, seeds: [1], timeout: 3600}
+  - {name: otbn_stack_addr_integ_chk, uvm_test: otbn_stack_addr_integ_chk, seeds: [1], timeout: 3600}
+  - {name: otbn_stress_all_with_rand_reset, uvm_test: otbn_stress_all_with_rand_reset, seeds: [1], timeout: 5400}
+  # The common CIP tests otbn_sim_cfg.hjson imports.
+  - {name: otbn_csr_hw_reset, uvm_test: otbn_csr_hw_reset, seeds: [1], timeout: 1800}
+  - {name: otbn_csr_rw, uvm_test: otbn_csr_rw, seeds: [1], timeout: 1800}
+  - {name: otbn_csr_bit_bash, uvm_test: otbn_csr_bit_bash, seeds: [1], timeout: 1800}
+  - {name: otbn_csr_aliasing, uvm_test: otbn_csr_aliasing, seeds: [1], timeout: 1800}
+  - {name: otbn_same_csr_outstanding, uvm_test: otbn_same_csr_outstanding, seeds: [1], timeout: 1800}
+  - {name: otbn_csr_mem_rw_with_rand_reset, uvm_test: otbn_csr_mem_rw_with_rand_reset, seeds: [1], timeout: 3600}
+  - {name: otbn_mem_walk, uvm_test: otbn_mem_walk, seeds: [1], timeout: 3600}
+  - {name: otbn_mem_partial_access, uvm_test: otbn_mem_partial_access, seeds: [1], timeout: 3600}
+  - {name: otbn_alert_test, uvm_test: otbn_alert_test, seeds: [1], timeout: 1800}
+  - {name: otbn_intr_test, uvm_test: otbn_intr_test, seeds: [1], timeout: 1800}
+  - {name: otbn_tl_errors, uvm_test: otbn_tl_errors, seeds: [1], timeout: 1800}
+  - {name: otbn_tl_intg_err, uvm_test: otbn_tl_intg_err, seeds: [1], timeout: 1800}
+  - {name: otbn_sec_cm, uvm_test: otbn_sec_cm, seeds: [1], timeout: 3600}
+  - {name: otbn_passthru_mem_tl_intg_err, uvm_test: otbn_passthru_mem_tl_intg_err, seeds: [1], timeout: 3600}

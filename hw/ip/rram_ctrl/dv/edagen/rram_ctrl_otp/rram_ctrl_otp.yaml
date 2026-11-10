@@ -1,0 +1,72 @@
+# edagen's configuration for rram_ctrl's OTP hardware plug: rram_ctrl_otp (the read-set-write FSM
+# behind otp_ctrl's macro interface, the asynchronous FIFOs between clk_otp_i and clk_i, the TL-UL
+# bus-integrity encoder and checker), wrapped as rtl/rram_ctrl_otp_unit.sv. Generate and run (edagen
+# is eg2_top_verification's scripts/edagen), on nyx:
+#   python3 scripts/edagen/edagen.py generate --config <this file> --out scratch/edagen/rram_ctrl_otp
+#   make -C scratch/edagen/rram_ctrl_otp all LOWRISC_ROOT=<fork> NANGATE45_DIR=<liberty dir>
+# The bench is edagen's generated UVM skeleton with a hand-written part (dv/rram_ctrl_otp_cmodel_pkg.sv):
+# otp_ctrl's side issues commands, a model of the controller path (rram_ctrl_arb, rram_ctrl_rd /
+# rram_ctrl_wr, the OTP rule of rram_ctrl_mp, the RRAM words of the OTP pages) answers the plug's
+# requests, and the scoreboard checks every response and the OTP pages afterwards against the OTP
+# plug reference model (hw/top_earlgrey/dv/eg2_model/ip/eg2_rram_otp_core.h).
+module: rram_ctrl_otp
+clock_frequency_hz: 100_000_000
+top: rram_ctrl_otp_unit
+description: "rram_ctrl OTP hardware plug (rram_ctrl_otp), checked against the OTP plug reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rram_ctrl_otp_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+# clk_i is rram_ctrl's clock; clk_otp_i otp_ctrl's (io_div4, 24 MHz in Earl Grey), asynchronous.
+clocks:
+  - {name: clk, port: clk_i}
+  - {name: otp, port: clk_otp_i, freq_hz: 24_000_000, group: otp}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+  - {name: rst_otp, port: rst_otp_ni, active_low: true, sync_to: otp}
+
+# One signal-level interface per clock domain: the hand-written stimulus (dv/) drives them directly
+# and the generated monitors sample every signal each cycle of their clock for the scoreboard.
+interfaces:
+  - {name: ot, protocol: generic, prefix: ot_, clock: otp, reset: rst_otp}
+  - {name: ct, protocol: generic, prefix: ct_, clock: clk, reset: rst}
+
+dv:
+  files:
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_otp_dpi.cc
+    - dv/rram_ctrl_otp_cmodel_pkg.sv
+  packages: [rram_ctrl_otp_cmodel_pkg]
+  tests: [rram_ctrl_otp_cmodel_random_test, rram_ctrl_otp_cmodel_random_inject_fail_test,
+          rram_ctrl_otp_cmodel_fatal_test]
+
+formal:
+  files: [formal/rram_ctrl_otp_fpv.sv]
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# rram_ctrl_otp_cmodel_random_inject_fail_test corrupts one prediction and must fail: not listed
+# (edagen has no expected failure); run it with make sim TEST=rram_ctrl_otp_cmodel_random_inject_fail_test.
+# rram_ctrl_otp_cmodel_fatal_test ends each run with one of: RRAM access disabled, an undefined
+# command, a bus-integrity error on a read word (+fatal=0|1|2, random otherwise).
+tests:
+  - {name: cmodel_random, uvm_test: rram_ctrl_otp_cmodel_random_test, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 1800}
+  - {name: cmodel_random_long, uvm_test: rram_ctrl_otp_cmodel_random_test, seeds: [11, 12], plusargs: ["+num_cmds=20000"], timeout: 3600}
+  - {name: cmodel_fatal_disable, uvm_test: rram_ctrl_otp_cmodel_fatal_test, seeds: [21, 22], plusargs: ["+fatal=0"], timeout: 1800}
+  - {name: cmodel_fatal_cmd, uvm_test: rram_ctrl_otp_cmodel_fatal_test, seeds: [23, 24], plusargs: ["+fatal=1"], timeout: 1800}
+  - {name: cmodel_fatal_intg, uvm_test: rram_ctrl_otp_cmodel_fatal_test, seeds: [25, 26], plusargs: ["+fatal=2"], timeout: 1800}

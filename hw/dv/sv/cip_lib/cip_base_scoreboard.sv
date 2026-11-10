@@ -319,6 +319,7 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
           // alert interface itself is not under reset (agent_cfg.vif.rst_n != 0).
           wait(expected_alert[alert_name].expected == 1 &&
                !cfg.under_reset &&
+               cfg.clk_rst_vif.rst_n &&
                agent_cfg.vif.rst_n);
 
           if (expected_alert[alert_name].is_fatal) begin

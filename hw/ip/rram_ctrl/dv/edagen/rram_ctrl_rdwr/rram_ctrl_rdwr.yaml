@@ -1,0 +1,78 @@
+# edagen's configuration for rram_ctrl's controller path: the arbiter (rram_ctrl_arb) between
+# software and the OTP and lcmgr plugs, the read engine (rram_ctrl_rd), the write engine
+# (rram_ctrl_wr) and the write FIFO they share, wrapped as rtl/rram_ctrl_rdwr_unit.sv. Generate and
+# run (edagen is eg2_top_verification's scripts/edagen), on nyx:
+#   python3 scripts/edagen/edagen.py generate --config <this file> --out scratch/edagen/rram_ctrl_rdwr
+#   make -C scratch/edagen/rram_ctrl_rdwr all LOWRISC_ROOT=<fork> NANGATE45_DIR=<liberty dir>
+# The bench is edagen's generated UVM skeleton with a hand-written part
+# (dv/rram_ctrl_rdwr_cmodel_pkg.sv): the three requesters, memory protection and the PHY behind the
+# engines, and a scoreboard that checks every request, RRAM access, delivered word and completion
+# against the controller-path reference model (hw/top_earlgrey/dv/eg2_model/ip/eg2_rram_ctrl_rdwr_core.h).
+module: rram_ctrl_rdwr
+clock_frequency_hz: 100_000_000
+top: rram_ctrl_rdwr_unit
+description: "rram_ctrl controller path (rram_ctrl_arb, rram_ctrl_rd, rram_ctrl_wr, write FIFO), checked against the controller-path reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rram_ctrl_rdwr_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+# One clock: every port of the unit is in rram_ctrl's clk_i domain (the life-cycle and escalation
+# inputs reach the arbiter already synchronized, as rram_disable / rram_sw_disable).
+clocks:
+  - {name: clk, port: clk_i}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+interfaces:
+  - {name: cp, protocol: generic, prefix: cp_}
+
+dv:
+  files:
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_ctrl_rdwr_dpi.cc
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_ctrl_rdwr_cmodel_pkg.sv
+    - dv/rram_ctrl_rdwr_cmodel_pkg.sv
+  packages: [eg2_rram_ctrl_rdwr_cmodel_pkg, rram_ctrl_rdwr_cmodel_pkg]
+  tests: [rram_ctrl_rdwr_cmodel_random_test, rram_ctrl_rdwr_cmodel_err_test,
+          rram_ctrl_rdwr_cmodel_contend_test, rram_ctrl_rdwr_cmodel_gate_test,
+          rram_ctrl_rdwr_cmodel_long_test, rram_ctrl_rdwr_cmodel_disable_test,
+          rram_ctrl_rdwr_cmodel_swpush_race_test, rram_ctrl_rdwr_cmodel_random_inject_fail_test]
+
+formal:
+  files: [formal/rram_ctrl_rdwr_fpv.sv]
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, cdc, fpv, reset]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# The must-fail runs are not listed (edagen has no expected failure); run them with make sim TEST=...:
+#   rram_ctrl_rdwr_cmodel_random_inject_fail_test (one delivered word flipped);
+#   rram_ctrl_rdwr_cmodel_swpush_race_test (finding: a software write word offered while a plug
+#     holds the arbiter is lost);
+#   rram_ctrl_rdwr_cmodel_disable_test with +rdwr_strict_disable=1 (finding: no completion after
+#     rram_disable);
+#   rram_ctrl_rdwr_cmodel_err_test with +rdwr_strict_erraddr=1 (finding: ERR_ADDR is stale when the
+#     last word of the operation fails);
+#   rram_ctrl_rdwr_cmodel_err_test with +rdwr_strict_err_early=1 (finding: the error code is visible
+#     before the completion).
+# Grouped: the clean random runs, the error and gating runs, the long and contention runs.
+tests:
+  - {name: cmodel_random, uvm_test: rram_ctrl_rdwr_cmodel_random_test, seeds: [1, 2, 3, 4, 5, 6], timeout: 1800}
+  - {name: cmodel_err, uvm_test: rram_ctrl_rdwr_cmodel_err_test, seeds: [1, 2, 3, 4], timeout: 1800}
+  - {name: cmodel_gate, uvm_test: rram_ctrl_rdwr_cmodel_gate_test, seeds: [1, 2, 3], timeout: 1800}
+  - {name: cmodel_contend, uvm_test: rram_ctrl_rdwr_cmodel_contend_test, seeds: [1, 2, 3], timeout: 1800}
+  - {name: cmodel_long, uvm_test: rram_ctrl_rdwr_cmodel_long_test, seeds: [1, 2], timeout: 3600}
+  - {name: cmodel_disable, uvm_test: rram_ctrl_rdwr_cmodel_disable_test, seeds: [1, 2], timeout: 1800}

@@ -10,6 +10,8 @@ class rstmgr_env extends cip_base_env #(
 );
   `uvm_component_utils(rstmgr_env)
 
+  rstmgr_cmodel_sb m_cmodel_sb;
+
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
@@ -58,10 +60,20 @@ class rstmgr_env extends cip_base_env #(
     if (!uvm_config_db#(virtual rstmgr_if)::get(this, "", "rstmgr_vif", cfg.rstmgr_vif)) begin
       `uvm_fatal(`gfn, "failed to get rstmgr_vif from uvm_config_db")
     end
+    if (cfg.en_cmodel) begin
+      m_cmodel_sb = rstmgr_cmodel_sb::type_id::create("m_cmodel_sb", this);
+      m_cmodel_sb.cfg = cfg;
+    end
   endfunction
 
   function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
+    if (cfg.en_cmodel) begin
+      foreach (m_tl_agents[i]) begin
+        m_tl_agents[i].monitor.a_chan_port.connect(m_cmodel_sb.tl_a_fifo.analysis_export);
+        m_tl_agents[i].monitor.d_chan_port.connect(m_cmodel_sb.tl_d_fifo.analysis_export);
+      end
+    end
   endfunction
 
 endclass

@@ -1,0 +1,80 @@
+# edagen's configuration for rram_ctrl's PHY unit: rram_phy (the host/controller arbiter, the
+# metadata FIFO, the read pipeline rram_phy_rd with its four-entry read buffer and dependency
+# tracker, the write engine rram_phy_wr and the shared scrambler), wrapped with its default
+# parameters (rtl/rram_phy_unit.sv). Generate and run (edagen is eg2_top_verification's
+# scripts/edagen):
+#   python3 scripts/edagen/edagen.py generate --config <this file> --out scratch/edagen/rram_phy
+#   make -C scratch/edagen/rram_phy all LOWRISC_ROOT=<fork> NANGATE45_DIR=<liberty dir>
+# The bench is edagen's generated UVM skeleton with a hand-written stimulus that also plays the
+# RRAM macro (the documented macro interface, rram_ctrl README "RRAM Controller - Macro Interface")
+# and a scoreboard that checks the macro requests and every read response against the PHY reference
+# model (dv/rram_phy_cmodel_pkg.sv; the model is hw/top_earlgrey/dv/eg2_model/ip/eg2_rram_phy_core.h).
+module: rram_phy
+clock_frequency_hz: 100_000_000
+top: rram_phy_unit
+description: "rram_ctrl PHY (arbiter, read pipeline and read buffer, write engine, scrambler), checked against the PHY reference model"
+owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+
+rtl:
+  filelist: rram_phy_rtl.f
+  filelist_vars: {REPO: ../../../../../..}
+
+# rram_phy runs on one clock and one reset (rram_ctrl's clk_i/rst_ni); the macro interface is
+# synchronous to it (README: "a request and its attributes are held stable until the macro asserts
+# ack"), and rram_disable_i is a multibit signal of the same domain (rram_ctrl's escalation logic).
+# So there is no clock-domain crossing in this unit: no CDC flow (CDC would report one domain).
+clocks:
+  - {name: clk, port: clk_i}
+
+resets:
+  - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
+
+# One signal-level interface with every port: the hand-written stimulus (dv/) drives it directly
+# (the controller, the host and the macro responses) and the generated monitor samples every
+# signal each cycle for the scoreboard.
+interfaces:
+  - {name: ph, protocol: generic, prefix: ph_}
+
+dv:
+  files:
+    - ../../../../../top_earlgrey/dv/eg2_model/dpi/eg2_rram_phy_dpi.cc
+    - dv/rram_phy_cmodel_pkg.sv
+  packages: [rram_phy_cmodel_pkg]
+  tests: [rram_phy_cmodel_random_test, rram_phy_cmodel_ecc_test, rram_phy_cmodel_ecc_unmasked_test,
+          rram_phy_cmodel_rdfault_test,
+          rram_phy_cmodel_wrintg_test, rram_phy_cmodel_disable_test,
+          rram_phy_cmodel_random_inject_fail_test]
+
+formal:
+  files: [formal/rram_phy_fpv.sv]
+
+synthesis:
+  tech: nangate45
+  liberty: ["${NANGATE45_DIR}/NangateOpenCellLibrary_typical.lib"]
+  driving_cell: BUF_X2
+  io_delay_pct: 20
+
+tools:
+  defaults: {simulator: xcelium, coverage: true, timescale: 1ns/1ps}
+  xcelium: {version: "24.03"}
+  imc: {version: "24.03"}
+  jasper: {apps: [superlint, unr, fpv, reset]}
+  genus: {effort: medium}
+  conformal: {netlist_from: genus}
+  yosys: {frontend: slang, flatten: true}
+
+# The must-fail tests are not listed (edagen has no expected failure): run them with make sim TEST=...
+# and check that they fail on the check they target:
+#   rram_phy_cmodel_random_inject_fail_test       one expected read flipped;
+#   rram_phy_cmodel_ecc_unmasked_test             the uncorrectable-read finding not masked;
+#   rram_phy_cmodel_random_test +macro_latch_early=1 +num_ops=800   a macro that latches the request
+#                                                 when first seen (the macro-request finding).
+# rdfault, wrintg and ecc expect their fatal error and pass when it is reported; they fail if it is
+# not. Known findings are counted in the scoreboard summary (status/rtl_tickets.md).
+tests:
+  - {name: cmodel_random, uvm_test: rram_phy_cmodel_random_test, seeds: [1, 2, 3, 4, 5, 6, 7, 8], timeout: 1800}
+  - {name: cmodel_random_long, uvm_test: rram_phy_cmodel_random_test, seeds: [11, 12], plusargs: ["+num_ops=4000"], timeout: 3600}
+  - {name: cmodel_ecc, uvm_test: rram_phy_cmodel_ecc_test, seeds: [1, 2, 3], timeout: 1800}
+  - {name: cmodel_rdfault, uvm_test: rram_phy_cmodel_rdfault_test, seeds: [1, 2, 3], timeout: 1800}
+  - {name: cmodel_wrintg, uvm_test: rram_phy_cmodel_wrintg_test, seeds: [1, 2, 3], timeout: 1800}
+  - {name: cmodel_disable, uvm_test: rram_phy_cmodel_disable_test, seeds: [1, 2], timeout: 1800}

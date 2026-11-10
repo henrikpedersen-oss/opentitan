@@ -1,0 +1,6 @@
+// reason: three HAL checks that report no design error in this unit (the hits, 2026-11-07, are below, one argument per line); every other HAL check stays on owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// CBPAHI (22): HAL's design-style rule against combinational paths through several units to an output (the arbiters, prim_prince and the response muxes are combinational by design, as rv_dm's waiver says for OpenTitan IPs; timing is Genus's: positive slack, 2606 ps).
+// RTLINI (3), prim_cipher_pkg.sv:249/261/273: a local of an automatic function (PRESENT's inverse key schedule, unused here) initialised in its declaration, which is legal and synthesises; not a static signal. NEGIDX (1), prim_mubi_pkg.sv:1001: the static assertion CheckMuBi32ValsComplementary_A (ASSERT_STATIC_IN_PACKAGE declares an unused_bit array indexed by the enum comparison), not design logic.
+-NOCHECK CBPAHI
+-NOCHECK RTLINI
+-NOCHECK NEGIDX

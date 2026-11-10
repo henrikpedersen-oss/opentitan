@@ -1,0 +1,7 @@
+// reason: four HAL checks that report no design error in this unit (the hits, 2026-11-07, are below, one argument per line); every other HAL check stays on owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
+// CBPAHI (19): HAL's design-style rule against combinational paths through several units to an output (rram_ctrl_mp decides combinationally by design, as rv_dm's waiver says for OpenTitan IPs; timing is Genus's: positive slack, 3557 ps).
+// SIZMIS (2), rram_ctrl_mp.sv:141/151: HAL reads the one-entry parameter slice HwOtpDataCfg[HwOtpDataRules-1:0] / HwLcMgrDataCfg[...] as 1 bit; Xcelium, Jasper (FPV: OtpPlugAllowed_A, OtpPlugAttrs_A proven) and Genus read the 50-bit rule. TERMST (1), prim_fifo_sync.sv:152: under_rst is a one-shot flag after reset, terminal by design. NEGIDX (1), prim_mubi_pkg.sv:1001: the static assertion CheckMuBi32ValsComplementary_A (ASSERT_STATIC_IN_PACKAGE declares an unused_bit array indexed by the enum comparison), not design logic.
+-NOCHECK CBPAHI
+-NOCHECK SIZMIS
+-NOCHECK TERMST
+-NOCHECK NEGIDX

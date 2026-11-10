@@ -25,6 +25,7 @@ package rstmgr_env_pkg;
   import rv_core_ibex_pkg::cpu_crash_dump_t;
 
   import sec_cm_pkg::*;
+  import eg2_rstmgr_cmodel_pkg::*;
   // macro includes
   `include "uvm_macros.svh"
   `include "dv_macros.svh"
@@ -86,6 +87,8 @@ package rstmgr_env_pkg;
   `include "rstmgr_env_cov.sv"
   `include "rstmgr_virtual_sequencer.sv"
   `include "rstmgr_scoreboard.sv"
+  `include "rstmgr_reg_cov.sv"
+  `include "rstmgr_cmodel_sb.sv"
   `include "rstmgr_env.sv"
   `include "rstmgr_vseq_list.sv"
 

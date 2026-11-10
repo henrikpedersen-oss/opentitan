@@ -21,6 +21,9 @@ class clkmgr_env_cfg extends cip_base_env_cfg #(
   // This scoreboard handle is used to flag expected errors.
   clkmgr_scoreboard  scoreboard;
 
+  // Also check clkmgr against the clock manager reference model (clkmgr_cmodel_sb): +clkmgr_cmodel=1.
+  bit en_cmodel = 1'b0;
+
   // ext component cfgs
 
   // ext interfaces
@@ -52,6 +55,7 @@ class clkmgr_env_cfg extends cip_base_env_cfg #(
   virtual function void initialize(bit inherit_ral_models = 1'b0);
     list_of_alerts = clkmgr_env_pkg::LIST_OF_ALERTS;
     super.initialize(inherit_ral_models);
+    void'($value$plusargs("clkmgr_cmodel=%b", en_cmodel));
 
     // This is for the integrity error test.
     tl_intg_alert_name = "fatal_fault";

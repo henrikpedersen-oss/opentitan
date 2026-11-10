@@ -101,6 +101,8 @@ package alert_handler_env_pkg;
   `include "alert_handler_env_cov.sv"
   `include "alert_handler_virtual_sequencer.sv"
   `include "alert_handler_scoreboard.sv"
+  `include "alert_handler_cmodel_cov.sv"
+  `include "alert_handler_cmodel_sb.sv"
   `include "alert_handler_env.sv"
   `include "alert_handler_vseq_list.sv"
 
