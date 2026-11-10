@@ -15,6 +15,7 @@
 // the meta SRAM. A fault on a meta SRAM response is attributed to the requester that had an
 // access to that word in flight: a core access to a granule of the tag word, a bitmap window
 // access to the bitmap word, or else the running sweep.
+`uvm_analysis_imp_decl(_core_present)
 `uvm_analysis_imp_decl(_core_req)
 `uvm_analysis_imp_decl(_core_rsp)
 `uvm_analysis_imp_decl(_mode)
@@ -30,6 +31,8 @@ class cheriot_mem_sys_ref_model extends uvm_component;
   cheriot_mem_sys_env_cfg cfg;
 
   // ---- From the monitors ----
+  uvm_analysis_imp_core_present #(cheriot_mem_sys_core_item, cheriot_mem_sys_ref_model)
+      core_present_imp;
   uvm_analysis_imp_core_req #(cheriot_mem_sys_core_item, cheriot_mem_sys_ref_model) core_req_imp;
   uvm_analysis_imp_core_rsp #(cheriot_mem_sys_core_item, cheriot_mem_sys_ref_model) core_rsp_imp;
   uvm_analysis_imp_mode #(prim_mubi_pkg::mubi4_t, cheriot_mem_sys_ref_model)        mode_imp;
@@ -66,11 +69,20 @@ class cheriot_mem_sys_ref_model extends uvm_component;
   // The alerts already sent.
   protected bit                    fatal_sent;
   protected int                    alert_tests_sent;
+  // The WTRC's capability sequence after a capability store's W1 is taken (theory_of_operation.md,
+  // "WTRC", the FSM's CapW1 and CapTagWr), which the model, seeing only completed accesses, cannot
+  // know: W1 taken (CapW1) until the crossbar answers W1's NVM read, then its tag write
+  // (CapTagWr) until W1 is answered. Every core access is answered once on the crossbar port, in
+  // order, so W1's NVM answer is the crossbar answer with W1's number.
+  typedef enum bit [1:0] {WtrcOpen, WtrcW1, WtrcTagWr} wtrc_e;
+  protected wtrc_e                 wtrc = WtrcOpen;
+  protected int unsigned           n_core_taken, n_host_answers, w1_number;
 
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+    core_present_imp   = new("core_present_imp", this);
     core_req_imp       = new("core_req_imp", this);
     core_rsp_imp       = new("core_rsp_imp", this);
     mode_imp           = new("mode_imp", this);
@@ -150,14 +162,40 @@ class cheriot_mem_sys_ref_model extends uvm_component;
     cms_cmodel_pkg::cms_backdoor_data(model, it.addr, it.data);
   endfunction
 
+  // A request presented on the core data port, before it is taken. In CapW1 any request is out of
+  // the capability sequence "as soon as it is presented"; in CapTagWr a W0 or W1 is (WTRC, "Out of
+  // sequence"). Either raises fatal_fault ("Error Handling"). Ibex presents neither.
+  function void write_core_present(cheriot_mem_sys_core_item it);
+    if (wtrc == WtrcW1 || (wtrc == WtrcTagWr && nvm_cap_store(it))) begin
+      `uvm_info(`gfn, $sformatf("%s 0x%08x presented while a capability store's W1 is %s: %s",
+                                it.opcode.name(), it.addr,
+                                wtrc == WtrcW1 ? "taken (CapW1)" : "writing its tag (CapTagWr)",
+                                "out of sequence"), UVM_MEDIUM)
+      cms_cmodel_pkg::cms_raise_fatal(model);
+      send_alerts();
+    end
+  endfunction
+
   function void write_core_req(cheriot_mem_sys_core_item it);
     bit [31:0] word;
     if (looks_up_tag(it, word)) core_lookups[word]++;
+    n_core_taken++;
+    if (nvm_cap_store(it) && it.addr[2]) begin
+      wtrc      = WtrcW1;
+      w1_number = n_core_taken;
+    end
   endfunction
 
   function void write_core_rsp(cheriot_mem_sys_core_item it);
     bit [31:0] word;
     if (looks_up_tag(it, word) && core_lookups[word] > 0) core_lookups[word]--;
+    if (nvm_cap_store(it) && it.addr[2]) wtrc = WtrcOpen;  // W1's answer closes the capability
+  endfunction
+
+  // A capability store to the NVM: a write in strict CHERIoT mode to the NVM with the tag set.
+  protected function bit nvm_cap_store(cheriot_mem_sys_core_item it);
+    return it.opcode != tlul_pkg::Get && it.ena == prim_mubi_pkg::MuBi4True && in_nvm(it.addr) &&
+           it.tag;
   endfunction
 
   function void write_window_req(tl_seq_item it);
@@ -166,6 +204,8 @@ class cheriot_mem_sys_ref_model extends uvm_component;
 
   function void write_cored_h_rsp(tl_seq_item it);
     host_err_q.push_back(it.d_error);
+    n_host_answers++;
+    if (wtrc == WtrcW1 && n_host_answers >= w1_number) wtrc = WtrcTagWr;  // W1's NVM read answered
   endfunction
 
   // A response to the revocation engine: an error response leaves the capability alone and fails
@@ -325,7 +365,10 @@ class cheriot_mem_sys_ref_model extends uvm_component;
       core_meta_errs.delete();
       window_faults.delete();
       cms_cmodel_pkg::cms_dut_reset(model);
-      fatal_sent = 1'b0;
+      fatal_sent     = 1'b0;
+      wtrc           = WtrcOpen;
+      n_core_taken   = 0;
+      n_host_answers = 0;
     end
   endtask
 

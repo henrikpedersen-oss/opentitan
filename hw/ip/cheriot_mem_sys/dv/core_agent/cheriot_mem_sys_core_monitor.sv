@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Watches the core data port. It publishes:
+// - present_port: each request in the first cycle it is presented (a_valid), before it is taken
+//   (the WTRC judges some requests as soon as they are presented);
 // - req_port: each request at its handshake, with its tag and the mode at that moment;
 // - analysis_port: each completed access, the request with its response and the response's tag
 //   (responses come back in order per source ID);
@@ -14,17 +16,20 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
   );
   `uvm_component_utils(cheriot_mem_sys_core_monitor)
 
+  uvm_analysis_port #(cheriot_mem_sys_core_item) present_port;
   uvm_analysis_port #(cheriot_mem_sys_core_item) req_port;
   uvm_analysis_port #(prim_mubi_pkg::mubi4_t)    mode_port;
 
   protected cheriot_mem_sys_core_item in_flight[int unsigned][$];
+  protected bit                       presented;  // the request on the port has been published
 
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    req_port  = new("req_port", this);
-    mode_port = new("mode_port", this);
+    present_port = new("present_port", this);
+    req_port     = new("req_port", this);
+    mode_port    = new("mode_port", this);
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -53,13 +58,24 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
   virtual protected task collect_trans();
     forever begin
       @(cfg.vif.mon_cb);
-      if (cfg.in_reset) continue;
-      if (cfg.vif.mon_cb.h2d.a_valid && cfg.vif.mon_cb.d2h.a_ready) collect_request();
+      if (cfg.in_reset) begin
+        presented = 1'b0;
+        continue;
+      end
+      if (cfg.vif.mon_cb.h2d.a_valid && !presented) begin
+        present_port.write(request_item());
+        presented = 1'b1;
+      end
+      if (cfg.vif.mon_cb.h2d.a_valid && cfg.vif.mon_cb.d2h.a_ready) begin
+        collect_request();
+        presented = 1'b0;
+      end
       if (cfg.vif.mon_cb.d2h.d_valid && cfg.vif.mon_cb.h2d.d_ready) collect_response();
     end
   endtask
 
-  protected function void collect_request();
+  // The request on the port, as an item.
+  protected function cheriot_mem_sys_core_item request_item();
     tlul_pkg::tl_h2d_t        h2d = cfg.vif.mon_cb.h2d;
     cheriot_mem_sys_core_item it  = cheriot_mem_sys_core_item::type_id::create("it");
     it.opcode = tlul_pkg::tl_a_op_e'(h2d.a_opcode);
@@ -70,6 +86,11 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
     it.source = h2d.a_source;
     it.tag    = cfg.vif.mon_cb.tag_h2d;
     it.ena    = cfg.vif.mon_cb.cheriot_ena;
+    return it;
+  endfunction
+
+  protected function void collect_request();
+    cheriot_mem_sys_core_item it = request_item();
     in_flight[it.source].push_back(it);
     begin
       cheriot_mem_sys_core_item req;

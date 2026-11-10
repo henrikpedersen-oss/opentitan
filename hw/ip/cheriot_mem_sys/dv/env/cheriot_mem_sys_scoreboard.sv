@@ -46,6 +46,9 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   uvm_analysis_imp_meta_rsp_sb #(tl_seq_item, cheriot_mem_sys_scoreboard) meta_rsp_imp;
   // Any item on any other port: the bench is not quiet.
   uvm_analysis_imp_activity #(tl_seq_item, cheriot_mem_sys_scoreboard)   activity_imp;
+  // The TL-UL monitors (set by the environment), for the requests still waiting for an answer.
+  tl_monitor regs_monitor;
+  tl_monitor tl_monitors[$];
 
   // ---- Expected, from the reference model ----
   uvm_tlm_analysis_fifo #(cheriot_mem_sys_rsp_exp)   core_exp_fifo;
@@ -275,8 +278,8 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
         last_alert = cycle;
         mismatch("fatal_fault is not latched: it stopped before the reset");
       end
-      if (meta_changed && core_in_flight == 0 && cycle - last_activity >= QuietCycles &&
-          !ref_model.sweep_active()) begin
+      if (meta_changed && core_in_flight == 0 && !tl_pending() &&
+          cycle - last_activity >= QuietCycles && !ref_model.sweep_active()) begin
         meta_changed = 1'b0;
         compare_meta("at a quiet point");
       end
@@ -306,20 +309,43 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     end
   endfunction
 
-  // The revocation engine reads only during a sweep. The model learns of a start when the
-  // TBRE_START write completes, which can be after the engine's first read: a few cycles' grace.
+  // The revocation engine reads only during a sweep. A register write takes effect when it is
+  // accepted, but the model learns of it from the answer, which the bench may hold back for as
+  // long as it likes: so a read while the model is idle is judged once every TBRE_START write
+  // accepted by then has been answered and the model has taken it (one cycle on). One cycle of
+  // grace also covers a read seen in the same cycle as the start write's acceptance.
   function void write_tbre_h_req(tl_seq_item it);
     last_activity = cycle;
     if (ref_model == null || ref_model.sweep_active()) return;
     fork
       begin
         bit [31:0] addr = it.a_addr;
-        cfg.clk_rst_vif.wait_clks(10);
-        if (!ref_model.sweep_active()) begin
+        cfg.clk_rst_vif.wait_clks(1);
+        while (start_write_pending() && !cfg.under_reset) cfg.clk_rst_vif.wait_clks(1);
+        cfg.clk_rst_vif.wait_clks(1);
+        if (!cfg.under_reset && !ref_model.sweep_active()) begin
           `uvm_error(`gfn, $sformatf("the revocation engine read 0x%08x outside a sweep", addr))
         end
       end
     join_none
+  endfunction
+
+  // A write to TBRE_START with START set, accepted on the `regs` port and not answered yet.
+  protected function bit start_write_pending();
+    if (regs_monitor == null) return 1'b0;
+    foreach (regs_monitor.pending_a_req[s]) begin
+      tl_seq_item req = regs_monitor.pending_a_req[s];
+      // The register the write addresses, found as process_tl_access finds it.
+      uvm_reg csr = ral.default_map.get_reg_by_offset(ral.get_word_aligned_addr(req.a_addr));
+      if (req.is_write() && csr == ral.tbre_start && req.a_data[0]) return 1'b1;
+    end
+    return 1'b0;
+  endfunction
+
+  // A request on one of the TL-UL ports still waiting for its answer.
+  protected function bit tl_pending();
+    foreach (tl_monitors[i]) if (tl_monitors[i].pending_a_req.size() != 0) return 1'b1;
+    return 1'b0;
   endfunction
 
   // A tag word's write-back: it changes the word, and none follows a read of it answered with

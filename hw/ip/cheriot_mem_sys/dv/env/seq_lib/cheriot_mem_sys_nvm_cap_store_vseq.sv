@@ -96,7 +96,8 @@ class cheriot_mem_sys_nvm_cap_store_vseq extends cheriot_mem_sys_base_vseq;
   //   case 0: W0 a partial write;
   //   case 1: W0 a halfword;
   //   case 2: W1 alone;
-  //   case 3: a load presented between W0's answer and W1's: the WTRC flags it.
+  //   case 3: a load presented while W1 is taken and not yet answered: out of the capability
+  //           sequence (WTRC, CapW1: any request "as soon as it is presented"), fatal_fault.
   protected task store_core_cannot_produce(int unsigned c);
     bit [31:0]                g = NvmBase + 32'h200 + 8 * c;
     bit [31:0]                w0, w1;
@@ -117,10 +118,11 @@ class cheriot_mem_sys_nvm_cap_store_vseq extends cheriot_mem_sys_base_vseq;
       end
       2: core_access(it1);
       default: begin
-        // A verified capability store whose W1 waits for its tag write, which the meta SRAM holds
-        // back for 100 cycles; a load of untagged memory is presented meanwhile (the load could
-        // otherwise reach the meta port first). Every answer is the usual one: W1 sets the tag,
-        // cleared first by a plain store, and the load returns its data.
+        // A verified capability store, the meta SRAM holding W1's tag write back for 100 cycles,
+        // and a load of untagged memory presented right after W1 is taken: out of sequence, so
+        // fatal_fault (the reference model predicts it from when the load is presented). Every
+        // answer is still the usual one: W1 sets the tag, cleared first by a plain store, and the
+        // load returns its data.
         core_access(core_item(tlul_pkg::PutFullData, g + 4, 2, w1));
         wait_quiet();
         wtrc_assertions(1'b0);

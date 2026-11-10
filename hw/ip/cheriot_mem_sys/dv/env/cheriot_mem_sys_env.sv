@@ -79,11 +79,18 @@ class cheriot_mem_sys_env extends cip_base_env #(
     m_cored_h_agent.monitor.d_chan_port.connect(scoreboard.activity_imp);
     m_tbre_h_agent.monitor.d_chan_port.connect(scoreboard.activity_imp);
     regs_monitor.a_chan_port.connect(scoreboard.activity_imp);
+    // The TL-UL ports' requests still waiting for their answer (the monitors' pending_a_req):
+    // the bench is quiet only when none is, and a TBRE_START write counts from its acceptance.
+    scoreboard.regs_monitor = regs_monitor;
+    scoreboard.tl_monitors  = '{regs_monitor, m_revbm_agent.monitor, m_corerevbm_agent.monitor,
+                                m_cored_h_agent.monitor, m_tbre_h_agent.monitor,
+                                m_meta_agent.monitor};
 
     if (m_ref_model == null) return;
     scoreboard.ref_model = m_ref_model;
 
     // The reference model: what the monitors observe, and the memory backdoor
+    m_core_agent.monitor.present_port.connect(m_ref_model.core_present_imp);
     m_core_agent.monitor.req_port.connect(m_ref_model.core_req_imp);
     m_core_agent.monitor.analysis_port.connect(m_ref_model.core_rsp_imp);
     m_core_agent.monitor.analysis_port.connect(m_ref_model.core_fifo.analysis_export);
