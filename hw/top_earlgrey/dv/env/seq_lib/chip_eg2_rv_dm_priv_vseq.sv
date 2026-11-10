@@ -26,8 +26,13 @@
 // jump out of the program buffer while in debug mode.
 // +eg2_dm_bench_fail=1 corrupts the first primary check: the base's dcsr.cause at the first halt.
 //
-// EXPECTED FAILURE in CHERIoT mode until ticket F13 (status/rtl_tickets.md): rv_dm has no CHERIoT
-// input, so every halt in CHERIoT mode runs the base debug ROM.
+// CHERIoT mode: mepc is read as the capability register MEPCC. Ibex cs_registers.rst: "In CHERIoT
+// mode, the standard mtvec (0x305) and mepc (0x341) CSR addresses are inaccessible via csrr/csrw —
+// they raise an illegal instruction exception. mtcc and mepcc replace them entirely and are only
+// accessible via CSpecialRW" (SCR 31). rv_dm theory_of_operation.md "CHERIoT Mode": "regno 0x0 to
+// 0x1f accesses the Special Capability Register (SCR)" with aarsize 3. So the abstract read of CSR
+// 0x341 must end in cmderr 3 (exception), and the address comes from SCR 31 (2026-11-07: the test
+// read the CSR and expected 0).
 class chip_eg2_rv_dm_priv_vseq extends chip_eg2_rv_dm_cap_base_vseq;
   `uvm_object_utils(chip_eg2_rv_dm_priv_vseq)
   `uvm_object_new
@@ -35,6 +40,26 @@ class chip_eg2_rv_dm_priv_vseq extends chip_eg2_rv_dm_cap_base_vseq;
   localparam int unsigned ParkSpan = 12;
   localparam bit [31:0] PrvPublished = 32'h5052_5600;  // eg2_rv_dm_priv.c kPrvPublished << 4
   localparam bit [7:0] PhProbes = 8'd4;
+
+  localparam bit [15:0] ScrMepcc = 16'h001f;
+
+  // mepc's value: the CSR in RISC-V mode; in CHERIoT mode the CSR address must trap (cmderr 3) and
+  // the value is MEPCC's address (SCR 31, aarsize 3: address in data0).
+  protected task rd_epc(string what, bit cheriot, output bit [31:0] v);
+    bit [2:0] err;
+    if (!cheriot) begin
+      rd_x(what, RegMepc, v);
+      return;
+    end
+    gpr_rd(RegMepc, v, err);
+    chk_eq({what, ": the mepc CSR address in CHERIoT mode: cmderr (exception)"}, err,
+           CmdErrException);
+    if (err != 0) cmderr_clear();
+    abs_cmd(reg_cmd(ScrMepcc, 1'b0, 1'b1, 1'b0, 3'd3), err);
+    chk_eq({what, ": MEPCC (SCR 31) read with aarsize 3: cmderr"}, err, CmdErrNone);
+    if (err != 0) cmderr_clear();
+    data0_rd(v);
+  endtask
 
   protected task phase_probes(bit cheriot);
     bit ok;
@@ -50,7 +75,7 @@ class chip_eg2_rv_dm_priv_vseq extends chip_eg2_rv_dm_cap_base_vseq;
     chk_eq("misa.S (no S-mode in either mode)", misa[18], 0);
     chk_eq("misa.U (U-mode in RISC-V mode only)", misa[20], !cheriot);
     rd_x("mcause", RegMcause, mcause0);
-    rd_x("mepc", RegMepc, mepc0);
+    rd_epc("mepc", cheriot, mepc0);
     expect_progbuf("ecall in the program buffer", '{InsnEcall, InsnEbreak}, CmdErrException);
     expect_progbuf("illegal instruction in the program buffer", '{InsnIllegal, InsnEbreak},
                    CmdErrException);
@@ -59,7 +84,7 @@ class chip_eg2_rv_dm_priv_vseq extends chip_eg2_rv_dm_cap_base_vseq;
            get_field_val(cfg.jtag_dmi_ral.dmstatus.allhalted, dmstatus), 1);
     rd_x("mcause after", RegMcause, v);
     chk_eq("mcause unchanged by exceptions in debug mode", v, mcause0);
-    rd_x("mepc after", RegMepc, v);
+    rd_epc("mepc after", cheriot, v);
     chk_eq("mepc unchanged by exceptions in debug mode", v, mepc0);
     cfg.debugger.read_pc(dpc);
     chk_eq("dpc unchanged by exceptions in debug mode", dpc, last_dpc);

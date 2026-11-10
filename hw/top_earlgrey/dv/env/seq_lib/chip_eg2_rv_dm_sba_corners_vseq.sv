@@ -34,9 +34,11 @@
 //  |             |   word, read back at 32 and at their own size    |   change; data right-aligned|
 //  | race        | the core writes byte 0, SBA byte 2 of one word   | the software's checks       |
 //  |             |   (8-bit), concurrently (action RACE)            |   (eg2_rv_dm_sba_corners.c) |
-//  | revbm       | the revocation bit of a capability's base set    | read back; the core reads   |
-//  |             |   and cleared over SBA (CAP_PREP, CAP_CHECK)     |   the same word; CHERIoT:   |
-//  |             |                                                  |   tag 0 while set, 1 after  |
+//  | revbm       | the revocation bit of a capability's base set    | CHERIoT: read back; the core|
+//  |             |   and cleared over SBA (CAP_PREP, CAP_CHECK)     |   reads the same word; tag 0|
+//  |             |                                                  |   while set, 1 after.       |
+//  |             |                                                  |   RISC-V: read and write    |
+//  |             |                                                  |   both a bus error          |
 //  | tag         | CHERIoT: the slot holding the capability written | tag 1 kept (REQ_CDM_06)     |
 //  |             |   over SBA with its own value                    |                             |
 //  | mem_sys     | cheriot_mem_sys TBRE_BASE_ADDR written over SBA  | RISC-V: read back; CHERIoT: |
@@ -185,6 +187,12 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
              get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusy, v) &&
              !get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusyerror, v));
     sbdata_wr(words[1]);  // a new write while the first is in flight
+    // The DMI write returns when its JTAG scan is done, before it has crossed into the debug
+    // module's clock; releasing the hold at once let the first write finish first with some seeds
+    // (2026-11-08, dbgfix61: sbbusyerror 0, the same test passed on another seed). DMI operations
+    // complete in order, so the answer to a following sbcs read proves the write reached the module
+    // while the first was still held (an sbcs read does not set sbbusyerror, spec 3.12.18).
+    sbcs_rd(v);
     hold_sba(1'b0);
     sba_wait(v);
     chk_eq("sbbusyerror after an access started while busy", get_field_val(
@@ -286,10 +294,20 @@ class chip_eg2_rv_dm_sba_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq;
   endtask
 
   // The revocation bit of the capability's base, and (CHERIoT) the tag after an SBA write.
+  // RISC-V (ePMP) mode: cheriot_mem_sys theory_of_operation.md "Meta SRAM Address Map": "the window
+  // returns a TL-UL error while the system is in ePMP mode" (and "Access Checkers": any cheriot_ena
+  // other than a strict MuBi4True makes the meta SRAM inaccessible from all four ports), so an SBA
+  // read and write of the window must both fail with a bus error, and there is no bitmap to check
+  // (2026-11-07: the test expected the read back in both modes and failed with sberror 2).
   protected task case_revbm_tag();
     bit ok;
     bit [31:0] waddr, w0, got, slot_word;
     int unsigned bitpos;
+    if (!cheriot) begin
+      expect_bus_err("RISC-V mode: SBA read of the revocation bitmap window", 1'b0, RevbmBase);
+      expect_bus_err("RISC-V mode: SBA write of the revocation bitmap window", 1'b1, RevbmBase);
+      return;
+    end
     send_cmd(8'h11, 0, ok);  // CAP_PREP
     if (!ok) return;
     end_cmd(1'b0, ok);

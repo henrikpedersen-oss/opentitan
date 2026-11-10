@@ -78,7 +78,8 @@ enum {
   kMaxOps = 64,
   kOuts = kEg2WorkBase + 0x400,  // the normal sleep window's out words (after the ops)
   kBusy = 1u << CHERIOT_MEM_SYS_TBRE_STATUS_BUSY_BIT,
-  kAonWake = 1u << PWRMGR_WAKEUP_EN_EN_4_BIT,
+  // The aon_timer's wake-up, by its generated index (it moved from 4 to 6 in the 2026-11-06 merge).
+  kAonWake = 1u << kTopEarlgreyPowerManagerWakeUpsAonTimerWkupReq,
   kMipMeip = 1u << 11,
   kMisaE = 1u << 4,
   kMisaI = 1u << 8,

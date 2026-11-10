@@ -172,9 +172,15 @@ static uint32_t misa_mode(void) {
 
 static bool check_wake_info(uint32_t src) {
   uint32_t info = sys_wake_info(true);
+  // The generated field layout: REASONS is NumWkups bits wide, FALL_THROUGH and ABORT follow it
+  // (8 wake-ups since the 2026-11-06 merge: bits 8 and 9; the old 0x3f / 0xc0 masks read the
+  // aon_timer's reason, bit 6, as a fall through).
   bool ok = eg2_pbf_check("WAKE_INFO.REASONS: the source alone", 1u << pwrmgr_index(src),
-                          info & 0x3fu);
-  ok = eg2_pbf_check("WAKE_INFO fall-through and abort", 0, info & 0xc0u) && ok;
+                          info & PWRMGR_WAKE_INFO_REASONS_MASK);
+  ok = eg2_pbf_check("WAKE_INFO fall-through and abort", 0,
+                     info & ((1u << PWRMGR_WAKE_INFO_FALL_THROUGH_BIT) |
+                             (1u << PWRMGR_WAKE_INFO_ABORT_BIT))) &&
+       ok;
   return ok;
 }
 

@@ -42,9 +42,15 @@
 // The halt and resume are checked as in chip_eg2_rv_dm_corners_base_vseq (registers and tags
 // unchanged once a0 and t1 are restored); the software checks the loop ran undisturbed.
 //
-// CHERIoT mode: aarsize 3 is expected to fail with 2 there too (RFC CHERIoT Debug Module
-// "Architecture": no full-capability register access in a first step). EXPECTED FAILURE in CHERIoT
-// mode at the halt until ticket F13 (rv_dm has no CHERIoT input); the running-core case passes.
+// CHERIoT mode: aarsize 3 on a GPR is supported and transfers the capability without its tag
+// (rv_dm theory_of_operation.md "CHERIoT Mode": "`aarsize == 3` is supported and transfers a
+// capability without its tag: address in data0, metadata in data1"; "A GPR (regno 0x1000 to
+// 0x101f) transfers the address and metadata of the capability held in that register"). The RFC's
+// "first step" without capability access is superseded by that document (2026-11-07: the test
+// still expected 2 and failed). In CHERIoT mode the aarsize-3 writes succeed (the second one runs
+// the program buffer's addi), aarsize 4 is refused with 2.
+// Custom registers (regno 0xc000-0xffff): what the debug module does with them is not documented
+// (2 not supported, or 3 exception, are both accepted, as the rv_dm reference model does).
 class chip_eg2_rv_dm_abstract_errors_vseq extends chip_eg2_rv_dm_corners_base_vseq;
   `uvm_object_utils(chip_eg2_rv_dm_abstract_errors_vseq)
   `uvm_object_new
@@ -108,14 +114,23 @@ class chip_eg2_rv_dm_abstract_errors_vseq extends chip_eg2_rv_dm_corners_base_vs
     progbuf_wr({InsnAddiA0, InsnEbreak});
     data0_wr(vals[1]);
     abs_cmd(reg_cmd(RegA0, 1'b1, 1'b1, 1'b0, 3'd3), err);
-    expect_cmderr("a0 write with aarsize 3", err, 2);
+    expect_cmderr("a0 write with aarsize 3", err, entry_cheriot ? 0 : 2);
     abs_cmd(reg_cmd(RegA0, 1'b1, 1'b1, 1'b1, 3'd3), err);
-    expect_cmderr("a0 write with aarsize 3 and postexec", err, 2);
+    expect_cmderr("a0 write with aarsize 3 and postexec", err, entry_cheriot ? 0 : 2);
     abs_cmd(reg_cmd(RegA0, 1'b0, 1'b1, 1'b0, 3'd4), err);
     expect_cmderr("a0 read with aarsize 4", err, 2);
     gpr_rd(RegA0, v, err);
     expect_cmderr("a0 read", err, 0);
-    chk_eq("a0 after the refused writes (no transfer, no postexec)", v, a0_saved);
+    if (entry_cheriot) begin
+      // The capability written twice with address vals[1], the second time followed by the program
+      // buffer's addi: the address is vals[1] + 1. a0 is restored at the end as in RV32I mode.
+      chk_eq("a0 after the aarsize-3 writes (CHERIoT: address data0, then postexec addi)", v,
+             vals[1] + 1);
+      gpr_wr(RegA0, a0_saved, err);
+      expect_cmderr("a0 restored", err, 0);
+    end else begin
+      chk_eq("a0 after the refused writes (no transfer, no postexec)", v, a0_saved);
+    end
 
     // 2: a reserved command type.
     abs_cmd({bad_cmdtype, 24'h0}, err);
@@ -127,7 +142,9 @@ class chip_eg2_rv_dm_abstract_errors_vseq extends chip_eg2_rv_dm_corners_base_vs
     abs_cmd(reg_cmd(16'h1020, 1'b0), err);
     expect_cmderr("FPR f0 read (no F extension)", err, 3);
     abs_cmd(reg_cmd(16'hc000, 1'b0), err);
-    expect_cmderr("register 0xc000 read", err, 3);
+    // Not documented: 2 or 3 (see the header).
+    chk_true($sformatf("register 0xc000 read: cmderr %0d is 2 or 3", err), err == 2 || err == 3);
+    if (err != 0) cmderr_clear();
 
     // A command written while cmderr is set is ignored.
     abs_cmd(reg_cmd(16'h1020, 1'b0), err);

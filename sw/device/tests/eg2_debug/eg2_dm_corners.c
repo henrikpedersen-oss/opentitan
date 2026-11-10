@@ -38,8 +38,17 @@ enum { kSlot1 = 8 / sizeof(void *) };
 // LOAD's word: read-only data, in RRAM with the image.
 static const volatile uint32_t kLoadWord = 0x2468ace1u;
 
-volatile uint32_t *eg2_dm_scratch(void) { return scratch_; }
-volatile uint32_t *eg2_dm_stop(void) { return &stop_; }
+// The scratch words and the stop word are reached through pointers held in volatile globals, so the
+// compiler cannot fold `eg2_dm_scratch()[i]` into one CGP-relative access. In CHERIoT mode, with
+// -Os -flto, that folding dropped the element offset: `eg2_dm_scratch()[1]` in eg2_rv_dm_priv.c
+// became `lw s0, 0x5a8(gp)`, which is scratch_[0] (CGP = 0x100006f0, and 0x628(gp) is exactly
+// stop_). The test read the stage's flag instead of the value the bench published (2026-11-08,
+// chip_eg2_rv_dm_priv_cheriot). noinline and optnone on the accessor did not stop it. A toolchain
+// finding (status/rtl_tickets.md, "CHERIoT toolchain (-Os -flto)").
+static volatile uint32_t *volatile scratch_ptr_ = scratch_;
+static volatile uint32_t *volatile stop_ptr_ = &stop_;
+volatile uint32_t *eg2_dm_scratch(void) { return scratch_ptr_; }
+volatile uint32_t *eg2_dm_stop(void) { return stop_ptr_; }
 
 static inline uint32_t csr_mie_swap(uint32_t v) {
   uint32_t old;

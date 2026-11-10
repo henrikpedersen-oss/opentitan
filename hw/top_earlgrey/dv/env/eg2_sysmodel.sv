@@ -53,6 +53,23 @@ import "DPI-C" function void eg2_sysmodel_release(chandle h);
 `ifdef EG2_PERIPH_SB
 import "DPI-C" function int eg2_sysmodel_fault(chandle h, string name, longint unsigned now_ps);
 `endif
+import "DPI-C" function int eg2_sysmodel_irq_sources(chandle h);
+import "DPI-C" function int eg2_sysmodel_irq_class(chandle h, int id);
+import "DPI-C" function string eg2_sysmodel_irq_name(chandle h, int id);
+import "DPI-C" function int eg2_sysmodel_irq_enabled(chandle h, int id);
+import "DPI-C" function int eg2_sysmodel_irq_level(chandle h, int id);
+import "DPI-C" function int eg2_sysmodel_irq_aon(chandle h, int id);
+import "DPI-C" function int eg2_sysmodel_irq_event(chandle h, output int id, output int level,
+                                                   output longint unsigned t_ps);
+import "DPI-C" function int eg2_sysmodel_core_irqs(chandle h);
+import "DPI-C" function int eg2_sysmodel_plic_claims(chandle h, output int adopted,
+                                                     output int unknown);
+
+// One edge of an interrupt line: its new level and when (ps).
+typedef struct {
+  bit              level;
+  longint unsigned t;
+} eg2_irq_edge_t;
 
 // No system model: nothing is predicted.
 typedef class eg2_iss_wrapper;
@@ -140,9 +157,29 @@ class eg2_sysmodel extends uvm_object;
     if (!enabled()) return "none (+eg2_sysmodel=0)";
     return $sformatf({"loads %0d predicted (%0d mismatched), %0d input events; stores %0d; ",
                       "error responses %0d mismatched; capability accesses %0d (not compared); ",
-                      "resets %0d (%0d not predicted); verdict \"%s\"; stop \"%s\""},
+                      "resets %0d (%0d not predicted); verdict \"%s\"; stop \"%s\"; ",
+                      "interrupts: %s"},
                      loads_predicted, load_mismatches, loads_event, stores, error_mismatches,
-                     cap_accesses, resets, unpredicted_resets, verdict(), stop_reason());
+                     cap_accesses, resets, unpredicted_resets, verdict(), stop_reason(),
+                     irq_summary());
+  endfunction
+
+  // The interrupt check (eg2_sysmodel_systemc): the chip's interrupt lines against the model's.
+  virtual task watch_irqs(virtual chip_if vif);
+  endtask
+
+  virtual function string irq_summary();
+    return "not checked (no model)";
+  endfunction
+
+  // The end of the run: the edges still waiting for a partner.
+  virtual function void irq_finish();
+  endfunction
+
+  // The model's software stopped following the chip until the next reset (the ISS stops at
+  // debug-mode entry, eg2_iss_wrapper debug_stopped): the model's interrupt lines are no
+  // prediction until then.
+  virtual function void irq_suspend(string why);
   endfunction
 
 `ifdef EG2_PERIPH_SB
@@ -172,6 +209,60 @@ class eg2_sysmodel_systemc extends eg2_sysmodel;
   // Backdoor writes before the model exists (the symbols cpu_init writes).
   protected bit [31:0]   early_addr[$];
   protected bit [7:0]    early_data[$];
+
+  // ---- The interrupt check (watch_irqs; Henrik 2026-11-07: "we need to check the interrupts in
+  // the chip against the scoreboards interrupt predictions") ----
+  // Lines 0 to 221 are rv_plic's sources by ID (0 reserved), 222 to 225 the core's software,
+  // timer, external and NMI lines (IrqCore + 0..3). Each edge of a line, the chip's (as it happens)
+  // and the model's (each rv_plic source change at the model's time, eg2_sysmodel_irq_event; the
+  // core lines as polled), waits in a queue for its partner: the other side's edge to the same
+  // level within the window (+eg2_irq_window_ns, default 20 us). The model is loosely timed (an
+  // access takes effect at the retirement of its instruction, a timer at its compare time from the
+  // chip's measured clocks), so edges are paired, not cycles. 20 us is 20 times the largest skew
+  // the first runs showed on main-clock blocks (1.0 us: uart, rv_timer, plic_all_irqs). A block on
+  // the always-on clock (aon_timer, sysrst_ctrl, adc_ctrl, sensor_ctrl, pwrmgr) gets
+  // +eg2_irq_aon_cycles (default 10) periods of the chip's measured aon clock more (50 us at
+  // 200 kHz): its register writes reach the aon domain through a clock-domain crossing and its
+  // interrupt comes back through another (aon_timer doc/programmers_guide.md: a write "takes a few
+  // aon clock cycles"), which the model applies at the write's retirement. The report gives the
+  // largest skew seen on each kind of line, so the window can be narrowed from evidence. The
+  // core's external line and NMI take the always-on window too (an always-on source drives them).
+  // How each line is judged:
+  //   class 1 (the model raises its hardware event; the core's software, timer and NMI lines):
+  //     both ways: an edge of either side with none of the other within the window is an error;
+  //   class 2 (the model predicts only what software does: INTR_TEST, INTR_ENABLE, INTR_STATE):
+  //     each rising edge of the model's line needs the chip's line high within the window (an
+  //     edge, or already high); the chip's line high while the model's INTR_ENABLE bit for it is 0
+  //     for longer than the window is an error; the chip's other edges are not predicted (counted);
+  //   class 3 (no register block in the model): not predicted (counted);
+  //   the core's external line: both ways, but only while no class 2 or 3 source is high in the
+  //     chip (one the model cannot know would raise it), and a window after that.
+  // Nothing goes from the chip into the model: the model's lines are its own.
+  localparam int IrqLines = 226;
+  localparam int IrqCore  = 222;
+  protected eg2_irq_edge_t   irq_chip_q[IrqLines][$];
+  protected eg2_irq_edge_t   irq_model_q[IrqLines][$];
+  protected bit              irq_chip_lvl[IrqLines];   // the chip's level now
+  protected bit              irq_chip_base[IrqLines];  // the chip's level before its first queued edge
+  protected bit [3:0]        irq_core_model;           // the model's core lines at the last poll
+  protected int              irq_cls[IrqLines];
+  protected string           irq_name[IrqLines];
+  protected bit              irq_on;                   // checking (from the model's reset)
+  protected bit              irq_disabled;             // +eg2_irq_check=0
+  protected longint unsigned irq_window = 64'd20_000_000;  // ps
+  protected longint unsigned irq_poll = 64'd1_000_000;     // ps
+  protected int unsigned     irq_aon_cycles = 10;
+  protected bit              irq_aon[IrqLines];       // a block on the always-on clock
+  longint unsigned           irq_max_skew_aon;
+  protected longint unsigned irq_gate_since[IrqLines];  // class 2: the chip high, INTR_ENABLE 0
+  protected bit              irq_gate_told[IrqLines];
+  protected longint unsigned irq_meip_open;             // MEIP judged again from this time
+  // Counts for the report.
+  int unsigned     irq_chip_edges, irq_model_edges, irq_matched, irq_mismatches, irq_not_predicted,
+                   irq_meip_skipped, irq_unjudged;
+  longint unsigned irq_max_skew;
+  int unsigned     irq_np_by_module[string];
+  int unsigned     irq_compared_by_class[int];
 
   function new(string name = "eg2_sysmodel_systemc");
     super.new(name);
@@ -222,6 +313,7 @@ class eg2_sysmodel_systemc extends eg2_sysmodel;
     end
     if (h == null) return;
     cause = eg2_sysmodel_reset(h, now_ps());
+    irq_restart();
     if (cause < 0 && resets > 0) begin
       unpredicted_resets++;
       `uvm_info("EG2_SYSMODEL", "the chip reset where the model predicted none: a power-on reset",
@@ -441,6 +533,333 @@ class eg2_sysmodel_systemc extends eg2_sysmodel;
     void'(check_stop());
   endfunction
 `endif
+
+  // ---- The interrupt check ----
+
+  virtual task watch_irqs(virtual chip_if vif);
+    longint unsigned ns;
+    if ($test$plusargs("eg2_irq_check=0")) begin
+      irq_disabled = 1'b1;
+      return;
+    end
+    if ($value$plusargs("eg2_irq_window_ns=%d", ns)) irq_window = ns * 1000;
+    if ($value$plusargs("eg2_irq_poll_ns=%d", ns)) irq_poll = ns * 1000;
+    void'($value$plusargs("eg2_irq_aon_cycles=%d", irq_aon_cycles));
+    fork
+      irq_watch_chip(vif);
+      forever begin
+        @(negedge vif.irq_plic_rst_n);
+        irq_on = 1'b0;  // judged again from the model's reset (irq_restart)
+      end
+      forever begin
+        #(irq_poll * 1ps);
+        irq_check(vif);
+      end
+    join_none
+  endtask
+
+  protected function bit [IrqLines-1:0] irq_chip_lines(virtual chip_if vif);
+    bit [IrqLines-1:0] v;
+    for (int i = 0; i < IrqCore; i++) v[i] = vif.irq_plic_src[i] === 1'b1;
+    v[IrqCore + 0] = vif.irq_core_sw === 1'b1;
+    v[IrqCore + 1] = vif.irq_core_timer === 1'b1;
+    v[IrqCore + 2] = vif.irq_core_ext === 1'b1;
+    v[IrqCore + 3] = vif.irq_core_nm === 1'b1;
+    return v;
+  endfunction
+
+  // Every edge of the chip's lines, as it happens.
+  protected task irq_watch_chip(virtual chip_if vif);
+    bit [IrqLines-1:0] cur, prev;
+    forever begin
+      @(vif.irq_plic_src or vif.irq_core_sw or vif.irq_core_timer or vif.irq_core_ext or
+        vif.irq_core_nm);
+      cur = irq_chip_lines(vif);
+      for (int i = 0; i < IrqLines; i++) begin
+        if (cur[i] != prev[i]) begin
+          if (irq_on) begin
+            irq_chip_q[i].push_back('{level: cur[i], t: now_ps()});
+            irq_chip_edges++;
+          end
+          irq_chip_lvl[i] = cur[i];
+        end
+      end
+      prev = cur;
+    end
+  endtask
+
+  // The model's reset (each chip reset item): both sides start again from their own levels.
+  // The model's software stopped following the chip (the ISS at debug-mode entry, which no model
+  // follows): its writes to rv_timer, rv_plic and the IPs stop reaching the model, so its lines
+  // freeze while the chip's software runs on (2026-11-08, chip_eg2_rv_dm_counters_cheriot: the
+  // chip's MTIP dropped after a resume, the model's could not). Not judged until the next reset
+  // (irq_restart), as after a model stop.
+  virtual function void irq_suspend(string why);
+    if (!irq_on) return;
+    irq_on = 1'b0;
+    `uvm_info("EG2_IRQ", {"interrupt check off until the next reset: ", why}, UVM_LOW)
+  endfunction
+
+  protected function void irq_restart();
+    int id, level;
+    longint unsigned t;
+    if (h == null || irq_disabled) return;
+    if (irq_name[1] == "") begin
+      for (int i = 0; i < IrqCore; i++) begin
+        irq_cls[i] = eg2_sysmodel_irq_class(h, i);
+        irq_name[i] = eg2_sysmodel_irq_name(h, i);
+        irq_aon[i] = eg2_sysmodel_irq_aon(h, i) != 0;
+        if (irq_name[i] == "") irq_name[i] = $sformatf("source %0d", i);
+      end
+      irq_name[IrqCore + 0] = "core software interrupt (MSIP)";
+      irq_name[IrqCore + 1] = "core timer interrupt (MTIP)";
+      irq_name[IrqCore + 2] = "core external interrupt (MEIP)";
+      irq_name[IrqCore + 3] = "core NMI";
+      irq_cls[IrqCore + 0] = 1;
+      irq_cls[IrqCore + 1] = 1;
+      irq_cls[IrqCore + 2] = 4;
+      irq_cls[IrqCore + 3] = 1;
+      irq_cls[0] = 0;
+      // The external line follows every source, the NMI aon_timer's watchdog bark: both take the
+      // always-on window.
+      irq_aon[IrqCore + 2] = 1'b1;
+      irq_aon[IrqCore + 3] = 1'b1;
+    end
+    while (eg2_sysmodel_irq_event(h, id, level, t)) ;
+    irq_core_model = eg2_sysmodel_core_irqs(h);
+    for (int i = 0; i < IrqLines; i++) begin
+      irq_chip_q[i].delete();
+      irq_model_q[i].delete();
+      irq_chip_base[i] = irq_chip_lvl[i];
+      irq_gate_since[i] = 0;
+      irq_gate_told[i] = 1'b0;
+      // Both sides leave reset with every line low (state and enable cleared): a chip line high
+      // now is an edge the model must have. Not for a line high in the model too: a low-power exit
+      // does not reset the always-on blocks, so aon_timer's wkup_timer_expired, which woke the
+      // chip, is high on both sides and no edge follows (2026-11-08,
+      // chip_sw_aon_timer_sleep_wdog_sleep_pause_cheriot: the restart at the wake-up's reset made
+      // it an edge the model could never have).
+      if (irq_chip_lvl[i] && irq_cls[i] inside {1, 4} &&
+          !(i < IrqCore ? eg2_sysmodel_irq_level(h, i) != 0 : irq_core_model[i - IrqCore])) begin
+        irq_chip_q[i].push_back('{level: 1'b1, t: now_ps()});
+        irq_chip_base[i] = 1'b0;
+      end
+    end
+    irq_meip_open = now_ps();
+    irq_on = 1'b1;
+  endfunction
+
+  // Line i's window (ps).
+  protected function longint unsigned irq_win(int i);
+    longint unsigned aon_period = 64'd5_000_000;  // 200 kHz until the chip's clock is measured
+    if (!irq_aon[i]) return irq_window;
+    if (clk_hz.exists("aon") && clk_hz["aon"] > 0) aon_period = 64'd1_000_000_000_000 / clk_hz["aon"];
+    return irq_window + irq_aon_cycles * aon_period;
+  endfunction
+
+  protected function void irq_error(int i, string what);
+    irq_mismatches++;
+    `uvm_error("EG2_IRQ", $sformatf("interrupt line %s (%0d): %s",
+                                    irq_name[i], i, what))
+  endfunction
+
+  protected function longint unsigned irq_absdiff(longint unsigned a, longint unsigned b);
+    return a > b ? a - b : b - a;
+  endfunction
+
+  // The chip's level of line i at time t (from its queued edges).
+  protected function bit irq_chip_at(int i, longint unsigned t);
+    bit l = irq_chip_base[i];
+    foreach (irq_chip_q[i][k]) begin
+      if (irq_chip_q[i][k].t > t) break;
+      l = irq_chip_q[i][k].level;
+    end
+    return l;
+  endfunction
+
+  protected function void irq_count_np(int i);
+    string mod = irq_name[i];
+    int dot;
+    irq_not_predicted++;
+    for (dot = 0; dot < mod.len(); dot++) if (mod[dot] == ".") break;
+    mod = mod.substr(0, dot - 1);
+    irq_np_by_module[mod]++;
+  endfunction
+
+  protected function void irq_drop_chip(int i);
+    irq_chip_base[i] = irq_chip_q[i][0].level;
+    void'(irq_chip_q[i].pop_front());
+  endfunction
+
+  protected function void irq_check(virtual chip_if vif);
+    longint unsigned now, t;
+    int id, level;
+    bit [3:0] core;
+    bit gate;
+    if (!irq_on || h == null) return;
+    if (stop_seen != "" || eg2_sysmodel_stop_reason(h) != "") begin
+      irq_on = 1'b0;  // the model no longer follows: nothing is a prediction
+      return;
+    end
+    now = now_ps();
+    eg2_sysmodel_step(h, now);
+    void'(check_stop());
+    while (eg2_sysmodel_irq_event(h, id, level, t)) begin
+      if (id <= 0 || id >= IrqCore) continue;
+      irq_model_q[id].push_back('{level: level[0], t: t});
+      irq_model_edges++;
+    end
+    core = eg2_sysmodel_core_irqs(h);
+    for (int k = 0; k < 4; k++) begin
+      if (core[k] != irq_core_model[k]) begin
+        irq_model_q[IrqCore + k].push_back('{level: core[k], t: now});
+        irq_model_edges++;
+      end
+    end
+    irq_core_model = core;
+    // The core's external line is judged only while no source the model cannot know is high.
+    gate = 1'b0;
+    for (int i = 1; i < IrqCore; i++) begin
+      if (irq_chip_lvl[i] && irq_cls[i] inside {2, 3}) gate = 1'b1;
+    end
+    if (gate) irq_meip_open = now + irq_window;
+    if (now < irq_meip_open) begin
+      irq_meip_skipped += irq_chip_q[IrqCore + 2].size() + irq_model_q[IrqCore + 2].size();
+      irq_chip_q[IrqCore + 2].delete();
+      irq_model_q[IrqCore + 2].delete();
+      irq_chip_base[IrqCore + 2] = irq_chip_lvl[IrqCore + 2];
+    end
+    // Class 2: the chip's line high while the model's INTR_ENABLE bit is 0.
+    for (int i = 1; i < IrqCore; i++) begin
+      if (irq_cls[i] != 2) continue;
+      if (irq_chip_lvl[i] && eg2_sysmodel_irq_enabled(h, i) == 0) begin
+        if (irq_gate_since[i] == 0) irq_gate_since[i] = now;
+        else if (now - irq_gate_since[i] > irq_win(i) && !irq_gate_told[i]) begin
+          irq_gate_told[i] = 1'b1;
+          irq_error(i, $sformatf({"the chip's line has been high since %0t while the model's ",
+                                  "INTR_ENABLE bit for it is 0"}, irq_gate_since[i] * 1ps));
+        end
+      end else begin
+        irq_gate_since[i] = 0;
+        irq_gate_told[i] = 1'b0;
+      end
+    end
+    for (int i = 1; i < IrqLines; i++) begin
+      if (irq_chip_q[i].size() || irq_model_q[i].size()) irq_match(i, now);
+    end
+  endfunction
+
+  // Pairs line i's queued edges; reports those that can no longer find a partner.
+  protected function void irq_match(int i, longint unsigned now);
+    int cls = irq_cls[i];
+    longint unsigned w = irq_win(i);
+    if (cls == 0 || cls == 3) begin
+      foreach (irq_chip_q[i][k]) irq_count_np(i);
+      irq_chip_q[i].delete();
+      irq_model_q[i].delete();
+      irq_chip_base[i] = irq_chip_lvl[i];
+      return;
+    end
+    while (irq_model_q[i].size()) begin
+      eg2_irq_edge_t m = irq_model_q[i][0];
+      int found = -1;
+      if (cls == 2 && !m.level) begin
+        // A falling edge of a class 2 line: the chip's line may stay high on an event the model
+        // does not have (INTR_ENABLE 0 is judged by the gate above).
+        void'(irq_model_q[i].pop_front());
+        continue;
+      end
+      foreach (irq_chip_q[i][k]) begin
+        if (irq_chip_q[i][k].t > m.t + w) break;
+        if (irq_chip_q[i][k].level == m.level &&
+            irq_absdiff(irq_chip_q[i][k].t, m.t) <= w) begin
+          found = k;
+          break;
+        end
+      end
+      if (found >= 0) begin
+        for (int k = 0; k < found; k++) begin
+          if (cls == 2) irq_count_np(i);
+          else irq_error(i, $sformatf("the chip's line went %0d at %0t and the model's did not",
+                                      irq_chip_q[i][0].level, irq_chip_q[i][0].t * 1ps));
+          irq_drop_chip(i);
+        end
+        if (irq_aon[i]) begin
+          if (irq_absdiff(irq_chip_q[i][0].t, m.t) > irq_max_skew_aon) begin
+            irq_max_skew_aon = irq_absdiff(irq_chip_q[i][0].t, m.t);
+          end
+        end else if (irq_absdiff(irq_chip_q[i][0].t, m.t) > irq_max_skew) begin
+          irq_max_skew = irq_absdiff(irq_chip_q[i][0].t, m.t);
+        end
+        irq_matched++;
+        irq_compared_by_class[cls]++;
+        irq_drop_chip(i);
+        void'(irq_model_q[i].pop_front());
+        continue;
+      end
+      if (cls == 2 && irq_chip_at(i, m.t)) begin
+        // Already high in the chip when the model's line rose.
+        irq_matched++;
+        irq_compared_by_class[cls]++;
+        void'(irq_model_q[i].pop_front());
+        continue;
+      end
+      if (now > m.t + w) begin
+        irq_error(i, $sformatf("the model's line went %0d at %0t and the chip's did not within %0t",
+                               m.level, m.t * 1ps, w * 1ps));
+        void'(irq_model_q[i].pop_front());
+        continue;
+      end
+      break;  // the chip's edge may still come
+    end
+    while (irq_chip_q[i].size() && irq_chip_q[i][0].t + w < now) begin
+      if (cls == 2) irq_count_np(i);
+      else irq_error(i, $sformatf("the chip's line went %0d at %0t and the model's did not within %0t",
+                                  irq_chip_q[i][0].level, irq_chip_q[i][0].t * 1ps,
+                                  w * 1ps));
+      irq_drop_chip(i);
+    end
+  endfunction
+
+  virtual function string irq_summary();
+    string s, np;
+    int adopted, unknown;
+    if (irq_disabled) return "not checked (+eg2_irq_check=0)";
+    if (irq_name[1] == "") return "not checked (the model never started)";
+    foreach (irq_np_by_module[m]) np = {np, $sformatf(" %s %0d", m, irq_np_by_module[m])};
+    s = $sformatf({"%0d chip edges, %0d model edges, %0d paired (%0d on lines the model raises ",
+                   "itself, %0d on software-driven lines, max skew %0t, %0t on always-on ",
+                   "blocks), %0d mismatched, ",
+                   "%0d chip edges not predicted (%s), %0d external-line edges skipped (a source ",
+                   "the model cannot know was high), %0d unjudged at the end; window %0t (+%0d aon ",
+                   "clock periods on always-on blocks)"},
+                  irq_chip_edges, irq_model_edges, irq_matched,
+                  irq_compared_by_class.exists(1) ? irq_compared_by_class[1] : 0,
+                  irq_compared_by_class.exists(2) ? irq_compared_by_class[2] : 0,
+                  irq_max_skew * 1ps, irq_max_skew_aon * 1ps, irq_mismatches, irq_not_predicted,
+                  np == "" ? "none" : np.substr(1, np.len() - 1), irq_meip_skipped,
+                  irq_unjudged, irq_window * 1ps, irq_aon_cycles);
+    if (h != null && eg2_sysmodel_plic_claims(h, adopted, unknown)) begin
+      s = {s, $sformatf({"; rv_plic claims where the model took the chip's ID (a race the model ",
+                         "does not time): %0d, of them %0d of a source the model had not raised"},
+                        adopted, unknown)};
+    end
+    return s;
+  endfunction
+
+  // The end of the run: edges younger than the window cannot be judged; older ones are.
+  // Then the summary, in every build (the peripheral build does not print the model line).
+  virtual function void irq_finish();
+    longint unsigned now = now_ps();
+    if (irq_on && h != null) begin
+      for (int i = 1; i < IrqLines; i++) begin
+        if (irq_chip_q[i].size() || irq_model_q[i].size()) irq_match(i, now);
+        irq_unjudged += irq_chip_q[i].size() + irq_model_q[i].size();
+      end
+      irq_on = 1'b0;
+    end
+    `uvm_info("EG2_IRQ", {"interrupt check: ", irq_summary()}, UVM_LOW)
+  endfunction
 
   virtual function void close();
     if (h != null) eg2_sysmodel_release(h);

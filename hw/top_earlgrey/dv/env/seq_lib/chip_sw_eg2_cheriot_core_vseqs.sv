@@ -302,16 +302,20 @@ class chip_sw_eg2_testrig_seq_vseq extends chip_sw_eg2_cheriot_vseq;
   endfunction
   virtual task bench_op(string op, bit [31:0] a, bit [31:0] b, output bit [31:0] result);
     if (op == "gpio_edges") begin
+      // Edges by weak pulls, not drives (2026-11-10): the released pins floated after the edges
+      // (gpio IntrGpioKnown fired on X, chip_sw_eg2_testrig_seq 8 Nov), and the random software may
+      // drive the GPIOs as outputs, which a strong drive would fight. The pull-down stays on.
       fork
         begin
-          cfg.chip_vif.gpios_if.drive_en({NUM_GPIOS{1'b1}});
+          cfg.chip_vif.gpios_if.set_pulldown_en({NUM_GPIOS{1'b1}});
           for (int i = 0; i < 16; i++) begin
             cfg.chip_vif.cpu_clk_rst_if.wait_clks(a);
-            cfg.chip_vif.gpios_if.drive({NUM_GPIOS{1'b1}});
+            cfg.chip_vif.gpios_if.set_pulldown_en({NUM_GPIOS{1'b0}});
+            cfg.chip_vif.gpios_if.set_pullup_en({NUM_GPIOS{1'b1}});
             cfg.chip_vif.cpu_clk_rst_if.wait_clks(10);
-            cfg.chip_vif.gpios_if.drive({NUM_GPIOS{1'b0}});
+            cfg.chip_vif.gpios_if.set_pullup_en({NUM_GPIOS{1'b0}});
+            cfg.chip_vif.gpios_if.set_pulldown_en({NUM_GPIOS{1'b1}});
           end
-          cfg.chip_vif.gpios_if.drive_en({NUM_GPIOS{1'b0}});
         end
       join_none
       result = 0;

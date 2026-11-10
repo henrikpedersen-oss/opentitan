@@ -166,8 +166,9 @@ _ottf_start:
   // 0. The meta SRAM (tags and revocation bitmap) to zero, before the first store in CHERIoT
   // mode: every data store to tagged memory first reads the meta word that holds its tag, and an
   // uninitialised word reads as X. `sram_ctrl_meta` is built with SecZeroInit, so CTRL.INIT
-  // (after a new scrambling key) writes zeros, but only when boot code requests it, and neither
-  // the ROM nor the test ROM does yet (top_earlgrey.hjson).
+  // (after a new scrambling key) writes zeros, but only when boot code requests it. The test ROM
+  // does (init_meta_sram, test_rom.c); the production ROM and ROM_EXT don't yet
+  // (earlgrey-internal-tracker#1035), so this start-up code does it again for any boot path.
   li     t0, TOP_SRAM_CTRL_META_REGS_BASE_ADDR
   addi   t1, x0, (1 << SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT) | (1 << SRAM_CTRL_CTRL_INIT_BIT)
   sw     t1, SRAM_CTRL_CTRL_REG_OFFSET(t0)

@@ -265,6 +265,12 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
     // Set up the config for the bound-in rom_ctrl environment, passing inherit_ral_models=1 so that
     // it uses the register blocks whose handles we just copied.
     m_rom_ctrl_env_cfg.initialize(1'b1);
+    // The chip's policy for the passive rom_ctrl environment too: its alert agent does not support
+    // the ping timeout check at chip level (en_scb_ping_chk above). A test that sets a short ping
+    // timeout on purpose (chip_sw_alert_handler_lpg_sleep_mode_pings, phase 2: 2 cycles) made the
+    // rom_ctrl scoreboard flag the expected timeouts as "alert fatal has unexpected timeout error"
+    // (2026-11-08). Software reads LOC_ALERT_CAUSE for ping timeouts, as the chip check does.
+    m_rom_ctrl_env_cfg.en_scb_ping_chk = 0;
   endfunction
 
   // Configure the environment to run a DMI agent over a JTAG connection.

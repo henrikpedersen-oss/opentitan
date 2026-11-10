@@ -698,7 +698,7 @@
       sw_images: ["//sw/device/tests/eg2_rram:eg2_rram_idle_low_power_otp:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {
@@ -707,7 +707,7 @@
       sw_images: ["//sw/device/tests/eg2_rram:eg2_rram_idle_low_power_otp_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {
@@ -716,7 +716,7 @@
       sw_images: ["//sw/device/tests/eg2_rram:eg2_rram_idle_low_power_otp_cheriot:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {
@@ -725,7 +725,7 @@
       sw_images: ["//sw/device/tests/eg2_rram:eg2_rram_idle_low_power_otp_cheriot_inject_fail:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       build_mode: "en_eg2_cosim"
-      run_opts: ["+sw_test_timeout_ns=100_000_000"]
+      run_opts: ["+sw_test_timeout_ns=100_000_000", "+use_jtag_dmi=1"]
       run_timeout_mins: 480
     }
     {

@@ -805,6 +805,26 @@ interface chip_if;
                                         `SRAM_CTRL_MAIN_HIER.lc_escalate_en_i);
 `endif
 
+  // The interrupt lines, for the chip-vs-model interrupt check (eg2_sysmodel_systemc watch_irqs,
+  // 2026-11-07): every rv_plic source as it enters rv_plic (earlgrey_pd_main's intr_vector, source
+  // ID = bit index, 0 reserved) and rv_core_ibex's interrupt inputs (software, timer, external) and
+  // its NMI (irq_nm: NMI_STATE & NMI_ENABLE) as they enter the core. Wires, not forces.
+`ifdef GATE_LEVEL
+  wire [221:0] irq_plic_src   = '0;
+  wire         irq_core_sw    = 1'b0;
+  wire         irq_core_timer = 1'b0;
+  wire         irq_core_ext   = 1'b0;
+  wire         irq_core_nm    = 1'b0;
+  wire         irq_plic_rst_n = 1'b1;
+`else
+  wire [221:0] irq_plic_src   = `PD_MAIN_HIER.intr_vector;
+  wire         irq_core_sw    = `CPU_HIER.irq_software_i;
+  wire         irq_core_timer = `CPU_HIER.irq_timer_i;
+  wire         irq_core_ext   = `CPU_HIER.irq_external_i;
+  wire         irq_core_nm    = `CPU_HIER.irq_nm;
+  wire         irq_plic_rst_n = `PD_MAIN_HIER.u_rv_plic.rst_ni;
+`endif
+
   // The capability tag sideband of each core data request, by source ID, for the chip scoreboard
   // (a capability store to the NVM, cheriot_mem_sys theory_of_operation.md "Write-to-Read-and-
   // Compare Filter"). The sideband "shares the handshakes" of the TL-UL request (cheriot_mem_sys
@@ -860,6 +880,23 @@ interface chip_if;
 
   alerts_if alerts_if(.clk(`ALERT_HANDLER_HIER.clk_i), .rst_ni(`ALERT_HANDLER_HIER.rst_ni),
                       .alerts(`ALERT_HANDLER_HIER.alert_trig));
+
+  // The alert handler's low-power-group indications, per LPG: clock gated or reset asserted
+  // (alert_handler theory_of_operation.md "Low-power Indication Signals", lpg_cg_en_i / lpg_rst_en_i:
+  // any value but MuBi4False counts, as for the alert handler's own combination). chip_env drives
+  // each alert agent's cfg.en_alert_lpg from it (alert_handler_reg_pkg::LpgMap), so the agents
+  // ignore the channels' re-initialisation at clock gating, as the receivers do ("Low-power
+  // Management of Alert Channels"; 2026-11-07, chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup_eg2sb).
+`ifdef GATE_LEVEL
+  wire [alert_handler_reg_pkg::NLpg-1:0] alert_lpg_active = '0;
+`else
+  wire [alert_handler_reg_pkg::NLpg-1:0] alert_lpg_active;
+  for (genvar g = 0; g < alert_handler_reg_pkg::NLpg; g++) begin : gen_alert_lpg_active
+    assign alert_lpg_active[g] =
+        `ALERT_HANDLER_HIER.lpg_cg_en_i[g] != prim_mubi_pkg::MuBi4False ||
+        `ALERT_HANDLER_HIER.lpg_rst_en_i[g] != prim_mubi_pkg::MuBi4False;
+  end
+`endif
 
   // TODO: use pwrmgr_low_power, internal aon clk / rst monitor instead.
   pwrmgr_low_power_if pwrmgr_low_power_if(

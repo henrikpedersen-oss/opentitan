@@ -495,8 +495,9 @@ void eg2_ms_reset(eg2_ms_reset_kind_t kind, bool bench) {
       eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_COUNT_HI_REG_OFFSET, 0);
       eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_THOLD_LO_REG_OFFSET, 20);
       eg2_dev_write32(kEg2DevAonTimer, AON_TIMER_WKUP_THOLD_HI_REG_OFFSET, 0);
+      // The aon_timer's wake-up by its generated index (4 before the 2026-11-06 merge, 6 after).
       eg2_dev_write32(kEg2DevPwrmgr, PWRMGR_WAKEUP_EN_REG_OFFSET,
-                      1u << PWRMGR_WAKEUP_EN_EN_4_BIT);
+                      1u << kTopEarlgreyPowerManagerWakeUpsAonTimerWkupReq);
       eg2_dev_write32(kEg2DevPwrmgr, PWRMGR_CONTROL_REG_OFFSET,
                       1u << PWRMGR_CONTROL_LOW_POWER_HINT_BIT);
       pwrmgr_sync();

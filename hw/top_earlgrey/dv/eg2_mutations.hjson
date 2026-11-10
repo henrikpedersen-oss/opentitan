@@ -659,6 +659,16 @@
       test_checks: ["CHECK-fail"]
     }
     {
+      name: irq_uart0_tx_done_stuck_high
+      requirements: ["REQ_PER_03"]
+      kind: rtl
+      interface: rv_plic
+      mechanism: "uart0's tx_done interrupt line into rv_plic (earlgrey_pd_main intr_uart0_tx_done) forced 1: a spurious interrupt request uart0 never raised"
+      activation: "every cycle uart0's own tx_done interrupt (INTR_STATE & INTR_ENABLE) is 0"
+      tests: ["chip_sw_rv_timer_irq_cheriot"]
+      caught_by: ["EG2_IRQ"]
+    }
+    {
       name: rv_plic_masked_irq_let_through
       requirements: ["REQ_PER_03"]
       kind: rtl

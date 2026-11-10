@@ -153,6 +153,8 @@ class chip_eg2_rv_dm_lockstep_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     bit [31:0] a0_orig, t1_orig, v;
     bit [2:0] err;
     rv_core_csr_dcsr_t dcsr;
+    // PARK writes a0 and t1 nowhere, so they are free only once the core is in its loop.
+    wait_pc_in(start_target, 20, what);
     halt_checked({what, ": halt"});
     gpr_rd(RegA0, a0_orig, err);
     gpr_rd(RegT1, t1_orig, err);
@@ -185,6 +187,7 @@ class chip_eg2_rv_dm_lockstep_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     uvm_reg_data_t cause;
     int unsigned bit_idx = (port_sel inside {2, 5}) ? addr_bit : 0;
     int unsigned nd0, a0;
+    wait_pc_in(start_target, 20, "lockstep glitch");
     halt_checked("lockstep glitch: halt");
     if (!uvm_hdl_read(path, v)) `uvm_fatal(`gfn, {"cannot read ", path})
     v[bit_idx] = ~v[bit_idx];

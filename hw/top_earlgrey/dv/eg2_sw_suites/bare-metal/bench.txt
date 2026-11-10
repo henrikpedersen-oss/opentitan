@@ -310,7 +310,9 @@ rv_core_ibex_mem_test_test_unlocked0  --stim debugger.dmactive=1@1cyc --stim deb
 rv_core_ibex_isa_test_test_unlocked0  --stim debugger.dmactive=1@1cyc --stim debugger.haltreq=1@1cyc --stim debugger.dmi_expect=0x11:0x300/0x300@1us --stim debugger.sram_program={image:sw/device/tests/rv_core_ibex_isa_test_sram_fpga_cw340_rom_with_fake_keys.elf};wait;0x100a:1@2us
 # OTP is sampled by otp_ctrl/lc_ctrl on reset. These are the four SRAM execution combinations and
 # the RRAM life-cycle sequence from their chip benches.
-sram_ctrl_execution_main_test  --stim otp.write=0x6d0:0x69:1@1cyc --stim otp.lc_state=Rma@1cyc --stim rstmgr.por=1@2cyc --stim lc_ctrl.sram_exec_expect=Rma:off,Rma:on,Prod:off,Prod:on@status:InWfi --stim otp.write=0x6d0:0x96:1,0x6d0:0x69:1,0x6d0:0x96:1@status:InWfi --stim otp.lc_state=Rma,Prod,Prod@status:InWfi --stim rstmgr.por=1,1,1,@status:InWfi --stim bench.finish=,,,pass@status:InWfi
+# otp.write: EN_SRAM_IFETCH at 0x6b8 (otp_ctrl_reg_pkg.sv EnSramIfetchOffset = 1720) since the
+# 2026-11-06 merge; 0x6d0, its old offset, is inside SECRET0 now (fixed 2026-11-08).
+sram_ctrl_execution_main_test  --stim otp.write=0x6b8:0x69:1@1cyc --stim otp.lc_state=Rma@1cyc --stim rstmgr.por=1@2cyc --stim lc_ctrl.sram_exec_expect=Rma:off,Rma:on,Prod:off,Prod:on@status:InWfi --stim otp.write=0x6d0:0x96:1,0x6d0:0x69:1,0x6d0:0x96:1@status:InWfi --stim otp.lc_state=Rma,Prod,Prod@status:InWfi --stim rstmgr.por=1,1,1,@status:InWfi --stim bench.finish=,,,pass@status:InWfi
 rram_ctrl_lc_rw_en_test  --stim otp.lc_state=TestLocked2@1cyc --stim otp.write=0x7b0:0:8@1cyc --stim rstmgr.por=1@2cyc --stim lc_ctrl.rram_rw_expect=off@1us --stim otp.lc_state=Dev@2us --stim rstmgr.por=1@2us --stim otp.lc_state=Prod,Scrap@status:InWfi --stim rstmgr.por=1,1@status:InWfi --stim lc_ctrl.rram_rw_expect=off@status:InWfi@status:InWfi+1us --stim bench.finish=pass@status:InWfi@status:InWfi+2us
 # GPIO pads. gpio.pad_expect checks every output transition after the first expected value is seen;
 # gpio.in drives the rising then falling thermometer pattern, one value after each WFI.
@@ -363,8 +365,10 @@ eg2_rram_sec_cm_cheriot@rram_sec_cm_mem_readback_cheriot  --param model_gaps=0
 # kExpectedAlertNumber and, once software logs "Ready for fault injection", injects a fault into a
 # countermeasure of that IP. The model takes one IP per image: aes (its fault also sets
 # STATUS.ALERT_FATAL_FAULT, aes.hjson) and, in CHERIoT mode, rv_timer (no status field).
-all_escalation_resets_test          --sym kExpectedAlertNumber=43:1 --stim alert.fatal_fault=aes.fatal_fault@log:Ready%20for%20fault%20injection
-all_escalation_resets_test_cheriot  --sym kExpectedAlertNumber=11:1 --stim alert.fatal_fault=rv_timer.fatal_fault@log:Ready%20for%20fault%20injection
+# The numbers are top_earlgrey.h kTopEarlgreyAlertId*FatalFault (aes 44, rv_timer 12, aon_timer 32
+# since the 2026-11-06 merge; they were 43, 11, 31 and checked the wrong alert until 2026-11-08).
+all_escalation_resets_test          --sym kExpectedAlertNumber=44:1 --stim alert.fatal_fault=aes.fatal_fault@log:Ready%20for%20fault%20injection
+all_escalation_resets_test_cheriot  --sym kExpectedAlertNumber=12:1 --stim alert.fatal_fault=rv_timer.fatal_fault@log:Ready%20for%20fault%20injection
 # chip_sw_sleep_pin_mio_dio_val_vseq: in low power, every pad the software logged a retention type
 # for is checked three times (no external pull, pull-down, pull-up), then the bench ends the run
 # (eg2_periph_sys.h Eg2Pinmux sleep_pad_check, from pinmux "Retention Logic").
@@ -380,4 +384,4 @@ eg2_rram_sec_cm_cheriot@rram_sec_cm_mem_addr_infection_cheriot  --param model_ga
 ast_clk_rst_inputs  --sym kNumLowPowerSamples=3:1 --sym kNumNormalPowerSamples=3:1 --sym kWakeUpTimeInUs=80:1 --sym kChannel0MaxLowByte=255:1 --sym kChannel0MaxHighByte=0:1 --sym kChannel0MinLowByte=128:1 --sym kChannel0MinHighByte=0:1 --sym kChannel1MaxLowByte=127:1 --sym kChannel1MaxHighByte=2:1 --sym kChannel1MinLowByte=0:1 --sym kChannel1MinHighByte=2:1 --stim adc_ctrl.chan0=192 --stim adc_ctrl.chan1=576
 # chip_sw_alert_handler_lpg_sleep_mode_alerts runs the same sequence: the alert's IP is aon_timer
 # (always-on, so it stays clocked through the test's normal sleep).
-alert_handler_lpg_sleep_mode_alerts_test  --sym kExpectedAlertNumber=31:1 --stim alert.fatal_fault=aon_timer.fatal_fault@log:Ready%20for%20fault%20injection
+alert_handler_lpg_sleep_mode_alerts_test  --sym kExpectedAlertNumber=32:1 --stim alert.fatal_fault=aon_timer.fatal_fault@log:Ready%20for%20fault%20injection

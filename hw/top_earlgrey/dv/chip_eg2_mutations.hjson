@@ -1735,6 +1735,24 @@
     }
     {
       uvm_test_seq: chip_sw_base_vseq
+      en_run_modes:
+      [
+        sw_test_mode_test_rom
+      ]
+      sw_images:
+      [
+        "//sw/device/tests:rv_timer_smoketest_cheriot:1:new_rules"
+      ]
+      build_mode: en_eg2_periph
+      name: chip_sw_rv_timer_irq_cheriot__mut__irq_uart0_tx_done_stuck_high
+      run_opts:
+      [
+        +eg2_mutate=irq_uart0_tx_done_stuck_high
+      ]
+      reseed: 1
+    }
+    {
+      uvm_test_seq: chip_sw_base_vseq
       sw_images:
       [
         "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0:1:new_rules"
@@ -1877,8 +1895,8 @@
       run_opts:
       [
         +sw_test_timeout_ns=200_000_000
-        +eg2_param_n_windows=48
-        +eg2_param_windows_lo=16384
+        +eg2_param_n_windows=49
+        +eg2_param_windows_lo=32768
         +eg2_param_windows_hi=0
         +eg2_param_reg_parts=4
         +eg2_param_reg_part=1
@@ -1902,8 +1920,8 @@
       run_opts:
       [
         +sw_test_timeout_ns=200_000_000
-        +eg2_param_n_windows=48
-        +eg2_param_windows_lo=16384
+        +eg2_param_n_windows=49
+        +eg2_param_windows_lo=32768
         +eg2_param_windows_hi=0
         +eg2_param_reg_parts=4
         +eg2_param_reg_part=1

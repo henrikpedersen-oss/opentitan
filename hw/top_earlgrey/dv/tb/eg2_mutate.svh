@@ -399,6 +399,11 @@ initial begin : eg2_mutate
       // Target 0 sees every source enabled.
       "rv_plic_masked_irq_let_through":
         force `EG2_PLIC.gen_target[0].u_target.ie_i = '1;
+      // uart0's tx_done interrupt line into rv_plic stuck high: a spurious interrupt request that
+      // software which never enables the source cannot see; uart0 does not read it back. For the
+      // chip-vs-model interrupt check (eg2_sysmodel.sv watch_irqs).
+      "irq_uart0_tx_done_stuck_high":
+        force `PD_MAIN_HIER.intr_uart0_tx_done = 1'b1;
 
       ///////////////////////////////
       // Alerts and escalation
@@ -716,6 +721,9 @@ always @(posedge `EG2_PLIC.clk_i) begin
     case (eg2_mut_name)
       "rv_plic_claim_id_neighbour":
         if (`EG2_PLIC.claim_re[0] && `EG2_PLIC.irq_id_o[0] != '0) eg2_mut_active++;
+      "irq_uart0_tx_done_stuck_high":
+        if (!(`PD_MAIN_HIER.u_uart0.uart_core.reg2hw.intr_state.tx_done.q &&
+              `PD_MAIN_HIER.u_uart0.uart_core.reg2hw.intr_enable.tx_done.q)) eg2_mut_active++;
       "rv_plic_masked_irq_let_through": begin
         bit hit;
         hit = 1'b0;

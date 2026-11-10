@@ -1205,6 +1205,9 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
   localparam int unsigned NEvents = 11;
 
   uvm_tlm_analysis_fifo #(alert_agent_pkg::alert_seq_item) alert_fifo[2];  // recov, fatal
+  // The two alert agents' configurations (set by eg2_periph_env), for their alert lines.
+  alert_agent_pkg::alert_agent_cfg alert_cfg[2];
+  int unsigned n_reinit;  // alert-agent items that were a channel re-initialisation, not an alert
   int unsigned quiet_cycles = 20;
 
   protected bit [3:0]  alert_en[NEvents];
@@ -1214,6 +1217,11 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
   // shorter than an AON step, so a step alone missed it while the chip raised its alert
   // (2026-11-07: chip_sw_sensor_ctrl_alert_eg2sb, pwrmgr_*_eg2sb "recov_alert nothing predicted").
   protected bit [NEvents-1:0] pulsed, pulsed_fatal;
+  // Events that were active, enabled and recoverable at the last step: a recoverable alert episode
+  // starts when an event becomes so, whether the event or its enable came first (2026-11-07:
+  // chip_sw_sensor_ctrl_alert_eg2sb enables event 1 with ALERT_EN while the event is already active
+  // from the masked-off step; the chip alerts at once, the rising-event rule predicted nothing).
+  protected bit [NEvents-1:0] prev_recov;
   protected bit        cfg_regwen = 1'b1;
   protected bit [1:0]  prev_io_pok;
   protected bit [3:0]  prev_init;
@@ -1280,6 +1288,23 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
           alert_fifo[k].get(a);
           if (a.m_trans_type != alert_agent_pkg::AlertSigTrans) continue;
           if (a.m_alert_handshake_sta != alert_agent_pkg::AlertReceived) continue;
+          // alert_handler theory_of_operation.md "Low-power Management of Alert Channels": when a
+          // low-power group is clock gated or reset (sensor_ctrl's channels at each sleep entry, the
+          // IO clocks off), the receivers "place a signal integrity error onto the ping_p / ping_n,
+          // ack_p / ack_n lines" and the senders "respond by placing a signal integrity error onto
+          // the alert_p / alert_n lines, which serves as an initialization acknowledge signal";
+          // the receivers "ignore alert events from the sender side" meanwhile. The chip bench's
+          // passive alert agent (cfg.en_alert_lpg never set) reports that rise of alert_p as an
+          // alert. A rise with a signal-integrity pattern on the channel is that handshake, not an
+          // alert (2026-11-07: chip_sw_pwrmgr_sleep_sensor_ctrl_alert_wakeup_eg2sb, one such
+          // "episode" at every sleep entry).
+          if (in_reinit(k)) begin
+            `uvm_info(`gfn, $sformatf(
+                "EG2_SB sensor_ctrl %s alert channel re-initialisation at %0.3f us (not an alert)",
+                k == 0 ? "recov" : "fatal", $realtime / 1us), UVM_MEDIUM)
+            n_reinit++;
+            continue;
+          end
           // The time of every alert and of each episode's first, in run.log and in the item's
           // note (not compared), so a repeat can be placed against the test's own lines (the
           // low-power entry and wake-up), 2026-11-03.
@@ -1296,6 +1321,25 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
       join_none
     end
   endtask
+
+  // A signal-integrity pattern on alert channel k: ping_p == ping_n or ack_p == ack_n (the
+  // receiver's re-initialisation request) or alert_p == alert_n (the sender's acknowledge).
+  protected function bit in_reinit(int k);
+    prim_alert_pkg::alert_tx_t tx;
+    prim_alert_pkg::alert_rx_t rx;
+    if (alert_cfg[k] == null || alert_cfg[k].vif == null) return 1'b0;
+    tx = alert_cfg[k].vif.alert_tx_final;
+    rx = alert_cfg[k].vif.alert_rx_final;
+    return tx.alert_p === tx.alert_n || rx.ping_p === rx.ping_n || rx.ack_p === rx.ack_n;
+  endfunction
+
+  function void report_phase(uvm_phase phase);
+    super.report_phase(phase);
+    if (n_reinit) begin
+      `uvm_info(`gfn, $sformatf("EG2_SB sensor_ctrl: %0d alert channel re-initialisation(s) not counted as alerts",
+                                n_reinit), UVM_LOW)
+    end
+  endfunction
 
   protected function eg2_sysmon_item event_item(int k, string why);
     eg2_sysmon_item it = eg2_sysmon_item::type_id::create("event");
@@ -1322,6 +1366,7 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
     prev_active = '0;
     pulsed = '0;
     pulsed_fatal = '0;
+    prev_recov = '0;
     cfg_regwen = 1'b1;
     prev_io_pok = vif.sensor_io_pok;
     prev_init = vif.sensor_init_done;
@@ -1330,7 +1375,7 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
   endfunction
 
   virtual function void step();
-    bit [NEvents-1:0] active, live;
+    bit [NEvents-1:0] active, live, recov_live;
     for (int i = 0; i < NEvents; i++) begin
       live[i] = vif.sensor_alert_p[i] === 1'b1 || vif.sensor_alert_n[i] === 1'b0;
     end
@@ -1344,7 +1389,7 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
           expect_alert(1, $sformatf("event %0d, fatal", i));
         end else begin
           set_st("RECOV_ALERT", get_st("RECOV_ALERT") | (1 << i));
-          if (!prev_active[i]) expect_alert(0, $sformatf("event %0d, recoverable", i));
+          if (!prev_recov[i]) expect_alert(0, $sformatf("event %0d, recoverable", i));
         end
         if (!prev_active[i] && sensor_cg != null) sensor_cg.sample(i, fatal_en[i], 1);
       end else if (active[i] && !prev_active[i] && sensor_cg != null) begin
@@ -1353,6 +1398,10 @@ class eg2_sensor_ctrl_monitor extends eg2_sysmon_monitor;
     end
     // A pulse that is over counts once; the next episode is a new rising edge.
     prev_active = live;
+    for (int i = 0; i < NEvents; i++) begin
+      recov_live[i] = live[i] && alert_en[i] == prim_mubi_pkg::MuBi4True && !fatal_en[i];
+    end
+    prev_recov = recov_live;
     pulsed = '0;
     sample_status();
   endfunction
@@ -1424,8 +1473,8 @@ endclass
 // TimedHigh / TimedLow (the level held for WKUP_DETECTOR_CNT_TH_<i> cycles); out-of-range modes
 // are Posedge. A detection sets WKUP_CAUSE<i> (cleared by writing 0) and requests a wake-up.
 // Item: bit 0 pinmux's wake-up request to pwrmgr (wakeup input 2), expected |WKUP_CAUSE.
-// RX: WKUP_CAUSE (pinmux); pwrmgr WAKE_INFO.REASONS[2]: 1 if the request was high while the chip
-// was in low power with WAKEUP_EN[2] set and capture not disabled, 0 if it was never high since
+// RX: WKUP_CAUSE (pinmux); pwrmgr WAKE_INFO.REASONS[PinWkupIdx]: 1 if the request was high while
+// the chip was in low power with WAKEUP_EN[PinWkupIdx] set and capture not disabled, 0 if it was never high since
 // WAKE_INFO was last cleared, not predicted otherwise; the other reasons are not this block's.
 // Not predicted: a detection within `race_cycles` of an enable, a mode change or a timed threshold
 // (the cause bit and the request are then not compared until cleared).
@@ -1446,7 +1495,11 @@ class eg2_wkup_monitor extends eg2_sysmon_monitor;
   protected int unsigned stable_cnt[NDet], level_cnt[NDet];
   protected bit [NDet-1:0] cause;
   // pwrmgr
-  protected bit [5:0]  wakeup_en;
+  // pinmux's pin wake-up request at pwrmgr: index 4 since the 2026-11-06 merge put the two I3C
+  // wake-ups first (top_earlgrey.gen.hjson wakeups; kTopEarlgreyPowerManagerWakeUpsPinmuxPinWkupReq
+  // in the generated top_earlgrey.h). Before, 2: the check read sysrst_ctrl's bit (found 2026-11-07).
+  localparam int unsigned PinWkupIdx = 4;
+  protected bit [pwrmgr_reg_pkg::NumWkups-1:0] wakeup_en;
   protected bit        capture_dis;
   protected bit        req_seen, req_in_lp, req_unsure;
   eg2_wkup_cg          wkup_cg;
@@ -1595,7 +1648,7 @@ class eg2_wkup_monitor extends eg2_sysmon_monitor;
     set_st("WKUP_CAUSE", cause);
     if (|cause) req_seen = 1'b1;
     if (|maybe) req_unsure = 1'b1;
-    if (|(cause & ~maybe) && vif.pwrmgr_low_power === 1'b1 && wakeup_en[2] && !capture_dis) begin
+    if (|(cause & ~maybe) && vif.pwrmgr_low_power === 1'b1 && wakeup_en[PinWkupIdx] && !capture_dis) begin
       req_in_lp = 1'b1;
     end
   endfunction
@@ -1649,9 +1702,9 @@ class eg2_wkup_monitor extends eg2_sysmon_monitor;
       off = eg2_tl_offset(t, 32'h80);
       if (t.is_write()) begin
         case (off)
-          pwrmgr_reg_pkg::PWRMGR_WAKEUP_EN_OFFSET: wakeup_en = t.a_data[5:0];
+          pwrmgr_reg_pkg::PWRMGR_WAKEUP_EN_OFFSET: wakeup_en = t.a_data[pwrmgr_reg_pkg::NumWkups-1:0];
           pwrmgr_reg_pkg::PWRMGR_WAKE_INFO_CAPTURE_DIS_OFFSET: capture_dis = t.a_data[0];
-          pwrmgr_reg_pkg::PWRMGR_WAKE_INFO_OFFSET: if (t.a_data[2]) begin
+          pwrmgr_reg_pkg::PWRMGR_WAKE_INFO_OFFSET: if (t.a_data[PinWkupIdx]) begin
             // Cleared: what counts from here is whether the request is (still) high.
             req_seen = |cause;
             req_in_lp = 1'b0;
@@ -1662,13 +1715,14 @@ class eg2_wkup_monitor extends eg2_sysmon_monitor;
       end else if (off == pwrmgr_reg_pkg::PWRMGR_WAKE_INFO_OFFSET) begin
         bit [31:0] e = '0, c = '0;
         if (!req_seen && !req_unsure) begin
-          c[2] = 1'b1;
+          c[PinWkupIdx] = 1'b1;
         end else if (req_in_lp && !req_unsure) begin
-          c[2] = 1'b1;
-          e[2] = 1'b1;
+          c[PinWkupIdx] = 1'b1;
+          e[PinWkupIdx] = 1'b1;
         end
-        read_check("WAKE_INFO", t.d_data, 32'h4, e, c);
+        read_check("WAKE_INFO", t.d_data, 32'(1) << PinWkupIdx, e, c);
       end
     end
   endtask
 endclass
+

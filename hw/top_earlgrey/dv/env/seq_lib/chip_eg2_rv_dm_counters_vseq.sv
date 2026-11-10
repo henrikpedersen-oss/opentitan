@@ -62,6 +62,18 @@ class chip_eg2_rv_dm_counters_vseq extends chip_eg2_rv_dm_corners_base_vseq;
     if (!ok) return;
     watch_times.delete();
     watch_pc = start_target + 8;  // the instruction after wfi retired: the core woke
+    // The software prints its start line before the command's set-up (eg2_dm_corners.c: the
+    // kernel context cleared, rv_timer armed, then the WFI loop), so a halt right after send_cmd
+    // can land in the set-up, with rv_timer not yet started: both counter reads were 0
+    // (2026-11-08, dbgfix61; the core was halted in memset). Wait for the first wake-up from wfi:
+    // the timer is then armed and the kernel running.
+    begin
+      realtime t_start = $realtime;
+      while (watch_times.size() == 0 && $realtime < t_start + 20 * wfi_ticks * 1us) #(100ns);
+      chk_true("the WFI kernel woke once before the first halt (rv_timer armed)",
+               watch_times.size() > 0);
+      if (watch_times.size() == 0) return;
+    end
     for (int unsigned h = 0; h < n_halts; h++) begin
       bit [31:0] cyc0, cyc1, ins0, ins1, tv0, tv1;
       bit [2:0] serr;

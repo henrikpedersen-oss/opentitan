@@ -70,10 +70,21 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     chk_eq({what, ": dmcontrol.dmactive kept"}, get_field_val(cfg.jtag_dmi_ral.dmcontrol.dmactive,
                                                                v), 1);
     if (check_state) begin
-      csr_rd(.ptr(cfg.jtag_dmi_ral.abstractdata[1]), .value(v), .blocking(1));
-      chk_eq({what, ": data1 kept"}, v, d1);
-      csr_rd(.ptr(cfg.jtag_dmi_ral.progbuf[1]), .value(v), .blocking(1));
-      chk_eq({what, ": progbuf1 kept"}, v, p1);
+      // data1 and progbuf1 only while no abstract command is busy: a read of a data or progbuf
+      // register while busy is refused (RISC-V Debug Specification 0.13.2, 3.12.6 cmderr 1 "An
+      // abstract command was executing while ... one of the data or progbuf registers was read or
+      // written"; the rv_dm reference model leaves the value unpredicted and sets cmderr 1).
+      uvm_reg_data_t st;
+      csr_rd(.ptr(cfg.jtag_dmi_ral.abstractcs), .value(st), .blocking(1));
+      if (get_field_val(cfg.jtag_dmi_ral.abstractcs.busy, st)) begin
+        `uvm_info(`gfn, {"EG2 DM ", what, ": the abstract command is still busy after the ",
+                         "ndmreset, so data1 and progbuf1 are not readable (spec 3.12.6)"}, UVM_LOW)
+      end else begin
+        csr_rd(.ptr(cfg.jtag_dmi_ral.abstractdata[1]), .value(v), .blocking(1));
+        chk_eq({what, ": data1 kept"}, v, d1);
+        csr_rd(.ptr(cfg.jtag_dmi_ral.progbuf[1]), .value(v), .blocking(1));
+        chk_eq({what, ": progbuf1 kept"}, v, p1);
+      end
       csr_rd(.ptr(cfg.jtag_dmi_ral.sbaddress0), .value(v), .blocking(1));
       chk_eq({what, ": sbaddress0 kept"}, v, sa);
     end
@@ -109,14 +120,16 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     if (!ok) return;
     halt_checked("ndmreset during an abstract command: halt");
     progbuf_wr({InsnLuiT1, InsnAddiT1M1, InsnBnezT1, InsnEbreak});
+    // data1 before the command: a write while the command is busy is refused (spec 3.12.6
+    // cmderr 1; 2026-11-07: written during the loop, it never reached data1 and the check after
+    // the ndmreset read 0). progbuf1 is the loop's own instruction here.
+    csr_wr(.ptr(cfg.jtag_dmi_ral.abstractdata[1]), .value(vals[3]), .blocking(1), .predict(1));
+    sbaddr_wr(vals[4] & ~32'h3);
     csr_wr(.ptr(cfg.jtag_dmi_ral.command), .value(reg_cmd(16'h0, 1'b0, 1'b0, 1'b1)),
            .blocking(1), .predict(1));
     csr_rd(.ptr(cfg.jtag_dmi_ral.abstractcs), .value(st), .blocking(1));
     chk_true("the program buffer loop runs at the ndmreset (stimulus)",
              get_field_val(cfg.jtag_dmi_ral.abstractcs.busy, st));
-    // progbuf1 is the loop's own instruction here.
-    csr_wr(.ptr(cfg.jtag_dmi_ral.abstractdata[1]), .value(vals[3]), .blocking(1), .predict(1));
-    sbaddr_wr(vals[4] & ~32'h3);
     ndm_pulse("ndmreset during an abstract command", 1'b1, vals[3], InsnAddiT1M1,
               vals[4] & ~32'h3, ok);
     csr_rd(.ptr(cfg.jtag_dmi_ral.abstractcs), .value(st), .blocking(1));
@@ -134,6 +147,33 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     abs_wait(err);
   endtask
 
+  // Holds (1) or lets go (0) rv_dm's next system-bus request at the crossbar: the crossbar sees no
+  // a_valid and rv_dm no a_ready, so the request waits, as on a busy bus (TL-UL: the host keeps
+  // a_valid up until it is accepted). Used only while the bus is idle.
+  localparam string SbaReqPath = {PdHier, ".main_tl_rv_dm__sba_req"};
+  protected task sba_hold(bit hold);
+    uvm_hdl_data_t v_hdl;
+    tlul_pkg::tl_h2d_t h;
+    tlul_pkg::tl_d2h_t d;
+    if (hold) begin
+      if (!uvm_hdl_read(SbaReqPath, v_hdl)) `uvm_fatal(`gfn, {"cannot read ", SbaReqPath})
+      h = tlul_pkg::tl_h2d_t'(v_hdl[$bits(tlul_pkg::tl_h2d_t)-1:0]);
+      chk_true("the system bus is idle before the request is held", !h.a_valid);
+      h.a_valid = 1'b0;
+      if (!uvm_hdl_read(SbaRspPath, v_hdl)) `uvm_fatal(`gfn, {"cannot read ", SbaRspPath})
+      d = tlul_pkg::tl_d2h_t'(v_hdl[$bits(tlul_pkg::tl_d2h_t)-1:0]);
+      d.a_ready = 1'b0;
+      d.d_valid = 1'b0;
+      if (!uvm_hdl_force(SbaReqPath, uvm_hdl_data_t'(h))) `uvm_fatal(`gfn, SbaReqPath)
+      if (!uvm_hdl_force(SbaRspPath, uvm_hdl_data_t'(d))) `uvm_fatal(`gfn, SbaRspPath)
+    end else begin
+      if (!uvm_hdl_release(SbaReqPath)) `uvm_fatal(`gfn, SbaReqPath)
+      if (!uvm_hdl_release(SbaRspPath)) `uvm_fatal(`gfn, SbaRspPath)
+    end
+    `uvm_info(`gfn, $sformatf("EG2 DM system-bus request %s at the crossbar",
+                              hold ? "held" : "let go"), UVM_LOW)
+  endtask
+
   protected task ph_ndm_sba(output bit ok);
     bit [2:0] serr;
     bit [31:0] rdata, sa;
@@ -143,6 +183,9 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     chk_eq("SBA write of the old value", serr, 0);
     sbcs_wr(3'd2);
     sbaddr_wr(AonThold);
+    // The write completes in less than one DMI access (2026-11-09: the whole phase took 23 us), so
+    // it is held at the crossbar until the ndmreset has been applied, to be in flight then.
+    sba_hold(1'b1);
     sbdata_wr(vals[6]);
     sbcs_rd(v);
     chk_true("the SBA write across the CDC is in flight at the ndmreset (stimulus)",
@@ -150,6 +193,7 @@ class chip_eg2_rv_dm_reset_corners_vseq extends chip_eg2_rv_dm_corners_base_vseq
     cfg.debugger.set_ndmreset(1);
     cfg.clk_rst_vif.wait_clks(20);
     cfg.debugger.set_ndmreset(0);
+    sba_hold(1'b0);
     sba_wait(v);
     `uvm_info(`gfn, $sformatf("EG2 DM ndmreset during an SBA write: sberror %0d",
                               get_field_val(cfg.jtag_dmi_ral.sbcs.sberror, v)), UVM_LOW)

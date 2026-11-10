@@ -37,8 +37,10 @@
  * is based. RRAM slots are 16 bytes apart, each programmed through rram_ctrl and, if tagged, given
  * its tag by a verified CSC (programmers_guide.md "Storing Capabilities in the NVM").
  *
- * `model_gaps` (eg2sim): the SystemC model has no load filter and its TBRE does not revoke
- * (eg2_mpact_cpu.h): a tag the expression revokes is not checked (high word and address are).
+ * No model gaps: the SystemC model has the load filter (eg2_mpact_cpu.cc, the tag cleared after the
+ * CLC) and its TBRE revokes (eg2_mem.h), so eg2sim runs every check, as the chip does. (Until
+ * 2026-11-08 `model_gaps` skipped the revoked tags and kept the swept tags as stored; since the model
+ * gained both, that expected stripped high words the model rightly did not return.)
  *
  * Built with EG2_TRVK_TRUTH_TABLE_INJECT_FAIL, the first case's tag with the bitmap clear is
  * expected inverted: the run must fail with `MISMATCH tag, bitmap clear #0`.
@@ -53,8 +55,8 @@ EG2_TEST_CONFIG();
 
 #define TRVK_TRUTH_TABLE_PARAMS(X) \
   X(n_random, 0, 0, 128)           \
-  X(rram_cases, 2, 0, 2)           \
-  X(model_gaps, 0, 0, 1)
+  X(rram_cases, 2, 0, 2)
+
 EG2_TEST_PARAMS(TRVK_TRUTH_TABLE_PARAMS);
 
 enum {
@@ -82,8 +84,6 @@ enum {
   kRegSec = 0,
   kRegMain = 1,
   kRegRram = 2,
-  // The sweep would have cleared the tag; the model's TBRE does not (model_gaps).
-  kFlagSweepGap = 1u << 4,
   // Slot areas: arena B (sec SRAM), the main SRAM arena, the RRAM area (16 bytes apart).
   kSecSlots = kEg2ArenaB,
   kSecSlotMax = kEg2ArenaSize / 8,
@@ -122,7 +122,6 @@ static uint32_t nonrev_base(uint32_t which, uint32_t granule) {
 }
 
 static eg2_tally_t tally;
-static bool gaps;
 static uint32_t n_cases, n_sec, n_main, n_rram;
 static bool rram_ok;
 
@@ -290,7 +289,6 @@ static void check(const char *phase, uint32_t lo, uint32_t hi, bool clear) {
     eg2_cap_t auth = eg2_hw_read(make_auth(cw(i, kCSlot), cw(i, kCFlags) & 3));
     bool bit = !clear && revbm_of(eg2_cap_base(mem));
     eg2_cap_t e = eg2_rv_expect(auth, mem, bit);
-    bool revoked = eg2_cap_clc_result(auth, mem).tag && !e.tag;
     uint32_t exp_tag = e.tag;
 #ifdef EG2_TRVK_TRUTH_TABLE_INJECT_FAIL
     if (clear && i == 0) {
@@ -298,12 +296,8 @@ static void check(const char *phase, uint32_t lo, uint32_t hi, bool clear) {
       exp_tag = !exp_tag;
     }
 #endif
-    // A tag the model's TBRE would have cleared (phase 6) is a model gap as well.
-    revoked = revoked || (gaps && (cw(i, kCFlags) & kFlagSweepGap));
     uint32_t failed = tally.failed;
-    if (!(gaps && revoked)) {
-      eg2_check(&tally, clear ? "tag, bitmap clear" : "tag", i, cw(i, kCGotTag), exp_tag);
-    }
+    eg2_check(&tally, clear ? "tag, bitmap clear" : "tag", i, cw(i, kCGotTag), exp_tag);
     eg2_check(&tally, "high word", i, cw(i, kCGotHi), e.hi);
     eg2_check(&tally, "address", i, cw(i, kCGotAddr), e.addr);
     if (tally.failed != failed && tally.failed <= kEg2MaxReports) {
@@ -361,7 +355,6 @@ bool eg2_test_main(void) {
   if (!eg2_sec_sram_init()) {
     return false;
   }
-  gaps = EG2_PARAM(model_gaps) != 0;
   uint32_t n_random = EG2_PARAM(n_random) != 0 ? EG2_PARAM(n_random) : eg2_rand_range(16, 128);
   uint32_t rram_cases = EG2_PARAM(rram_cases) == 2 ? 1 : EG2_PARAM(rram_cases);
   eg2_put_kv("EG2 trvk_truth_table n_random", n_random);
@@ -519,11 +512,7 @@ bool eg2_test_main(void) {
     eg2_cap_t mem = {.hi = cw(i, kCHi), .addr = cw(i, kCAddr), .tag = cw(i, kCTag) != 0};
     bool revoked = eg2_rv_revokes(mem, revbm_of(eg2_cap_base(mem)));
     if (revoked) {
-      // The model's TBRE leaves the tag (and so the attenuation on reload) as stored.
-      cw_set(i, kCFlags, cw(i, kCFlags) | kFlagSweepGap);
-      if (!gaps) {
-        cw_set(i, kCTag, 0);
-      }
+      cw_set(i, kCTag, 0);
     }
   }
   for (uint32_t w = 0; w < kShadowWords; ++w) {

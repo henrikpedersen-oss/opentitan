@@ -91,6 +91,18 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
   protected bit        wtrc_w0_ok;
   // The no-error answer each outstanding capability store is expected to get, by source ID.
   protected string     eg2_exp_ok[bit [top_pkg::TL_AIW-1:0]];
+  // Requests whose answer may be either (an error or not): main SRAM accesses that reach the bus
+  // within kSramEscSettle of lc_escalate_en_i turning on. sram_ctrl interfaces.md "Global and Local
+  // Escalation": the keys are discarded "in the subsequent cycle" and "any subsequent memory request
+  // ... will then be blocked"; lc_escalate_en_i is a life-cycle signal from another clock domain and
+  // the documents give no latency for it, so a request already on its way in the first cycles after
+  // the change is not predicted (2026-11-07, chip_sw_sram_ctrl_meta_lc_escalation: a core access 15 ns
+  // after the change completed without error). Counted, reported in the check phase.
+  protected string     eg2_exp_any[bit [top_pkg::TL_AIW-1:0]];
+  protected realtime   sram_esc_t0;
+  protected bit        sram_esc_seen;
+  protected int unsigned sram_esc_unpredicted;
+  localparam realtime  kSramEscSettle = 100ns;
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -127,6 +139,14 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       forever begin
         @(negedge cfg.chip_vif.sram_main_rst_n);
         cfg.tl_fault_blocks_sram_main = 1'b0;
+        sram_esc_seen = 1'b0;
+      end
+      // When main sram_ctrl's lc_escalate_en_i turns on (the start of the settle window above).
+      forever begin
+        wait (cfg.chip_vif.sram_main_escalated === 1'b1);
+        sram_esc_t0   = $realtime;
+        sram_esc_seen = 1'b1;
+        wait (cfg.chip_vif.sram_main_escalated !== 1'b1);
       end
     join
   endtask
@@ -313,6 +333,10 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
   function void check_phase(uvm_phase phase);
     super.check_phase(phase);
     // post test checks - ensure that all local fifos and queues are empty
+    if (sram_esc_unpredicted) begin
+      `uvm_info(`gfn, $sformatf("main SRAM: %0d answer(s) within the escalation settle window not predicted",
+                                sram_esc_unpredicted), UVM_LOW)
+    end
   endfunction
 
   virtual protected function bit predict_tl_err(tl_seq_item item,
@@ -355,6 +379,7 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       string why;
       eg2_exp_ok.delete(item.a_source);
       eg2_exp_err.delete(item.a_source);
+      eg2_exp_any.delete(item.a_source);
       if (item.a_opcode == tlul_pkg::Get && item.a_addr >= RramHostBase &&
           item.a_addr - RramHostBase < RramHostSize) begin
         why = rram_host_rd_err(item.a_addr);
@@ -365,7 +390,12 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
         // sram_ctrl interfaces.md "Global and Local Escalation": once lc_escalate_en is not Off,
         // or after a bus integrity fault (local escalation), every later memory request is blocked
         // until the controller's reset.
-        if (cfg.chip_vif.sram_main_escalated) begin
+        if (cfg.chip_vif.sram_main_escalated && sram_esc_seen &&
+            $realtime - sram_esc_t0 < kSramEscSettle) begin
+          eg2_exp_any[item.a_source] = $sformatf(
+              "main SRAM access %0t after lc_escalate_en_i turned on, within the %0t settle window",
+              $realtime - sram_esc_t0, kSramEscSettle);
+        end else if (cfg.chip_vif.sram_main_escalated) begin
           why = "main SRAM blocked by the global escalation";
         end else if (cfg.tl_fault_blocks_sram_main) begin
           why = "main SRAM blocked by its local escalation after a bus integrity fault";
@@ -378,6 +408,13 @@ class chip_scoreboard #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_b
       string ok  = eg2_exp_ok.exists(item.d_source) ? eg2_exp_ok[item.d_source] : "";
       eg2_exp_err.delete(item.d_source);
       eg2_exp_ok.delete(item.d_source);
+      if (eg2_exp_any.exists(item.d_source)) begin
+        `uvm_info(`gfn, $sformatf("TL-UL answer at 0x%08x not predicted (%s): d_error %0d",
+                                  item.a_addr, eg2_exp_any[item.d_source], item.d_error), UVM_LOW)
+        eg2_exp_any.delete(item.d_source);
+        sram_esc_unpredicted++;
+        return 1'b1;
+      end
       // A bench fault behind this monitor (chip_sw_eg2_rand_vseq::announce_fault, target
       // "chip_tl"): the memory answers the corrupted request with an error that the monitor's clean
       // copy of the request does not explain (2026-10-29, chip_cheriot_fi_meta: a data-integrity

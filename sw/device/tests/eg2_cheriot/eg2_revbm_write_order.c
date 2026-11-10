@@ -23,8 +23,8 @@
  *    first word, whose granules hold the image's globals and the C code runs between the SBA write
  *    and the CLC.
  *
- * `model_gaps` (eg2sim): no load filter, the revbm window takes partial writes, no bench: the tags
- * after a mark, the partial writes' faults and the SBA cases are skipped.
+ * `model_gaps` (eg2sim): no load filter, no bench: the tags after a mark and the SBA cases are
+ * skipped. (The model's revbm window refuses partial writes since 2026-11-07, as the chip does.)
  *
  * Built with EG2_REVBM_WRITE_ORDER_INJECT_FAIL, the first case's tag after the clear is expected 0:
  * the run must fail with `MISMATCH tag after the clear #0`.
@@ -91,16 +91,11 @@ static void one_case(uint32_t w, uint32_t b, bool sba) {
     void *a = eg2_mem(kEg2MsMetaBase + 4 * w + byte, width);
     trapped = eg2_probe_call(a, (void *)(uintptr_t)v, slot,
                              width == 2 ? eg2_rv_stub_mark_sh : eg2_rv_stub_mark_sb);
-    if (gaps) {
-      eg2_ms_revbm_write(w, 0);
-    } else {
-      eg2_check(&tally, width == 2 ? "halfword write trapped" : "byte write trapped", i, trapped,
-                1);
-      if (trapped) {
-        eg2_check(&tally, "partial write mcause", i, eg2_trap_rec.mcause, kMcauseStoreFault);
-      }
-      eg2_check(&tally, "bitmap word after a partial write", i, eg2_ms_revbm_read(w), 0);
+    eg2_check(&tally, width == 2 ? "halfword write trapped" : "byte write trapped", i, trapped, 1);
+    if (trapped) {
+      eg2_check(&tally, "partial write mcause", i, eg2_trap_rec.mcause, kMcauseStoreFault);
     }
+    eg2_check(&tally, "bitmap word after a partial write", i, eg2_ms_revbm_read(w), 0);
     eg2_check(&tally, "tag after a partial write", i, eg2_rv_clc_tag(slot), 1);
   }
 

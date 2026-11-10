@@ -511,6 +511,7 @@ class eg2_iss_wrapper extends uvm_component;
     if (!enabled) return;
 `ifdef EG2_SYSMODEL
     eg2_sysmodel::get().watch_clocks(cfg.chip_vif);
+    eg2_sysmodel::get().watch_irqs(cfg.chip_vif);
 `endif
     fetch_rules_reset();
     fork
@@ -1750,6 +1751,7 @@ class eg2_iss_wrapper extends uvm_component;
     stopped       = 1'b1;
     debug_stopped = 1'b1;
     dropped       = 0;
+    eg2_sysmodel::get().irq_suspend("the instruction model stopped at debug-mode entry");
   endfunction
 
   // At the end (R8, R9, R11; 2026-10-25): a stop no chip reset ended leaves the rest of the run
@@ -1767,6 +1769,9 @@ class eg2_iss_wrapper extends uvm_component;
                                 stop_why), UVM_LOW)
     end
     if (!stopped) report_left("the end of the run");
+`ifdef EG2_SYSMODEL
+    eg2_sysmodel::get().irq_finish();
+`endif
     // The RRAM operation still open: its words the controller did not program are an error once the
     // core read OP_STATUS.done, else reported, as the end may have cut it short (R15, 2026-10-26).
     if (enabled && cosim != null) begin

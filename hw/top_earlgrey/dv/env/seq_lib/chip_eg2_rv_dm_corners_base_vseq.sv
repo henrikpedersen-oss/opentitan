@@ -33,6 +33,14 @@
 class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
   `uvm_object_utils(chip_eg2_rv_dm_corners_base_vseq)
 
+  // A bound on one SBA access (its DMI writes, the sbbusy polling, the data read), in simulated
+  // time. Without it a JTAG access that never returns ran into DVSim's wall-clock limit after 8
+  // hours with no clue and an empty waveform (2026-11-08, chip_eg2_rv_dm_sba_corners, hung at its
+  // first access; also 2026-11-07 the CHERIoT variant). sba_wait's 4000 polls take far less.
+  localparam int unsigned SbaStepTimeoutUs = 20_000;
+  protected string        sba_step;  // the step running, for the time-out's message
+  protected uvm_reg_data_t sba_last_sbcs;
+
   // Hierarchy of the probes (tb.sv's dut; earlgrey_pd_main's instances).
   localparam string PdHier = "tb.dut.top_earlgrey.earlgrey_pd_main";
   localparam string CoreHier = "tb.dut.top_earlgrey.earlgrey_pd_main.u_rv_core_ibex.u_core";
@@ -72,21 +80,31 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
   } shadow_reg_t;
   eg2_rvfi_vif rvfi;
   shadow_reg_t shadow[32], snap[32], post_snap[32];
+  // Writes to s0 (x8) and a0 (x10) in debug mode: the debug ROM's and the abstract commands'
+  // scratch use (the program's values are in dscratch0/dscratch1), applied at the debug exit,
+  // where the last one is the ROM's restore (2026-11-09: while halted the shadow held the park
+  // loop's x8 = 0 and x10 = the debug memory base, failing reg_tags, progbuf_cap, mode_switch).
+  shadow_reg_t dbg_scratch[32];
+  bit          dbg_scratch_set[32];
   bit in_debug;
   int unsigned debug_entries, resumes, retired, nd_retired;
   // The last instruction retired outside debug mode, and its copy at debug entry.
   bit nd_valid, nd_trap, nd_intr;
-  bit [31:0] nd_pc_rdata, nd_pc_wdata;
+  bit [31:0] nd_pc_rdata, nd_pc_wdata, nd_insn;
   bit [1:0] nd_mode;
   realtime nd_time;
   bit entry_valid, entry_trap, entry_intr, entry_cheriot;
-  bit [31:0] entry_pc_rdata, entry_pc_wdata;
+  bit [31:0] entry_pc_rdata, entry_pc_wdata, entry_insn;
   bit [1:0] entry_mode;
   realtime entry_time;
   // The first instruction retired outside debug mode after a resume.
   bit [31:0] post_pc;
   bit post_intr;
   bit [1:0] post_mode;
+  // A dret retired in debug mode: the core has left debug mode, the first instruction outside it
+  // (post_*) is still to come. A halt straight after the resume (a breakpoint at dpc) retires
+  // nothing outside debug mode, so the exit is taken from the dret.
+  bit post_pending;
   // Retirements whose pc_wdata is watch_pc (the next instruction is the watched one).
   bit [31:0] watch_pc;
   realtime watch_times[$];
@@ -229,7 +247,27 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
     end else if (when_pick >= weights[0]) begin
       #(delay_short_ns * 1ns);
     end
-    cfg.debugger.set_dmactive(1);
+    begin
+      bit done;
+      // The isolation fork keeps `disable fork` to the two branches below: on its own it also
+      // killed the sequence's background log watchers (wait_lines then never saw "EG2 DEBUG start",
+      // and no test halted; 2026-11-09).
+      fork : isolation_fork
+        begin
+          fork
+            begin
+              cfg.debugger.set_dmactive(1);
+              done = 1'b1;
+            end
+            #(SbaStepTimeoutUs * 1us);
+          join_any
+          disable fork;
+        end
+      join
+      if (!done) begin
+        `uvm_fatal(`gfn, $sformatf("EG2 DM dmactive write hung for %0d us", SbaStepTimeoutUs))
+      end
+    end
   endtask
 
   // A command: seq << 16 | arg << 8 | kind into `cmd` over SBA; waits for its start line.
@@ -265,8 +303,10 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
       @(rvfi.monitor_cb);
       if (rvfi.monitor_cb.rst_n !== 1'b1) begin
         foreach (shadow[i]) shadow[i].valid = 1'b0;
+        foreach (dbg_scratch_set[i]) dbg_scratch_set[i] = 1'b0;
         in_debug = 1'b0;
         nd_valid = 1'b0;
+        post_pending = 1'b0;
         was_reset = 1'b1;
         continue;
       end
@@ -289,12 +329,18 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
           entry_intr = nd_intr;
           entry_pc_rdata = nd_pc_rdata;
           entry_pc_wdata = nd_pc_wdata;
+          entry_insn = nd_insn;
           entry_mode = nd_mode;
           entry_time = $realtime;
           entry_cheriot = rvfi.monitor_cb.cheriot_ena === 1'b1;
           debug_entries++;
-        end else if (!dbg && in_debug) begin
+        end else if (!dbg && (in_debug || post_pending)) begin
+          post_pending = 1'b0;
           in_debug = 1'b0;
+          foreach (dbg_scratch_set[r]) if (dbg_scratch_set[r]) begin
+            shadow[r] = dbg_scratch[r];
+            dbg_scratch_set[r] = 1'b0;
+          end
           post_snap = shadow;
           post_pc = rvfi.monitor_cb.pc_rdata;
           post_intr = rvfi.monitor_cb.intr === 1'b1;
@@ -307,6 +353,7 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
           nd_intr = rvfi.monitor_cb.intr === 1'b1;
           nd_pc_rdata = rvfi.monitor_cb.pc_rdata;
           nd_pc_wdata = rvfi.monitor_cb.pc_wdata;
+          nd_insn = rvfi.monitor_cb.insn;
           nd_mode = rvfi.monitor_cb.mode;
           nd_time = $realtime;
           nd_retired++;
@@ -319,10 +366,28 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
             cfg_store_after_reset[maddr] = $realtime - reset_release_time;
           end
         end
-        if (rd != 0 && rvfi.monitor_cb.trap !== 1'b1) begin
+        if (rd != 0 && rvfi.monitor_cb.trap !== 1'b1 && dbg && (rd == 8 || rd == 10)) begin
+          dbg_scratch[rd].valid = 1'b1;
+          dbg_scratch[rd].data = rvfi.monitor_cb.rd_wdata;
+          dbg_scratch[rd].cap = 64'(rvfi.monitor_cb.rd_wcap);
+          dbg_scratch_set[rd] = 1'b1;
+        end else if (rd != 0 && rvfi.monitor_cb.trap !== 1'b1) begin
           shadow[rd].valid = 1'b1;
           shadow[rd].data = rvfi.monitor_cb.rd_wdata;
           shadow[rd].cap = 64'(rvfi.monitor_cb.rd_wcap);
+        end
+        // The Debug ROM's dret: the core leaves debug mode (s0 and a0 are restored by now). If it
+        // halts again before any instruction retires (a breakpoint at dpc), the next Debug ROM
+        // instruction is a new entry, with no instruction retired before it (entry_valid 0).
+        if (dbg && in_debug && rvfi.monitor_cb.insn == 32'h7b20_0073 &&
+            rvfi.monitor_cb.trap !== 1'b1) begin
+          in_debug = 1'b0;
+          post_pending = 1'b1;
+          nd_valid = 1'b0;
+          foreach (dbg_scratch_set[r]) if (dbg_scratch_set[r]) begin
+            shadow[r] = dbg_scratch[r];
+            dbg_scratch_set[r] = 1'b0;
+          end
         end
       end
     end
@@ -387,6 +452,23 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
   endtask
 
   // The core halted by haltreq; the entry checked.
+  // Waits (bounded) until the core retires an instruction in [lo, lo + len), so a halt aimed at a
+  // kernel lands inside it and not in the software that prepares it (2026-11-09: a halt 5 us
+  // after the start line landed in memset, where a0 is a live capability).
+  protected task wait_pc_in(bit [31:0] lo, int unsigned len, string what);
+    fork : isolation_fork
+      begin
+        fork
+          wait (nd_valid && nd_pc_rdata >= lo && nd_pc_rdata < lo + len);
+          #(1ms);
+        join_any
+        disable fork;
+      end
+    join
+    chk_true($sformatf("%s: the core runs the kernel at 0x%08x before the halt (stimulus)", what,
+                       lo), nd_valid && nd_pc_rdata >= lo && nd_pc_rdata < lo + len);
+  endtask
+
   protected task halt_checked(string what, bit check_gprs = 1'b1);
     int unsigned n0 = debug_entries;
     set_haltreq(1);
@@ -415,6 +497,38 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
       // A trap or an interrupt taken between the last retirement and the halt: dpc is its
       // vector entry (the kernels' vector; resume_checked() then sees the handler run).
       bit ok = dpc == entry_pc_wdata || (in_vector(dpc) && dpc[1:0] == 0);
+      // After an mret the next pc is mepc. Ibex's RVFI reports pc_wdata = pc_if for it (the next
+      // sequential address: ibex_core.sv, rvfi_stage_pc_wdata <= pc_set ? branch_target_ex : pc_if,
+      // and pc_set is not yet set when the mret retires), so mepc is read from the halted hart.
+      // In CHERIoT mode the CSR address of mepc traps; its value is MEPCC's address (SCR 31,
+      // aarsize 3: address in data0).
+      if (!ok && entry_insn == 32'h3020_0073 && entry_cheriot) begin
+        bit [2:0] err;
+        bit [31:0] mepc;
+        abs_cmd(reg_cmd(16'h001f, 1'b0, 1'b1, 1'b0, 3'd3), err);
+        if (err == 0) begin
+          data0_rd(mepc);
+          ok = dpc == mepc;
+          `uvm_info(`gfn, $sformatf("EG2 DM %s: stepped an mret: dpc 0x%08x, MEPCC 0x%08x", what,
+                                    dpc, mepc), UVM_LOW)
+        end else begin
+          `uvm_error(`gfn, $sformatf("EG2 DM %s: stepped an mret; reading MEPCC failed (cmderr %0d)",
+                                     what, err))
+          cmderr_clear();
+        end
+      end else if (!ok && entry_insn == 32'h3020_0073) begin
+        logic [31:0] q[$];
+        abstract_cmd_err_e st;
+        cfg.debugger.abstract_cmd_reg_read(.regno(16'h0341), .value_q(q), .status(st));
+        if (st == AbstractCmdErrNone) begin
+          ok = dpc == q[0];
+          `uvm_info(`gfn, $sformatf("EG2 DM %s: stepped an mret: dpc 0x%08x, mepc 0x%08x", what,
+                                    dpc, q[0]), UVM_LOW)
+        end else begin
+          `uvm_error(`gfn, $sformatf("EG2 DM %s: stepped an mret; reading mepc failed (%s)", what,
+                                     st.name()))
+        end
+      end
       chk_eq({what, ": dcsr.prv = the privilege before the halt"}, dcsr.prv, entry_mode);
       if (!ok) begin
         `uvm_error(`gfn, $sformatf({"EG2 DM %s: dpc 0x%08x is not the next instruction after ",
@@ -598,13 +712,42 @@ class chip_eg2_rv_dm_corners_base_vseq extends chip_eg2_rv_dm_base_vseq;
   protected task sba_raw(bit write, bit [31:0] addr, bit [2:0] size, bit [31:0] wdata,
                          output bit [2:0] sberror, output bit [31:0] rdata);
     uvm_reg_data_t v;
-    sbcs_wr(size, 0, !write, 0);
-    sbaddr_wr(addr);
-    if (write) sbdata_wr(wdata);
-    sba_wait(v);
-    sberror = get_field_val(cfg.jtag_dmi_ral.sbcs.sberror, v);
+    bit done;
     rdata = '0;
-    if (!write) sbdata_rd(rdata);
+    sba_last_sbcs = 'x;
+    // The isolation fork limits `disable fork` to the access and its time-out (see corners_ready).
+    fork : isolation_fork
+      begin
+        fork
+          begin : sba_access
+            sba_step = $sformatf("%s of 0x%08x (size %0d): sbcs write",
+                                 write ? "write" : "read", addr, size);
+            sbcs_wr(size, 0, !write, 0);
+            sba_step = {sba_step, ", sbaddress0 write"};
+            sbaddr_wr(addr);
+            if (write) begin
+              sba_step = {sba_step, ", sbdata0 write"};
+              sbdata_wr(wdata);
+            end
+            sba_step = {sba_step, ", sbbusy polling"};
+            sba_wait(v);
+            sba_last_sbcs = v;
+            if (!write) begin
+              sba_step = {sba_step, ", sbdata0 read"};
+              sbdata_rd(rdata);
+            end
+            done = 1'b1;
+          end
+          #(SbaStepTimeoutUs * 1us);
+        join_any
+        disable fork;
+      end
+    join
+    if (!done) begin
+      `uvm_fatal(`gfn, $sformatf({"EG2 DM SBA access hung for %0d us in its %s step (last sbcs ",
+                                  "read 0x%08x)"}, SbaStepTimeoutUs, sba_step, sba_last_sbcs))
+    end
+    sberror = get_field_val(cfg.jtag_dmi_ral.sbcs.sberror, v);
     if (write && sberror == 0 && !get_field_val(cfg.jtag_dmi_ral.sbcs.sbbusyerror, v)) begin
       sba_written(addr, size, wdata);
     end

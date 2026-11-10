@@ -438,6 +438,7 @@ class eg2_periph_env extends uvm_env;
           `uvm_fatal(`gfn, $sformatf("no alert agent for %s", names[i]))
         end
         a.m_alert_port.connect(m_sensor_mon.alert_fifo[i].analysis_export);
+        m_sensor_mon.alert_cfg[i] = a.cfg;
       end
     end
 
@@ -502,8 +503,16 @@ class eg2_periph_env extends uvm_env;
     string sb_corrupt, flip, ok[$], names[$];
     super.end_of_elaboration_phase(phase);
     foreach (taps[i]) begin
-      uvm_reg_block     b = cfg.ral.get_block_by_name(taps[i].name);
+      // Looked up by scanning the chip RAL's blocks, not with get_block_by_name: that call raises a
+      // UVM_WARNING for a name it lacks, and dv_report_server fails a test on any warning (every
+      // _eg2sb test failed "TEST FAILED CHECKS" with 0 errors on 2026-11-08: the tap "gpio" is the
+      // RAL's "gpio0" since the second GPIO was added).
+      uvm_reg_block     blks[$];
+      uvm_reg_block     b;
+      string            ral_name = taps[i].name == "gpio" ? "gpio0" : taps[i].name;
       dv_base_reg_block db;
+      cfg.ral.get_blocks(blks, UVM_NO_HIER);
+      foreach (blks[j]) if (blks[j].get_name() == ral_name) b = blks[j];
       names.push_back(taps[i].name);
       if (b != null && $cast(db, b)) begin
         eg2_tl_err::set_block(taps[i].name, db);

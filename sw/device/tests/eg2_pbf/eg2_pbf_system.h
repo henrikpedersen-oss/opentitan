@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "sw/device/tests/eg2_pbf/eg2_pbf.h"
 
 #ifdef __cplusplus
@@ -36,14 +37,17 @@ enum {
   kSysRstNdm = 1u << 7,
 };
 
-// ---- pwrmgr wake-up sources (top_earlgrey.hjson wakeups order) ----
+// ---- pwrmgr wake-up sources: the generated top_earlgrey.h indices (top_earlgrey.gen.hjson
+// wakeups). Not hand-numbered: the upstream merge (2026-11-06) put the two I3C wake-ups first and
+// moved every other source by two, and the old hand-numbered list enabled the pinmux pin instead of
+// the aon_timer (eg2sim: "no model will ever wake the core", 2026-11-07).
 enum {
-  kSysWakeSysrstCtrl = 0,
-  kSysWakeAdcCtrl = 1,
-  kSysWakePin = 2,
-  kSysWakeUsb = 3,
-  kSysWakeAonTimer = 4,
-  kSysWakeSensorCtrl = 5,
+  kSysWakeSysrstCtrl = kTopEarlgreyPowerManagerWakeUpsSysrstCtrlWkupReq,
+  kSysWakeAdcCtrl = kTopEarlgreyPowerManagerWakeUpsAdcCtrlWkupReq,
+  kSysWakePin = kTopEarlgreyPowerManagerWakeUpsPinmuxPinWkupReq,
+  kSysWakeUsb = kTopEarlgreyPowerManagerWakeUpsPinmuxUsbWkupReq,
+  kSysWakeAonTimer = kTopEarlgreyPowerManagerWakeUpsAonTimerWkupReq,
+  kSysWakeSensorCtrl = kTopEarlgreyPowerManagerWakeUpsSensorCtrlWkupReq,
 };
 
 /** AON clock cycles in `us` microseconds (200 kHz in sim_dv, the clock the model uses too). */
@@ -76,7 +80,7 @@ uint32_t sys_wake_irq_ack(void);
 /** Executes WFI. */
 static inline void sys_wfi(void) { __asm__ volatile("wfi"); }
 
-/** pwrmgr WAKE_INFO (REASONS, FALL_THROUGH bit 6, ABORT bit 7); clears it if `clear`. */
+/** pwrmgr WAKE_INFO (REASONS, then FALL_THROUGH and ABORT: pwrmgr_regs.h); clears it if `clear`. */
 uint32_t sys_wake_info(bool clear);
 
 // ---- Crash dump (rstmgr ALERT_INFO; alert_handler alert_crashdump_t) ----
