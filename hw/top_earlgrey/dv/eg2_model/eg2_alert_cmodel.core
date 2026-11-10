@@ -1,0 +1,19 @@
+CAPI=2:
+# Copyright lowRISC contributors (OpenTitan project).
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:eg2_alert_cmodel:0.1"
+description: "alert_handler reference model (C++, shared with eg2sim) and its DPI package"
+
+filesets:
+  files_dv:
+    files:
+      - eg2_model_regs.h: { file_type: cppSource, is_include_file: true }
+      - ip/eg2_alert_core.h: { file_type: cppSource, is_include_file: true }
+      - dpi/eg2_alert_dpi.cc: { file_type: cppSource }
+      - dpi/eg2_alert_cmodel_pkg.sv: { file_type: systemVerilogSource }
+
+targets:
+  default:
+    filesets:
+      - files_dv

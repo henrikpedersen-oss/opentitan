@@ -1,0 +1,18 @@
+CAPI=2:
+# Copyright lowRISC contributors (OpenTitan project).
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:eg2_rram_ctrl_rdwr_cmodel:0.1"
+description: "rram_ctrl controller-path reference model (C++): arbiter, read and write engines; with its DPI functions and their SV package"
+
+filesets:
+  files_dv:
+    files:
+      - ip/eg2_rram_ctrl_rdwr_core.h: { file_type: cppSource, is_include_file: true }
+      - dpi/eg2_rram_ctrl_rdwr_dpi.cc: { file_type: cppSource }
+      - dpi/eg2_rram_ctrl_rdwr_cmodel_pkg.sv: { file_type: systemVerilogSource }
+
+targets:
+  default:
+    filesets:
+      - files_dv

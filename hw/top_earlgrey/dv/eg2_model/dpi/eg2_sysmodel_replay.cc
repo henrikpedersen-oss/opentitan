@@ -15,7 +15,7 @@
 // bench does per RVFI item: time advances to the instruction's (10 ns per instruction, eg2sim's
 // 100 MHz); each load is read from the model, in parts within one 32-bit word, and its value is
 // compared with the trace's (the register written, sign- or zero-extended by the instruction)
-// where the model predicts it, or given to the model as an event where it does not; each store is
+// where the model predicts it, or counted as unpredicted where it does not; each store is
 // written to the model; a WFI goes to pwrmgr. The time is eg2sim's as long as the core never sleeps
 // (eg2sim adds the time a WFI sleeps; the trace does not show it), so the items come out when
 // eg2sim's did: after the last instruction each --expect file (eg2sim's <instance>.model.log) must
@@ -27,8 +27,11 @@
 // model then has the core halted (eg2_sysmodel_core_halted), the replay stops there: a chip whose
 // core retires more instructions after that point would be a mismatch in the bench.
 //
-// Exit 0: every predicted load matched and every expected file was reproduced; 1 otherwise.
+// Exit 0 requires a nonempty trace, at least one comparison, no bus errors or
+// model stop, all predicted loads matching and every expected file reproduced;
+// 1 otherwise. A successfully retired access must not receive a bus error.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -86,11 +89,11 @@ Access decode(uint32_t insn, bool compressed) {
   return a;
 }
 
-std::vector<std::string> read_lines(const std::string &path) {
-  std::vector<std::string> v;
+bool read_lines(const std::string &path, std::vector<std::string> &lines) {
   std::ifstream f(path);
-  for (std::string l; std::getline(f, l);) v.push_back(l);
-  return v;
+  if (!f) return false;
+  for (std::string line; std::getline(f, line);) lines.push_back(line);
+  return !f.bad();
 }
 
 }  // namespace
@@ -248,14 +251,21 @@ int main(int argc, char **argv) {
               (unsigned long long)stores, (unsigned long long)errors, (unsigned long long)wfis);
   std::printf("replay: verdict \"%s\", stop \"%s\"\n", eg2_sysmodel_verdict(h),
               eg2_sysmodel_stop_reason(h));
-  bool ok = mismatched == 0;
+  bool ok = mismatched == 0 && errors == 0 && eg2_sysmodel_stop_reason(h)[0] == '\0';
+  uint64_t comparisons = predicted;
   for (auto &ex : expects) {
-    std::vector<std::string> want = read_lines(ex.second);
+    std::vector<std::string> want;
+    if (!read_lines(ex.second, want)) {
+      std::fprintf(stderr, "replay: cannot read expected output %s\n", ex.second.c_str());
+      ok = false;
+      continue;
+    }
     std::vector<std::string> got;
     while (eg2_sysmodel_pending(h, ex.first.c_str())) got.push_back(eg2_sysmodel_pull(h, ex.first.c_str()));
     size_t i = 0;
     while (i < want.size() && i < got.size() && want[i] == got[i]) ++i;
     bool same = i == want.size() && i == got.size();
+    comparisons += std::min(want.size(), got.size());
     std::printf("replay: %s: %zu items pulled, %zu expected (%s): %s\n", ex.first.c_str(),
                 got.size(), want.size(), ex.second.c_str(),
                 same ? "identical" : "DIFFERENT");
@@ -265,6 +275,11 @@ int main(int argc, char **argv) {
                   i < want.size() ? want[i].c_str() : "<none>");
       ok = false;
     }
+  }
+  if (!insns || !comparisons) {
+    std::fprintf(stderr, "replay: no verification evidence (%llu instructions, %llu comparisons)\n",
+                 (unsigned long long)insns, (unsigned long long)comparisons);
+    ok = false;
   }
   eg2_sysmodel_release(h);
   std::printf("replay: %s\n", ok ? "PASS" : "FAIL");

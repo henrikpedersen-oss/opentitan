@@ -12,7 +12,7 @@
 // bound; its own time stays 0 and Eg2System's clock is the caller's.
 //
 // What the model knows of memory: the bytes of the images, of the bench's backdoor writes, of the
-// stores it has seen, and of the chip's values of loads it could not predict (load_event). Every
+// stores it has seen. Observed chip loads never become reference data. Every
 // other byte (SRAM after a reset, which the chip re-scrambles; the parts of the ROM and RRAM no
 // image fills) is unknown: a load of it is an input event, not a prediction.
 
@@ -35,6 +35,7 @@
 
 #include "eg2_dvlog.h"
 #include "eg2_ip_model.h"
+#include "eg2_irq_predict.h"
 #include "eg2_regblock.h"
 #include "eg2_router.h"
 #include "eg2_targets.h"
@@ -92,7 +93,12 @@ struct Window {
   Eg2Memory *mem = nullptr;     // a memory, or
   Eg2RegBlock *blk = nullptr;   // a register block
   std::vector<bool> known;      // memory: the bytes the model knows
+  Window *known_backing = nullptr;  // an alias shares its backing memory's knowledge
   std::map<uint32_t, uint8_t> reg_flags;  // register block: each register's flags, by offset
+
+  std::vector<bool> &known_bytes() {
+    return known_backing ? known_backing->known : known;
+  }
 };
 
 // The memories the chip loses on a reset: the ROM re-scrambles main SRAM at every boot; the
@@ -102,6 +108,23 @@ bool lost_on_reset(const std::string &window, bool por) {
   return window == "sram_ctrl_main.ram" || window == "sram_ctrl_sec.ram" ||
          window == "sram_ctrl_meta.ram";
 }
+
+// An rv_plic source as the interrupt check sees it (eg2_sysmodel_irq_*).
+struct IrqLine {
+  std::string name;              // "<module>.<interrupt>", "" for a source no block drives
+  int cls = 0;                   // 0 none, 1 predicted, 2 enable-gated, 3 not predicted
+  Eg2RegBlock *blk = nullptr;    // the block with its INTR_ENABLE
+  int enable_reg = -1;           // INTR_ENABLE's index in blk, -1 if it has none
+  uint8_t bit = 0;               // the interrupt's bit in INTR_ENABLE
+  bool aon = false;              // a block on the always-on clock (eg2_irqs::kAonModules)
+};
+
+// A change of a source the model's rv_plic took (Eg2System::set_plic_source), at the model's time.
+struct IrqEvent {
+  uint16_t id;
+  bool level;
+  uint64_t t;
+};
 
 struct Model {
   std::unique_ptr<Eg2Router> bus;
@@ -115,6 +138,8 @@ struct Model {
   bool released = false;
   bool ena_low = false;  // fault cheriot_ena_low injected
   std::string stop, verdict, pulled, halted;
+  std::vector<IrqLine> irq;         // by rv_plic source ID
+  std::deque<IrqEvent> irq_events;  // the source changes not yet taken (eg2_sysmodel_irq_event)
 
   Window *find(uint32_t addr) {
     for (Window &w : windows) {
@@ -126,7 +151,7 @@ struct Model {
   void mark(uint32_t addr, uint32_t len, bool known) {
     for (uint32_t i = 0; i < len; ++i) {
       Window *w = find(addr + i);
-      if (w && w->mem) w->known[addr + i - w->base] = known;
+      if (w && w->mem) w->known_bytes()[addr + i - w->base] = known;
     }
   }
 
@@ -137,7 +162,7 @@ struct Model {
     if (w->mem) {
       for (uint32_t i = 0; i < len; ++i) {
         Window *wi = find(addr + i);
-        if (!wi || wi != w || !w->known[addr + i - w->base]) return false;
+        if (!wi || wi != w || !w->known_bytes()[addr + i - w->base]) return false;
       }
       return true;
     }
@@ -152,7 +177,7 @@ struct Model {
   }
 
   // A stop request from a model: software polling a register no model updates stops eg2sim, but
-  // here the chip's value of that register is an event, so it is cleared; any other stops the
+  // here that register's value remains unpredicted, so it is cleared; any other stops the
   // model's predictions.
   void check_stop() {
     std::string &r = Eg2ModelStop::reason();
@@ -334,12 +359,71 @@ void *eg2_sysmodel_create(const char *rom_elf, const char *test_elf, const char 
       m->bus->to(i).bind(mem->socket);
       win.mem = mem;
       win.known.assign(w.size, false);
+      // cheriot_mem_sys's revbm window takes aligned full words only (Eg2Memory::set_word_only).
+      if (win.name == "cheriot_mem_sys.revbm") mem->set_word_only();
+      // rram_ctrl's host window: read-only, its OTP region refused (Eg2Memory::set_read_only /
+      // set_error_range; rram_ctrl README.md "Features", "RRAM Memory Overview").
+      if (win.name == "rram_ctrl.host") {
+        mem->set_read_only();
+        mem->set_error_range(kRramOtpFirstPage * kRramPageBytes, kRramOtpLastPage1 * kRramPageBytes);
+      }
       sys.memories[w.name] = mem;
       m->targets.emplace_back(mem);
     }
     m->windows.push_back(std::move(win));
   }
+  // The revocation bitmap aliases the start of meta SRAM in both entry points
+  // (top_earlgrey.hjson, sram_ctrl_meta.ram). Share both bytes and their known
+  // flags: a write, forget or reset through either view affects the other.
+  Window *bitmap = nullptr;
+  Window *meta = nullptr;
+  for (Window &window : m->windows) {
+    if (window.name == "cheriot_mem_sys.revbm") bitmap = &window;
+    if (window.name == "sram_ctrl_meta.ram") meta = &window;
+  }
+  if (bitmap && meta && bitmap->mem && meta->mem) {
+    bitmap->mem->share_start_of(*meta->mem);
+    bitmap->known_backing = meta;
+  }
   sc_core::sc_start(sc_core::SC_ZERO_TIME);  // elaboration: the sockets are bound
+
+  // The interrupt check's view of every rv_plic source (eg2_irq_predict.h): the block that drives
+  // it, whether the model raises its hardware event, and the block's INTR_ENABLE bit for it. And
+  // every source change the model's rv_plic takes, at the model's time, for the bench to compare
+  // with the chip's lines (the rv_plic model keeps its own hook).
+  m->irq.assign(eg2_irqs::kPlicSources, IrqLine());
+  for (const eg2_irqs::Ip &ip : eg2_irqs::kIps) {
+    Window *w = nullptr;
+    for (Window &x : m->windows) {
+      if (x.name == ip.window && x.blk) w = &x;
+    }
+    for (uint8_t i = 0; i < ip.nintrs; ++i) {
+      const eg2_irqs::Intr &in = ip.intrs[i];
+      if (in.plic_id >= m->irq.size()) continue;
+      IrqLine &l = m->irq[in.plic_id];
+      l.name = std::string(ip.module) + "." + in.name;
+      l.bit = in.bit;
+      for (const char *a : eg2_irqs::kAonModules) {
+        if (std::strcmp(ip.module, a) == 0) l.aon = true;
+      }
+      if (!w) {
+        l.cls = 3;
+        continue;
+      }
+      l.blk = w->blk;
+      l.enable_reg = w->blk->reg_index("INTR_ENABLE");
+      if (eg2_irq_predict::modelled(w->name.c_str(), w->blk->desc().ip, in.name)) l.cls = 1;
+      else l.cls = l.enable_reg >= 0 ? 2 : 3;
+    }
+  }
+  {
+    auto plic_hook = sys.on_plic_source;
+    sys.on_plic_source = [mp, plic_hook](uint16_t id, bool level) {
+      mp->irq_events.push_back({id, level, mp->now});
+      if (mp->irq_events.size() > 100000) mp->irq_events.pop_front();
+      if (plic_hook) plic_hook(id, level);
+    };
+  }
 
   if (!rom_elf || !*rom_elf || !load_elf(*m, rom_elf)) return nullptr;
   if (test_elf && *test_elf && !load_elf(*m, test_elf)) return nullptr;
@@ -389,19 +473,14 @@ int eg2_sysmodel_read(void *h, uint32_t addr, uint32_t size, uint32_t *data, int
   bool ok = m->master->access(tlm::TLM_READ_COMMAND, addr, size, b);
   std::memcpy(data, b, 4);
   *err = ok ? 0 : 1;
-  int exact = m->stop.empty() && m->predicts(addr, size);
   m->check_stop();
-  return exact;
+  return m->stop.empty() && m->predicts(addr, size);
 }
 
-void eg2_sysmodel_load_event(void *h, uint32_t addr, uint32_t size, uint32_t data) {
-  Model *m = model(h);
-  if (!m || size == 0 || size > 4) return;
-  Window *w = m->find(addr);
-  if (!w || !w->mem) return;
-  uint8_t b[4];
-  std::memcpy(b, &data, 4);
-  if (w->mem->write(addr, b, size)) m->mark(addr, size, true);
+void eg2_sysmodel_load_event(void *, uint32_t, uint32_t, uint32_t) {
+  // ABI compatibility with existing testbenches. A DUT observation cannot seed
+  // future predictions or replace a model's interrupt claim. Only independently
+  // supplied images, writes and external stimuli may update reference state.
 }
 
 int eg2_sysmodel_write(void *h, uint32_t addr, uint32_t size, uint32_t data) {
@@ -441,11 +520,6 @@ int eg2_sysmodel_input(void *h, const char *key, uint32_t value) {
     Eg2System::Clk c = k == "clk.main" ? Eg2System::Clk::kMain
                        : k == "clk.aon" ? Eg2System::Clk::kAon : Eg2System::Clk::kIoDiv4;
     if (sys.set_clock_hz(c, value, sys.now_ps())) sys.note(k + " = " + std::to_string(value) + " Hz");
-  } else if (std::string(key) == "gpio.in") {
-    // A level the GPIO model reads when it needs it (ip/eg2_periph_stim.h).
-    char v[16];
-    std::snprintf(v, sizeof v, "0x%x", value);
-    eg2_model::Eg2PeriphStim::all()[key] = v;
   } else {
     r = 1;
   }
@@ -513,6 +587,71 @@ const char *eg2_sysmodel_stop_reason(void *h) {
 }
 
 const char *eg2_sysmodel_create_error(void) { return g_create_error.c_str(); }
+
+int eg2_sysmodel_irq_sources(void *h) {
+  Model *m = model(h);
+  return m ? int(m->irq.size()) : 0;
+}
+
+int eg2_sysmodel_irq_class(void *h, int id) {
+  Model *m = model(h);
+  if (!m || id < 0 || size_t(id) >= m->irq.size()) return 0;
+  return m->irq[id].cls;
+}
+
+const char *eg2_sysmodel_irq_name(void *h, int id) {
+  Model *m = model(h);
+  if (!m || id < 0 || size_t(id) >= m->irq.size()) return "";
+  return m->irq[id].name.c_str();
+}
+
+int eg2_sysmodel_irq_aon(void *h, int id) {
+  Model *m = model(h);
+  if (!m || id < 0 || size_t(id) >= m->irq.size()) return 0;
+  return m->irq[id].aon ? 1 : 0;
+}
+
+int eg2_sysmodel_irq_level(void *h, int id) {
+  Model *m = model(h);
+  if (!m || id < 0) return 0;
+  return Eg2System::get().plic_source(uint16_t(id)) ? 1 : 0;
+}
+
+int eg2_sysmodel_irq_enabled(void *h, int id) {
+  Model *m = model(h);
+  if (!m || id < 0 || size_t(id) >= m->irq.size()) return -1;
+  const IrqLine &l = m->irq[id];
+  if (!l.blk || l.enable_reg < 0) return -1;
+  return (l.blk->value(uint16_t(l.enable_reg)) >> l.bit) & 1;
+}
+
+int eg2_sysmodel_irq_event(void *h, int *id, int *level, uint64_t *t_ps) {
+  Model *m = model(h);
+  if (!m || m->irq_events.empty()) return 0;
+  const IrqEvent &e = m->irq_events.front();
+  *id = e.id;
+  *level = e.level ? 1 : 0;
+  *t_ps = e.t;
+  m->irq_events.pop_front();
+  return 1;
+}
+
+int eg2_sysmodel_plic_claims(void *h, int *adopted, int *unknown) {
+  *adopted = 0;
+  *unknown = 0;
+  if (!model(h)) return 0;
+  auto *plic = dynamic_cast<eg2_model::Eg2RvPlic *>(Eg2System::get().model("rv_plic"));
+  if (!plic) return 0;
+  *adopted = int(plic->claims_adopted());
+  *unknown = int(plic->claims_unknown());
+  return 1;
+}
+
+int eg2_sysmodel_core_irqs(void *h) {
+  if (!model(h)) return 0;
+  const Eg2System &sys = Eg2System::get();
+  return (sys.msip ? 1 : 0) | (sys.mtip ? 2 : 0) | (sys.meip ? 4 : 0) | (sys.nmi_level ? 8 : 0);
+}
 
 void eg2_sysmodel_release(void *h) {
   Model *m = model(h);

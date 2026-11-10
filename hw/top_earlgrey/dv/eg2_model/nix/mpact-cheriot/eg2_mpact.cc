@@ -221,6 +221,7 @@ struct eg2_mpact {
     });
   }
   ~eg2_mpact() {
+    delete depcc;
     delete top;
     delete decoder;
     delete state;
@@ -247,6 +248,10 @@ struct eg2_mpact {
   CheriotTop *top = nullptr;
   bool wfi = false;
   std::string error, disasm;
+  // Ibex's debug SCR depcc (24), which MPACT has not (cs_registers.rst "CHERIoT Special Capability
+  // Registers": "holds dpc as cap"); created at the first debug entry.
+  CheriotRegister *depcc = nullptr;
+  bool debug = false;
 };
 
 extern "C" {
@@ -331,6 +336,13 @@ void eg2_mpact_step_emulated(eg2_mpact *m, uint32_t len, unsigned rd, uint32_t v
   }
 }
 
+void eg2_mpact_fence_i(eg2_mpact *m) { m->top->decode_cache()->InvalidateAll(); }
+
+void eg2_mpact_clear_cap_tag(eg2_mpact *m, unsigned rd) {
+  if (rd == 0) return;
+  if (CheriotRegister *c = m->reg(absl::StrCat(CheriotState::kCregPrefix, rd))) c->set_tag(false);
+}
+
 void eg2_mpact_nmi(eg2_mpact *m) {
   m->wfi = false;
   uint32_t pc = m->pcc()->address();
@@ -342,6 +354,42 @@ void eg2_mpact_nmi(eg2_mpact *m) {
 int eg2_mpact_wfi(const eg2_mpact *m) { return m->wfi; }
 
 uint32_t eg2_mpact_pc(eg2_mpact *m) { return m->pcc()->address(); }
+
+// Debug mode (Ibex debug.rst "Debug Mode in CHERIoT"): "On entry into Debug Mode, PCC is saved in
+// depcc and replaced by mtcc, as when taking a trap, and dret restores PCC from depcc."
+void eg2_mpact_debug_enter(eg2_mpact *m) {
+  if (m->debug) return;
+  if (!m->depcc) m->depcc = new CheriotRegister(m->state, "depcc");
+  m->depcc->CopyFrom(*m->pcc());
+  m->pcc()->CopyFrom(*m->state->mtcc());
+  m->debug = true;
+}
+
+void eg2_mpact_debug_resume(eg2_mpact *m) {
+  if (!m->debug) return;
+  m->pcc()->CopyFrom(*m->depcc);
+  m->debug = false;
+}
+
+uint32_t eg2_mpact_dpc(eg2_mpact *m) { return m->depcc ? m->depcc->address() : 0; }
+
+// dpc written by the debugger: depcc's address, as CSetAddr sets an address (the tag is cleared
+// when the new address is not representable). What a dpc write does to depcc's metadata is not
+// documented (ticket).
+void eg2_mpact_set_dpc(eg2_mpact *m, uint32_t pc) {
+  if (m->depcc) m->depcc->set_address(pc);
+}
+
+// x<r> written as an integer (Ibex cheriot.rst: the capability portion of a register is "untagged
+// by integer writes"): a null capability holding the value as its address.
+int eg2_mpact_set_gpr(eg2_mpact *m, unsigned r, uint32_t value) {
+  CheriotRegister *c = r && r < 32 ? m->reg(absl::StrCat(CheriotState::kCregPrefix, r)) : nullptr;
+  if (!c) return -1;
+  c->ResetNull();
+  c->set_address(value);
+  c->set_tag(false);
+  return 0;
+}
 
 uint32_t eg2_mpact_gpr(eg2_mpact *m, unsigned r) {
   CheriotRegister *c = r < 32 ? m->reg(absl::StrCat(CheriotState::kCregPrefix, r)) : nullptr;

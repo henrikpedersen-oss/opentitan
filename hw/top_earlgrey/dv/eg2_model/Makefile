@@ -16,8 +16,13 @@ LDLIBS   := -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc \
             -L$(EG2_SPIKE)/lib -Wl,-rpath,$(EG2_SPIKE)/lib \
             -lriscv -ldisasm -lfesvr -lfdt -lsoftfloat -ldl -lpthread
 
-SRCS := eg2sim.cc eg2_spike_cpu.cc eg2_ip_models.cc
+# IP implementations shared by the standalone executable and DPI library.
+IP_SRCS := ip/eg2_otp_ctrl.cc ip/eg2_otbn_accelerators.cc ip/eg2_otbn_execute.cc
+SRCS := eg2sim.cc eg2_image.cc eg2_stimulus.cc eg2_spike_cpu.cc eg2_spike_debug.cc \
+        eg2_ip_models.cc $(IP_SRCS)
 HDRS := $(wildcard *.h ip/*.h rtos_soc/*.h) $(EG2_ROOT)/sw/device/lib/testing/eg2/eg2_tables.h
+# Shared reference model used by ip/eg2_cheriot_mem_sys.h.
+HDRS += $(EG2_ROOT)/hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h
 
 # Crypto group (ip/eg2_crypto.h): the block DVs' reference code, compiled as C++.
 SRCS += $(EG2_ROOT)/hw/ip/aes/model/aes.c \
@@ -67,7 +72,7 @@ $(OUT)/eg2sim: $(SRCS) $(HDRS) $(TOOLPATHS)
 # en_eg2_model of chip_sim_cfg.hjson), without eg2sim's Spike: SystemC only. eg2_sysmodel_replay
 # drives it from an eg2sim --spike-log trace, as the bench's ISS wrapper does
 # (dpi/eg2_sysmodel_replay.cc). eg2_top_verification: make eg2sysmodel.
-LIB_SRCS := dpi/eg2_sysmodel.cc eg2_ip_models.cc $(filter %.c,$(SRCS))
+LIB_SRCS := dpi/eg2_sysmodel.cc eg2_ip_models.cc $(IP_SRCS) $(filter %.c,$(SRCS))
 LIB_HDRS := $(HDRS) $(wildcard dpi/*.h)
 
 .PHONY: lib replay
@@ -109,6 +114,87 @@ $(OUT)/eg2_dm_dpi_test: dpi/eg2_dm_dpi.cc dpi/eg2_dm_dpi_test.cc ip/eg2_dm_core.
 	@mkdir -p $(OUT)
 	$(CXX) -std=c++17 -O2 -g -Wall -Wextra -Werror dpi/eg2_dm_dpi.cc dpi/eg2_dm_dpi_test.cc -o $@
 
+# rram_test: the rram_ctrl memory-protection and scrambling models' self-test through their DPI
+# functions (no simulator); EG2_RRAM_TEST_BREAK=1 must make it fail.
+.PHONY: rram_test
+rram_test: $(OUT)/eg2_rram_dpi_test
+	$(OUT)/eg2_rram_dpi_test
+	! EG2_RRAM_TEST_BREAK=1 $(OUT)/eg2_rram_dpi_test > /dev/null
+
+$(OUT)/eg2_rram_dpi_test: dpi/eg2_rram_dpi.cc dpi/eg2_rram_dpi_test.cc ip/eg2_rram_mp_core.h \
+    ip/eg2_rram_scramble_core.h
+	@mkdir -p $(OUT)
+	$(CXX) -std=c++17 -O2 -g -Wall -Wextra -Werror dpi/eg2_rram_dpi.cc dpi/eg2_rram_dpi_test.cc -o $@
+
+# pwrmgr_test: the power manager reference model's self-test through its DPI functions (no
+# simulator, no SystemC); EG2_PWR_TEST_BREAK=1 must make it fail.
+.PHONY: pwrmgr_test
+pwrmgr_test: $(OUT)/eg2_pwrmgr_dpi_test
+	$(OUT)/eg2_pwrmgr_dpi_test
+	! EG2_PWR_TEST_BREAK=1 $(OUT)/eg2_pwrmgr_dpi_test > /dev/null
+
+$(OUT)/eg2_pwrmgr_dpi_test: dpi/eg2_pwrmgr_dpi.cc dpi/eg2_pwrmgr_dpi_test.cc ip/eg2_pwrmgr_core.h
+	@mkdir -p $(OUT)
+	$(CXX) -std=c++17 -O2 -g -Wall -Wextra -Werror dpi/eg2_pwrmgr_dpi.cc dpi/eg2_pwrmgr_dpi_test.cc -o $@
+
+# rstmgr_test: the reset manager reference model's self-test through its DPI functions (no
+# simulator, no SystemC); EG2_RST_TEST_BREAK=1 must make it fail.
+.PHONY: rstmgr_test
+rstmgr_test: $(OUT)/eg2_rstmgr_dpi_test
+	$(OUT)/eg2_rstmgr_dpi_test
+	! EG2_RST_TEST_BREAK=1 $(OUT)/eg2_rstmgr_dpi_test > /dev/null
+
+$(OUT)/eg2_rstmgr_dpi_test: dpi/eg2_rstmgr_dpi.cc dpi/eg2_rstmgr_dpi_test.cc ip/eg2_rstmgr_core.h
+	@mkdir -p $(OUT)
+	$(CXX) -std=c++17 -O2 -g -Wall -Wextra -Werror dpi/eg2_rstmgr_dpi.cc dpi/eg2_rstmgr_dpi_test.cc -o $@
+
 $(OUT)/eg2_sysmodel_replay: dpi/eg2_sysmodel_replay.cc dpi/eg2_sysmodel.h $(OUT)/libeg2sysmodel.so
 	$(CXX) -std=c++17 -O2 -g -Wall -I$(CURDIR)/dpi $< -o $@ \
 	  -L$(abspath $(OUT)) -Wl,-rpath,$(abspath $(OUT)) -leg2sysmodel
+
+# Public entry point for the existing standalone core tests. No RTL simulator
+# is needed. Each test also runs its deliberately broken expectation, which
+# must exit 1; a crash or a successful negative test is a failure.
+CORE_TESTS := $(notdir $(basename $(wildcard dpi/*_test.cc)))
+CORE_TEST_FLAGS := -std=c++17 -O1 -g -Wall -Wextra -I$(CURDIR) -I$(EG2_ROOT)
+
+define core_test_rule
+$(OUT)/selftest/$(1): dpi/$(1).cc $(wildcard dpi/$(patsubst %_test,%,$(1)).cc) $(HDRS)
+	@mkdir -p $$(@D)
+	$(CXX) $(CORE_TEST_FLAGS) $$(filter %.cc,$$^) -o $$@
+endef
+$(foreach test,$(CORE_TESTS),$(eval $(call core_test_rule,$(test))))
+
+$(OUT)/selftest/eg2_rram_lcmgr_dpi_test_fail: dpi/eg2_rram_lcmgr_dpi_test.cc \
+    dpi/eg2_rram_lcmgr_dpi.cc $(HDRS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -DEG2_LCMGR_SELFTEST_FAIL $(filter %.cc,$^) -o $@
+
+.PHONY: core_tests model_test sysmodel_test replay_test check
+core_tests: $(addprefix $(OUT)/selftest/,$(CORE_TESTS)) \
+    $(OUT)/selftest/eg2_rram_lcmgr_dpi_test_fail
+	bash tests/run_core_tests.sh $(abspath $(OUT)/selftest)
+
+$(OUT)/eg2_model_test: tests/eg2_model_test.cc $(IP_SRCS) $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $(filter %.cc,$^) -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+
+$(OUT)/eg2_sysmodel_test: tests/eg2_sysmodel_test.cc dpi/eg2_sysmodel.h \
+    eg2_model_regs.h $(OUT)/libeg2sysmodel.so
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) $< -o $@ \
+	  -L$(abspath $(OUT)) -Wl,-rpath,$(abspath $(OUT)) -leg2sysmodel
+
+model_test: $(OUT)/eg2_model_test
+	@mkdir -p $(OUT)/model-test-logs
+	cd $(OUT)/model-test-logs && $(abspath $(OUT))/eg2_model_test
+
+sysmodel_test: $(OUT)/eg2_sysmodel_test
+	@mkdir -p $(OUT)/sysmodel-test-logs
+	cd $(OUT)/sysmodel-test-logs && $(abspath $(OUT))/eg2_sysmodel_test
+
+replay_test: $(OUT)/eg2_sysmodel_replay
+	bash tests/run_replay_tests.sh $(abspath $(OUT))/eg2_sysmodel_replay $(abspath $(OUT))/replay-test-logs
+
+check: core_tests model_test sysmodel_test replay_test

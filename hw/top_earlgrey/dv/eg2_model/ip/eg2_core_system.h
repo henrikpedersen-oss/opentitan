@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../eg2_ip_model.h"
+#include "eg2_alert_core.h"
 #include "eg2_crypto_entropy.h"
 
 namespace eg2_model {
@@ -30,7 +31,7 @@ inline std::string fmt(const char *f, unsigned i) {
 
 // rv_plic (hw/ip_templates/rv_plic, doc/theory_of_operation.md): level-triggered gateways, one
 // target. A source's pending bit is set while its line is high and it is not claimed; a claim (a
-// read of CC0) returns the highest-priority pending enabled source above THRESHOLD0 (the lowest ID
+// read of CC0) returns the highest-priority pending enabled source (the lowest ID
 // on a tie) and clears its pending bit; a complete (a write of its ID to CC0) lets the gateway
 // take the line again. The external interrupt is any pending enabled source above the threshold;
 // MSIP0 is the core's software interrupt.
@@ -77,6 +78,12 @@ class Eg2RvPlic : public Eg2IpModel {
   }
   unsigned sources() const { return N; }
 
+  // A claim is determined only by this model's pending requests and priorities.
+  // A timing-dependent difference from the DUT must not change the model's
+  // gateway state. Retain these diagnostics for existing DPI callers.
+  unsigned claims_adopted() const { return 0; }
+  unsigned claims_unknown() const { return 0; }
+
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
     if (r == cc_) {
@@ -94,7 +101,9 @@ class Eg2RvPlic : public Eg2IpModel {
   void reg_before_read(uint16_t r) override {
     if (r != cc_) return;
     unsigned best = 0;
-    uint32_t best_prio = value(thr_);
+    // "Interrupt Claims": THRESHOLD0 gates notification, not claiming. Software
+    // may poll CC0 even while the threshold suppresses the external interrupt.
+    uint32_t best_prio = 0;
     for (unsigned i = 1; i < N; ++i) {
       if (pending_[i] && enabled(i) && value(prio_[i]) > best_prio) {
         best = i;
@@ -137,179 +146,63 @@ class Eg2RvPlic : public Eg2IpModel {
 
 // The alert handler (hw/top_earlgrey/ip_autogen/alert_handler: doc/theory_of_operation.md,
 // doc/programmers_guide.md, data/alert_handler.hjson), on its clock, io_div4 (top_earlgrey.hjson
-// clock_srcs clk_i), whose cycles count every timer below.
+// clock_srcs clk_i), whose cycles count every timer. Its behaviour is the core's
+// (ip/eg2_alert_core.h, shared with the alert_handler block bench's reference model); this class
+// binds it to the SystemC model: the register store, io_div4 time, the four escalation signals to
+// the top's receivers (Eg2System::set_escalation: 0 rv_core_ibex NMI, 1 and 2 lc_ctrl, 3 pwrmgr),
+// the class interrupts, the ping response of each sender (an AON sender answers in its slower
+// clock), and fatal alerts re-sent by their senders.
 //
-//   Classification  An alert enabled in ALERT_EN_SHADOWED sets its ALERT_CAUSE and triggers its
-//                   class (ALERT_CLASS_SHADOWED); the local alerts likewise (LOC_ALERT_*). The
-//                   class interrupt always fires.
-//   Accumulation    With the class enabled (CLASSx_CTRL_SHADOWED.EN) a trigger counts in
-//                   CLASSx_ACCUM_CNT, saturating at 0xffff; a trigger when the count has reached
-//                   CLASSx_ACCUM_THRESH escalates ("Once the threshold has been reached, the next
-//                   occurrence triggers the escalation protocol"; threshold 0: the first one).
-//   Timeout         With EN and CLASSx_TIMEOUT_CYC > 0, the class interrupt's INTR_STATE bit (set
-//                   by an alert or by INTR_TEST: programmer's guide) starts the Timeout state;
-//                   clearing the bit returns to Idle; reaching the count escalates.
-//   Escalation      Phase0..Phase3, each CLASSx_PHASEn_CYC cycles long (at least one), then
-//                   Terminal until software clears the class. CLASSx_ESC_CNT counts the cycles of
-//                   the Timeout state or the current phase (0 otherwise). Escalation signal e is
-//                   asserted while a class with EN_Ee is in phase MAP_Ee; the four signals go to
-//                   the top's receivers (Eg2System::set_escalation: 0 rv_core_ibex NMI, 1 and 2
-//                   lc_ctrl, 3 pwrmgr).
-//   Lock and clear  A write of 1 to CLASSx_CLR_SHADOWED, while CLASSx_CLR_REGWEN, clears the count
-//                   and aborts the escalation; CTRL.LOCK clears CLR_REGWEN once the class escalates.
-//   Crash dump      alert_crashdump_t (theory of operation): alert causes, local causes, counts,
-//                   escalation counters and states, live until a class enters the phase of its
-//                   CLASSx_CRASHDUMP_TRIGGER_SHADOWED, then held until every escalated class is
-//                   cleared. Packed as SystemVerilog packs the struct (first member most
-//                   significant) into 32-bit words, word 0 least significant: rstmgr's ALERT_INFO.
-//   Shadowed        Every *_SHADOWED register takes a value on the second of two equal writes
-//                   (util/reggen/README.md "Shadow Registers": the first write stages, a read
-//                   restarts); two different writes are the local alert "shadow reg update error"
-//                   and leave the register as it was.
-//
-//   Ping            With PING_TIMER_EN_SHADOWED set, the timer alternates alert senders and
-//                   escalation receivers. Only enabled and locked alerts are eligible; all four
-//                   escalation receivers are. A ping starts after a fixed four-cycle wait. An
-//                   alert sender answers after the documented three-cycle handshake, scaled from
-//                   its clock to the 24 MHz alert-handler clock; an escalation receiver answers
-//                   after its documented one-cycle latency. A shorter timeout raises local alert
-//                   0 (alert) or 1 (escalation). The fixed wait is
-//                   one permitted LFSR result: theory_of_operation.md "LFSR Timer" gives a
-//                   minimum spacing of four cycles but leaves each randomized value free.
-//
-// Not modelled: ping signal integrity failures, bus integrity,
-// shadow storage errors, the low-power groups, FsmError; the alert handshake's latency (an alert
-// arrives at once). A fatal alert arrives once, where the chip's sender repeats it until reset (it
-// counts again in an enabled class's accumulator). The cycle the RTL takes to enter Phase0 after
-// the trigger is not modelled: Phase0 starts at the trigger. The gating of the count by EN is from
-// the RTL (alert_handler_accu.sv), the documentation does not say.
-class Eg2AlertHandler : public Eg2IpModel {
+// A fatal alert arrives once, where the chip's sender repeats it until reset (it counts again in an
+// enabled class's accumulator); the low-power groups are not modelled here (no alert is ignored).
+class Eg2AlertHandler : public Eg2IpModel, private Eg2AlertPort {
  public:
-  enum : uint32_t { kIdle = 0, kTimeout = 1, kFsmError = 2, kTerminal = 3, kPhase0 = 4 };
+  enum : uint32_t {
+    kIdle = Eg2AlertCore::kIdle,
+    kTimeout = Eg2AlertCore::kTimeout,
+    kFsmError = Eg2AlertCore::kFsmError,
+    kTerminal = Eg2AlertCore::kTerminal,
+    kPhase0 = Eg2AlertCore::kPhase0
+  };
   enum : unsigned {
-    kClasses = 4,
-    kLocAlerts = 7,
-    kShadowUpdateErr = 5,  // LOC_ALERT index: "shadow reg update error"
+    kClasses = Eg2AlertCore::kClasses,
+    kLocAlerts = Eg2AlertCore::kLocAlerts,
+    kShadowUpdateErr = Eg2AlertCore::kShadowUpdateErr,
   };
 
   Eg2AlertHandler(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
-      : Eg2IpModel(n, d, base) {
-    for (unsigned i = 0; i < eg2_irqs::kAlerts; ++i) {
-      en_.push_back(reg(fmt("ALERT_EN_SHADOWED_%u", i).c_str()));
-      cls_.push_back(reg(fmt("ALERT_CLASS_SHADOWED_%u", i).c_str()));
-      cause_.push_back(reg(fmt("ALERT_CAUSE_%u", i).c_str()));
-      set_modelled(cause_.back());
-    }
-    for (unsigned i = 0; i < kLocAlerts; ++i) {
-      loc_en_.push_back(reg(fmt("LOC_ALERT_EN_SHADOWED_%u", i).c_str()));
-      loc_cls_.push_back(reg(fmt("LOC_ALERT_CLASS_SHADOWED_%u", i).c_str()));
-      loc_cause_.push_back(reg(fmt("LOC_ALERT_CAUSE_%u", i).c_str()));
-      set_modelled(loc_cause_.back());
-    }
-    ping_timeout_ = reg("PING_TIMEOUT_CYC_SHADOWED");
-    ping_enable_ = reg("PING_TIMER_EN_SHADOWED");
-    const char *c = "ABCD";
-    for (unsigned k = 0; k < kClasses; ++k) {
-      std::string p = std::string("CLASS") + c[k] + "_";
-      ctrl_[k] = reg((p + "CTRL_SHADOWED").c_str());
-      accum_[k] = reg((p + "ACCUM_CNT").c_str());
-      thresh_[k] = reg((p + "ACCUM_THRESH_SHADOWED").c_str());
-      timeout_[k] = reg((p + "TIMEOUT_CYC_SHADOWED").c_str());
-      dump_trig_[k] = reg((p + "CRASHDUMP_TRIGGER_SHADOWED").c_str());
-      for (unsigned ph = 0; ph < 4; ++ph) {
-        phase_cyc_[k][ph] = reg((p + "PHASE" + char('0' + ph) + "_CYC_SHADOWED").c_str());
-      }
-      clr_[k] = reg((p + "CLR_SHADOWED").c_str());
-      clr_regwen_[k] = reg((p + "CLR_REGWEN").c_str());
-      esc_cnt_[k] = reg((p + "ESC_CNT").c_str());
-      state_[k] = reg((p + "STATE").c_str());
-      for (uint16_t r : {accum_[k], state_[k], esc_cnt_[k], clr_regwen_[k]}) set_modelled(r);
-    }
-    staged_.assign(d.nregs, false);
-    stage_.assign(d.nregs, 0);
+      : Eg2IpModel(n, d, base), core_(*this, eg2_irqs::kAlerts) {
+    for (uint16_t r : core_.modelled_regs()) set_modelled(r);
     sys_.on_alert = [this](uint16_t id) { alert(id); };
     sys_.alert_crashdump = [this] { return crashdump(); };
   }
 
   void on_reset(Eg2ResetCause c) override {
     Eg2IpModel::on_reset(c);
-    for (Cls &k : cls_st_) k = Cls{};
-    std::fill(staged_.begin(), staged_.end(), false);
-    ping_waiting_ = false;
-    ping_due_ = 0;
-    ping_next_alert_ = true;
-    next_alert_ = 0;
-    next_esc_ = 0;
-    dump_latched_ = false;
-    for (unsigned e = 0; e < Eg2System::kEscSeverities; ++e) sys_.set_escalation(e, false);
+    core_.reset();
   }
-  void on_time(uint64_t) override { advance(); }
-  void on_clock_change() override { advance(); }
+  void on_time(uint64_t) override { core_.advance(); }
+  void on_clock_change() override { core_.advance(); }
 
   // An alert from a module (its ID in the top's alert list).
-  void alert(uint16_t id) {
-    advance();
-    if (id >= en_.size() || !(value(en_[id]) & 1)) return;
-    set_value(cause_[id], value(cause_[id]) | 1);
-    trigger(value(cls_[id]) & 3, "alert " + alert_name(id));
-  }
-
+  void alert(uint16_t id) { core_.alert(id); }
   // A local alert (LOC_ALERT index).
-  void local_alert(unsigned i) {
-    advance();
-    local_alert_now(i);
-  }
-
-  void local_alert_now(unsigned i) {
-    if (i >= kLocAlerts || !(value(loc_en_[i]) & 1)) return;
-    set_value(loc_cause_[i], value(loc_cause_[i]) | 1);
-    trigger(value(loc_cls_[i]) & 3, "local alert " + std::to_string(i));
-  }
-
+  void local_alert(unsigned i) { core_.local_alert(i); }
   // The crash dump at this time (alert_crashdump_t, 32-bit words, word 0 least significant).
-  std::vector<uint32_t> crashdump() {
-    advance();
-    return dump_latched_ ? dump_ : snapshot();
-  }
+  std::vector<uint32_t> crashdump() { return core_.crashdump(); }
 
  protected:
   bool reg_before_write(uint16_t r, uint32_t wdata, uint32_t wmask) override {
-    if (!(desc().regs[r].flags & 2)) return true;  // not shadowed
-    const eg2_regs::Reg &rd = desc().regs[r];
-    if (rd.regwen >= 0 && (value(uint16_t(rd.regwen)) & rd.regwen_mask) != rd.regwen_true) {
-      return true;  // locked: the block drops the write, the phase does not change
-    }
-    uint32_t raw = (value(r) & ~wmask) | (wdata & wmask);
-    if (!staged_[r]) {
-      staged_[r] = true;
-      stage_[r] = raw;
-      return false;
-    }
-    staged_[r] = false;
-    if (raw != stage_[r]) {
-      sys_.note(std::string("alert_handler: ") + rd.name +
-                ": the second write differs from the first (shadow update error)");
-      local_alert(kShadowUpdateErr);
-      return false;
-    }
-    return true;
+    return core_.before_write(r, wdata, wmask);
   }
-
-  void reg_before_read(uint16_t r) override {
-    if (desc().regs[r].flags & 2) staged_[r] = false;
-    advance();
-  }
-
+  void reg_before_read(uint16_t r) override { core_.before_read(r); }
   void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
-    advance();
-    for (unsigned k = 0; k < kClasses; ++k) {
-      if (r == clr_[k] && (wdata & wmask & 1) && (value(clr_regwen_[k]) & 1)) clear(k);
-    }
+    core_.after_write(r, wdata, wmask);
     // Fatal alerts "are continuously triggered until reset" (comportability README, "Alerts"; the
     // alert sender latches a fatal alert until reset; Eg2IpModel::fatal_fault): an ALERT_CAUSE
     // cleared while its sender still holds the alert is set again by the next alert event.
-    for (uint16_t id = 0; id < cause_.size(); ++id) {
-      if (r != cause_[id] || (value(cause_[id]) & 1)) continue;
+    uint16_t id;
+    if (core_.is_cause(r, &id) && !(value(r) & 1)) {
       for (Eg2IpModel *m : sys_.models()) {
         bool held = false;
         for (uint16_t a : m->fatal_alerts_) held = held || a == id;
@@ -319,40 +212,28 @@ class Eg2AlertHandler : public Eg2IpModel {
         }
       }
     }
-    // An INTR_STATE, INTR_ENABLE or INTR_TEST write may start or stop a class's interrupt
-    // timeout; a CTRL write may enable it.
-    update_timeouts();
-    update_outputs();
-    reschedule();
   }
 
  private:
   static constexpr Eg2System::Clk kClk = Eg2System::Clk::kIoDiv4;
-  struct Cls {
-    uint32_t state = kIdle;
-    uint64_t start = 0;      // the io_div4 cycle the state began
-    bool escalated = false;  // escalated since the last clear
-  };
 
-  uint64_t now_cyc() const { return sys_.clock_cycles(kClk, sys_.now_ps()); }
-  uint32_t ctrl(unsigned k) const { return value(ctrl_[k]); }
-  bool en(unsigned k) const { return ctrl(k) & 1; }
-  bool intr_state(unsigned k) const {
-    return intr_state_ >= 0 && ((value(uint16_t(intr_state_)) >> k) & 1);
+  // ---- Eg2AlertPort ----
+  const eg2_regs::Block &desc() const override { return Eg2IpModel::desc(); }
+  uint32_t value(uint16_t r) const override { return Eg2IpModel::value(r); }
+  void set_value(uint16_t r, uint32_t v) override { Eg2IpModel::set_value(r, v); }
+  uint64_t now_cyc() const override { return sys_.clock_cycles(kClk, sys_.now_ps()); }
+  void schedule(uint64_t cyc) override {
+    if (cyc == Eg2AlertPort::kNever) {
+      sys_.unschedule(this);
+    } else {
+      sys_.schedule(this, sys_.clock_time_of_cycle(kClk, cyc));
+    }
   }
-  // The class's interrupt output: state and enable (prim_intr_hw intr_o). The escalation timer's
-  // timeout_en_i is this output (alert_handler.sv: .timeout_en_i(irq[k])), so the interrupt timeout
-  // counts only while the class interrupt is enabled.
-  bool intr_out(unsigned k) const {
-    return intr_state(k) && intr_enable_ >= 0 && ((value(uint16_t(intr_enable_)) >> k) & 1);
-  }
-  static bool in_phase(uint32_t s) { return s >= kPhase0; }
-  static const char *state_name(uint32_t s) {
-    static const char *const kNames[] = {"Idle",   "Timeout", "FsmError", "Terminal",
-                                         "Phase0", "Phase1",  "Phase2",   "Phase3"};
-    return kNames[s & 7];
-  }
-  static std::string alert_name(uint16_t id) {
+  void set_intr(unsigned k) override { Eg2IpModel::set_intr(k); }
+  void set_escalation(unsigned e, bool level) override { sys_.set_escalation(e, level); }
+  bool escalation(unsigned e) const override { return sys_.escalation(e); }
+  void note(const std::string &s) override { sys_.note(s); }
+  std::string alert_name(uint16_t id) const override {
     for (const eg2_irqs::Ip &ip : eg2_irqs::kIps) {
       for (uint8_t i = 0; i < ip.nalerts; ++i) {
         if (ip.alerts[i].id == id) return std::string(ip.module) + "." + ip.alerts[i].name;
@@ -360,231 +241,6 @@ class Eg2AlertHandler : public Eg2IpModel {
     }
     return std::to_string(id);
   }
-  void note(unsigned k, const std::string &what) {
-    sys_.note(std::string("alert_handler: class ") + "ABCD"[k] + ": " + what);
-  }
-
-  // The cycles class k stays in its state; 0: until something else moves it.
-  uint64_t duration(unsigned k) const {
-    uint32_t s = cls_st_[k].state;
-    if (s == kTimeout) return value(timeout_[k]);
-    if (in_phase(s)) return std::max<uint64_t>(value(phase_cyc_[k][s - kPhase0]), 1);
-    return 0;
-  }
-  uint32_t esc_cnt(unsigned k, uint64_t n) const {
-    const Cls &c = cls_st_[k];
-    if (c.state != kTimeout && !in_phase(c.state)) return 0;
-    return uint32_t(std::min<uint64_t>(n - c.start, 0xffffffffu));
-  }
-
-  // An alert classified into class k.
-  void trigger(unsigned k, const std::string &what) {
-    set_intr(k);
-    if (en(k)) {
-      uint32_t cnt = value(accum_[k]);
-      bool escalate = cnt >= value(thresh_[k]);
-      if (cnt < 0xffff) set_value(accum_[k], cnt + 1);
-      note(k, what + ", accumulation count " + std::to_string(cnt + (cnt < 0xffff)));
-      if (escalate) start_escalation(k, now_cyc(), "the accumulation threshold " +
-                                                       std::to_string(value(thresh_[k])));
-    } else {
-      note(k, what + " (escalation mechanisms disabled: CTRL.EN clear)");
-    }
-    update_timeouts();
-    update_outputs();
-    reschedule();
-  }
-
-  void start_escalation(unsigned k, uint64_t at, const std::string &why) {
-    Cls &c = cls_st_[k];
-    if (in_phase(c.state) || c.state == kTerminal) return;
-    c.escalated = true;
-    if ((ctrl(k) >> 1) & 1) set_value(clr_regwen_[k], 0);  // LOCK
-    note(k, "escalation triggered by " + why);
-    enter(k, kPhase0, at);
-  }
-
-  void enter(unsigned k, uint32_t s, uint64_t at) {
-    Cls &c = cls_st_[k];
-    c.state = s;
-    c.start = at;
-    set_value(state_[k], s);
-    if (in_phase(s)) {
-      note(k, std::string(state_name(s)) + " for " + std::to_string(duration(k)) + " cycles");
-      if (!dump_latched_ && value(dump_trig_[k]) == s - kPhase0) {
-        dump_ = snapshot();
-        dump_latched_ = true;
-        note(k, "crash dump latched");
-      }
-    } else if (s == kTerminal) {
-      note(k, "Terminal");
-    }
-    update_outputs();
-  }
-
-  void clear(unsigned k) {
-    Cls &c = cls_st_[k];
-    set_value(accum_[k], 0);
-    if (c.state != kIdle) note(k, std::string("cleared in ") + state_name(c.state));
-    c = Cls{};
-    c.start = now_cyc();
-    set_value(state_[k], kIdle);
-    bool any = false;
-    for (const Cls &o : cls_st_) any = any || o.escalated;
-    if (!any) dump_latched_ = false;
-  }
-
-  void update_timeouts() {
-    uint64_t n = now_cyc();
-    for (unsigned k = 0; k < kClasses; ++k) {
-      Cls &c = cls_st_[k];
-      bool armed = en(k) && value(timeout_[k]) > 0 && intr_out(k);
-      if (c.state == kIdle && armed) {
-        c.state = kTimeout;
-        c.start = n;
-        set_value(state_[k], kTimeout);
-        note(k, "interrupt timeout started (" + std::to_string(value(timeout_[k])) + " cycles)");
-      } else if (c.state == kTimeout && !armed) {
-        c.state = kIdle;
-        set_value(state_[k], kIdle);
-      }
-    }
-  }
-
-  // Every state change due by now, in time order; then the registers that count.
-  void advance() {
-    uint64_t n = now_cyc();
-    for (;;) {
-      int first = -1;
-      uint64_t at = 0;
-      for (unsigned k = 0; k < kClasses; ++k) {
-        uint32_t s = cls_st_[k].state;
-        if (s != kTimeout && !in_phase(s)) continue;
-        uint64_t end = cls_st_[k].start + duration(k);
-        if (end <= n && (first < 0 || end < at)) {
-          first = int(k);
-          at = end;
-        }
-      }
-      if (first < 0) break;
-      unsigned k = unsigned(first);
-      uint32_t s = cls_st_[k].state;
-      if (s == kTimeout) {
-        start_escalation(k, at, "the interrupt timeout");
-      } else if (s < kPhase0 + 3) {
-        enter(k, s + 1, at);
-      } else {
-        enter(k, kTerminal, at);
-      }
-    }
-    advance_ping(n);
-    for (unsigned k = 0; k < kClasses; ++k) set_value(esc_cnt_[k], esc_cnt(k, n));
-    reschedule();
-  }
-
-  void update_outputs() {
-    for (unsigned e = 0; e < Eg2System::kEscSeverities; ++e) {
-      bool level = false;
-      for (unsigned k = 0; k < kClasses; ++k) {
-        uint32_t s = cls_st_[k].state, cr = ctrl(k);
-        bool en_e = (cr >> (2 + e)) & 1;
-        uint32_t map = (cr >> (6 + 2 * e)) & 3;
-        level = level || (in_phase(s) && en_e && s - kPhase0 == map);
-      }
-      if (level != sys_.escalation(e)) {
-        sys_.note("alert_handler: escalation signal " + std::to_string(e) +
-                  (level ? " asserted" : " deasserted"));
-      }
-      sys_.set_escalation(e, level);
-    }
-  }
-
-  void reschedule() {
-    uint64_t next = Eg2System::kNever;
-    for (unsigned k = 0; k < kClasses; ++k) {
-      uint32_t s = cls_st_[k].state;
-      if (s == kTimeout || in_phase(s)) next = std::min(next, cls_st_[k].start + duration(k));
-    }
-    if ((value(ping_enable_) & 1) && value(ping_timeout_) < max_ping_response()) {
-      if (!ping_due_) ping_due_ = now_cyc() + kPingSpacing;
-      next = std::min(next, ping_due_);
-    } else {
-      ping_waiting_ = false;
-      ping_due_ = 0;
-    }
-    if (next == Eg2System::kNever) {
-      sys_.unschedule(this);
-    } else {
-      sys_.schedule(this, sys_.clock_time_of_cycle(kClk, next));
-    }
-  }
-
-  // theory_of_operation.md "LFSR Timer": the timer "alternatingly pings either an alert line or an
-  // escalation line"; "Only alerts that have been enabled and locked will be pinged" while
-  // "Escalation channels are always enabled"; at the programmed timeout it "will additionally
-  // raise a 'pingfail' alert." The alert handshake diagram says a request at time 1 responds at
-  // time 4. top_earlgrey.hjson gives alert_handler 24 MHz (io_div4) and AON senders 200 kHz;
-  // alert_handler.hjson says the timeout is measured in equivalent slow-sender cycles.
-  void advance_ping(uint64_t n) {
-    if (!(value(ping_enable_) & 1)) {
-      ping_waiting_ = false;
-      ping_due_ = 0;
-      return;
-    }
-    // A successful handshake changes no software-visible state. Treat it analytically instead of
-    // scheduling every four-cycle response; otherwise these benign events can hide a much later
-    // wake event from a sleeping core. Only a timeout needs a model event.
-    if (value(ping_timeout_) >= max_ping_response()) {
-      ping_waiting_ = false;
-      ping_due_ = 0;
-      return;
-    }
-    if (!ping_due_) ping_due_ = n + kPingSpacing;
-    while (ping_due_ <= n) {
-      uint64_t at = ping_due_;
-      if (!ping_waiting_) {
-        ping_is_alert_ = ping_next_alert_ && choose_alert();
-        ping_next_alert_ = !ping_next_alert_;
-        if (!ping_is_alert_) {
-          ping_index_ = next_esc_++ % Eg2System::kEscSeverities;
-        }
-        ping_response_ = ping_is_alert_ ? alert_ping_response(ping_index_) : 1;
-        sys_.note(std::string("alert_handler: ping ") +
-                  (ping_is_alert_ ? "alert sender " : "escalation receiver ") +
-                  std::to_string(ping_index_));
-        ping_waiting_ = true;
-        uint64_t timeout = value(ping_timeout_);
-        ping_due_ = at + std::min<uint64_t>(timeout, ping_response_);
-        continue;
-      }
-
-      bool timed_out = value(ping_timeout_) < ping_response_;
-      bool alert = ping_is_alert_;
-      unsigned index = ping_index_;
-      ping_waiting_ = false;
-      ping_due_ = at + kPingSpacing;
-      if (timed_out) {
-        sys_.note(std::string("alert_handler: ping timeout from ") +
-                  (alert ? "alert sender " : "escalation receiver ") + std::to_string(index));
-        local_alert_now(alert ? 0 : 1);
-      }
-    }
-  }
-
-  bool choose_alert() {
-    for (unsigned n = 0; n < en_.size(); ++n) {
-      unsigned i = (next_alert_ + n) % en_.size();
-      const eg2_regs::Reg &r = desc().regs[en_[i]];
-      bool locked = r.regwen >= 0 && !(value(uint16_t(r.regwen)) & r.regwen_mask);
-      if ((value(en_[i]) & 1) && locked) {
-        ping_index_ = i;
-        next_alert_ = (i + 1) % en_.size();
-        return true;
-      }
-    }
-    return false;
-  }
-
   bool aon_sender(unsigned id) const {
     for (const auto &ip : eg2_irqs::kIps) {
       for (unsigned a = 0; a < ip.nalerts; ++a) {
@@ -597,60 +253,16 @@ class Eg2AlertHandler : public Eg2IpModel {
     }
     return false;
   }
-
-  uint64_t alert_ping_response(unsigned id) const {
+  // top_earlgrey.hjson gives alert_handler 24 MHz (io_div4) and AON senders 200 kHz; the alert
+  // handshake diagram says a request at time 1 responds at time 4.
+  uint64_t alert_ping_response(unsigned id) const override {
     if (!aon_sender(id)) return 3;
     uint64_t handler = sys_.clock_hz(Eg2System::Clk::kIoDiv4);
     uint64_t sender = sys_.clock_hz(Eg2System::Clk::kAon);
     return std::max<uint64_t>(3, (3 * handler + sender - 1) / sender);
   }
 
-  uint64_t max_ping_response() const {
-    uint64_t response = 1;  // escalation receiver: one alert-handler cycle
-    for (unsigned i = 0; i < en_.size(); ++i) {
-      const eg2_regs::Reg &r = desc().regs[en_[i]];
-      bool locked = r.regwen >= 0 && !(value(uint16_t(r.regwen)) & r.regwen_mask);
-      if ((value(en_[i]) & 1) && locked) response = std::max(response, alert_ping_response(i));
-    }
-    return response;
-  }
-
-  static constexpr uint64_t kPingSpacing = 4;
-  uint64_t ping_response_ = 1;
-
-  // alert_crashdump_t: {alert_cause[NAlerts], loc_alert_cause[7], class_accum_cnt[4][16],
-  // class_esc_cnt[4][32], class_esc_state[4][3]}, the last member least significant.
-  std::vector<uint32_t> snapshot() const {
-    const unsigned bits = eg2_irqs::kAlerts + kLocAlerts + 4 * 16 + 4 * 32 + 4 * 3;
-    std::vector<uint32_t> w((bits + 31) / 32, 0);
-    unsigned pos = 0;
-    auto put = [&](uint64_t v, unsigned width) {
-      for (unsigned b = 0; b < width; ++b, ++pos) {
-        if ((v >> b) & 1) w[pos / 32] |= 1u << (pos % 32);
-      }
-    };
-    uint64_t n = now_cyc();
-    for (unsigned k = 0; k < kClasses; ++k) put(cls_st_[k].state, 3);
-    for (unsigned k = 0; k < kClasses; ++k) put(esc_cnt(k, n), 32);
-    for (unsigned k = 0; k < kClasses; ++k) put(value(accum_[k]), 16);
-    for (unsigned i = 0; i < kLocAlerts; ++i) put(value(loc_cause_[i]) & 1, 1);
-    for (unsigned i = 0; i < eg2_irqs::kAlerts; ++i) put(value(cause_[i]) & 1, 1);
-    return w;
-  }
-
-  std::vector<uint16_t> en_, cls_, cause_, loc_en_, loc_cls_, loc_cause_;
-  uint16_t ping_timeout_, ping_enable_;
-  uint16_t ctrl_[kClasses], accum_[kClasses], thresh_[kClasses], timeout_[kClasses],
-      dump_trig_[kClasses], phase_cyc_[kClasses][4], clr_[kClasses], clr_regwen_[kClasses],
-      esc_cnt_[kClasses], state_[kClasses];
-  Cls cls_st_[kClasses];
-  std::vector<bool> staged_;
-  std::vector<uint32_t> stage_;
-  bool dump_latched_ = false;
-  std::vector<uint32_t> dump_;
-  bool ping_waiting_ = false, ping_next_alert_ = true, ping_is_alert_ = false;
-  uint64_t ping_due_ = 0;
-  unsigned ping_index_ = 0, next_alert_ = 0, next_esc_ = 0;
+  Eg2AlertCore core_;
 };
 
 // rv_core_ibex's configuration window (rv_core_ibex.hjson; RFC CHERIoT in OpenTitan "mode

@@ -32,6 +32,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <strings.h>
 #include <map>
@@ -126,6 +127,10 @@ class Eg2RegBlock : public sc_core::sc_module {
   // The first access to an offset with neither a register nor a window (empty while none).
   const std::string &first_error() const { return first_error_; }
 
+  // Compatibility hook for observed DUT loads. Observations must not update
+  // reference state; unknown or timing-dependent results remain unpredicted.
+  virtual void load_event(uint32_t /*off*/, uint32_t /*data*/) {}
+
  protected:
   // M3 hooks. before_read: a register is about to be read (bring it up to date). after_read: it
   // has been read. on_write: it has been written; wdata is the data written, shifted to its byte
@@ -199,9 +204,25 @@ class Eg2RegBlock : public sc_core::sc_module {
       std::memcpy(data, &v, len);
       after_read(r);
     } else {
+      // reggen's register top: a write whose byte enables leave out a byte of the register
+      // (REG_PERMIT: the bytes up to its highest field bit) answers d_error and changes nothing
+      // (wr_err gates every field's write enable). Found 2026-11-07: eg2_rand_regs's half and byte
+      // writes to spi_host1 and aon_timer registers passed in the model.
+      if (permit_bytes(r) & ~bytes_mask) {
+        fail_ = true;
+        return;
+      }
       uint32_t w = 0;
       std::memcpy(&w, data, len);
       uint32_t old = val_[r];
+      // REGWEN blocks the entire write, including device side effects. Checking
+      // it only in write_reg() lets a locked command still reach the IP hooks.
+      // See util/reggen/README.md, "Register description", regwen.
+      const eg2_regs::Reg &reg = desc_.regs[r];
+      if (reg.regwen >= 0 &&
+          (val_[reg.regwen] & reg.regwen_mask) != reg.regwen_true) {
+        return;
+      }
       if (!before_write(r, w << shift, bytes_mask)) return;
       write_reg(r, w << shift, bytes_mask);
       on_write(r, old, w << shift, bytes_mask);
@@ -269,6 +290,19 @@ class Eg2RegBlock : public sc_core::sc_module {
 
   static uint32_t field_mask(const eg2_regs::Field &f) {
     return (f.width >= 32 ? 0xffffffffu : ((1u << f.width) - 1)) << f.lsb;
+  }
+
+  // The bytes reggen's REG_PERMIT gives register r, as a bit mask: bytes 0 to the one that holds
+  // its highest field bit.
+  uint32_t permit_bytes(uint16_t r) const {
+    const eg2_regs::Reg &reg = desc_.regs[r];
+    unsigned top = 0;
+    for (uint16_t k = 0; k < reg.nfields; ++k) {
+      const eg2_regs::Field &f = desc_.fields[reg.field0 + k];
+      top = std::max(top, unsigned(f.lsb) + f.width);
+    }
+    unsigned nbytes = top == 0 ? 4 : (top + 7) / 8;
+    return nbytes >= 4 ? 0xffffffffu : (1u << (8 * nbytes)) - 1;
   }
 
   const eg2_regs::Block &desc_;

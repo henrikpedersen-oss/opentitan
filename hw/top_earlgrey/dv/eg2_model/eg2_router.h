@@ -2,11 +2,15 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The bus and address map of the EG2 SystemC model: a TLM-2.0 router. Every window and memory
-// comes from the generated window table (eg2_tables.h's EG2_WINDOW_TABLE, from
-// top_earlgrey.gen.hjson by eg2_top_verification's scripts/gen_eg2_tables.py), never written by
-// hand. An address in no window answers TLM_ADDRESS_ERROR_RESPONSE, as the crossbar answers an
-// error. DMI requests are forwarded and translated to absolute addresses.
+// Address decoding for the functional model. Each transaction carries an
+// absolute address; the selected target receives an offset within its window.
+// The Earl Grey platform supplies the generated EG2_WINDOW_TABLE. Other boards
+// supply their own window list. This class does not model crossbar arbitration,
+// pipelines, outstanding requests or cycle timing.
+//
+// Window order matters: the first matching window wins. Earl Grey deliberately
+// places the revocation-bitmap window before its overlapping meta-SRAM window.
+// A zero-sized window is the optional default responder and must come last.
 
 #ifndef EG2_MODEL_EG2_ROUTER_H_
 #define EG2_MODEL_EG2_ROUTER_H_
@@ -49,40 +53,42 @@ class Eg2Router : public sc_core::sc_module {
   const std::vector<Window> &windows() const { return windows_; }
 
  private:
-  // A window of size 0 is a default responder: every address no window before it holds.
-  int decode(uint64_t addr) const {
+  // Find the first matching window, or -1 when the bus must return an error.
+  int decode(uint64_t address) const {
     for (size_t i = 0; i < windows_.size(); ++i) {
-      if (windows_[i].size == 0) return int(i);
-      if (addr >= windows_[i].base && addr - windows_[i].base < windows_[i].size) return int(i);
+      const Window &window = windows_[i];
+      if (window.size == 0) return int(i);
+      if (address >= window.base && address - window.base < window.size) return int(i);
     }
     return -1;
   }
 
   void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &delay) {
-    uint64_t addr = trans.get_address();
-    int i = decode(addr);
-    if (i < 0 || (windows_[i].size != 0 &&
-                  addr + trans.get_data_length() > uint64_t(windows_[i].base) + windows_[i].size)) {
+    const uint64_t address = trans.get_address();
+    const int index = decode(address);
+    if (index < 0 || (windows_[index].size != 0 &&
+                     address + trans.get_data_length() >
+                         uint64_t(windows_[index].base) + windows_[index].size)) {
       trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
       return;
     }
-    trans.set_address(addr - windows_[i].base);
-    (*sockets_[i])->b_transport(trans, delay);
-    trans.set_address(addr);
+    trans.set_address(address - windows_[index].base);
+    (*sockets_[index])->b_transport(trans, delay);
+    trans.set_address(address);
   }
 
   bool get_direct_mem_ptr(tlm::tlm_generic_payload &trans, tlm::tlm_dmi &dmi) {
-    uint64_t addr = trans.get_address();
-    int i = decode(addr);
-    if (i < 0) return false;
-    trans.set_address(addr - windows_[i].base);
-    bool ok = (*sockets_[i])->get_direct_mem_ptr(trans, dmi);
-    trans.set_address(addr);
-    if (ok) {
-      dmi.set_start_address(dmi.get_start_address() + windows_[i].base);
-      dmi.set_end_address(dmi.get_end_address() + windows_[i].base);
+    const uint64_t address = trans.get_address();
+    const int index = decode(address);
+    if (index < 0) return false;
+    trans.set_address(address - windows_[index].base);
+    const bool granted = (*sockets_[index])->get_direct_mem_ptr(trans, dmi);
+    trans.set_address(address);
+    if (granted) {
+      dmi.set_start_address(dmi.get_start_address() + windows_[index].base);
+      dmi.set_end_address(dmi.get_end_address() + windows_[index].base);
     }
-    return ok;
+    return granted;
   }
 
   std::vector<Window> windows_;

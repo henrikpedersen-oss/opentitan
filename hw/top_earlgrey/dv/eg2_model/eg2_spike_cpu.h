@@ -144,6 +144,8 @@ class Eg2SpikeCpu : public sc_core::sc_module, public simif_t, public Eg2DebugHa
   void resume() override;
 
  private:
+  // Model events a sleeping or debug-halted core may wait through before stopping.
+  static constexpr uint64_t kMaxSleepEvents = 1000000;
   void enter_debug(unsigned cause);
   void parked_in_debug_rom();
   bool debug_wait();
@@ -178,6 +180,7 @@ class Eg2SpikeCpu : public sc_core::sc_module, public simif_t, public Eg2DebugHa
   unsigned resets_ = 0;
   bool fetch_denied_ = false;
   bool read_denied_ = false;  // this step's load reads a word that answers with a bus error
+  bool write_denied_ = false;  // this step's store writes a word whose memory refuses it
   bool spike_in_nmi_ = false;  // an NMI handler runs on Spike: no NMI until its mret  // this step's fetch is from a region that refuses fetches
   bool translation_used_ = false;  // this step cached a translated instruction or data address
   uint32_t dump_pc_ = 0, dump_npc_ = 0, dump_daddr_ = 0;  // the crash dump's PCs and data address

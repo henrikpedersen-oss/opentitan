@@ -39,6 +39,13 @@ let
     substituteInPlace $out/cheriot/riscv_cheriot_instructions.cc \
       --replace-fail 'bool valid = !cap_src->IsSealed();' \
         'bool valid = !cap_src->IsSealed() || ((perms_to_keep | CheriotRegister::kPermitGlobal) & CheriotRegister::kPermitMask) == CheriotRegister::kPermitMask;'
+    # FENCE.I: Ibex runs code written before it (Zifencei; MPACT-CHERIoT does not decode FENCE.I,
+    # eg2sim emulates it) and MPACT keeps decoded instructions by address, so the wrapper must drop
+    # them: an accessor for the decode cache (chip_eg2_rv_dm_code_patch_cheriot, 2026-11-07).
+    substituteInPlace $out/cheriot/cheriot_top.h \
+      --replace-fail '  CheriotState* state() const { return state_; }' \
+        '  CheriotState* state() const { return state_; }
+  generic::DecodeCache* decode_cache() const { return cheriot_decode_cache_; }'
     cp -r ${./mpact-cheriot} $out/eg2
     chmod -R u+w $out/eg2
     mv $out/eg2/MODULE.bazel.lock $out/MODULE.bazel.lock

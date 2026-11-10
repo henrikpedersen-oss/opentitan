@@ -130,6 +130,8 @@ class Eg2MpactCpu : public Eg2Iss {
                       const uint8_t *tags);
   static int revbm_cb(void *user, uint32_t offset, uint8_t *byte);
   static bool eg2_revoked(uint32_t w0, uint32_t w1);
+  // The destination register of a CLC (CLC, C.CLC, C.CLCSP), or -1 for any other instruction.
+  static int clc_rd(uint32_t insn);
   // An Ibex custom CSR instruction (cfg_.ibex_csrs): true if insn was one, executed.
   bool ibex_csr(uint32_t insn);
   bool fetch(uint32_t addr, void *data, uint32_t len);
@@ -137,6 +139,9 @@ class Eg2MpactCpu : public Eg2Iss {
   uint8_t *tag_byte(uint32_t addr, unsigned *bit);
 
   Transport transport_;
+  // The load barrier revoked the capability the current step's CLC loaded: its destination's tag is
+  // cleared after MPACT completes the CLC (eg2_mpact_clear_cap_tag).
+  bool trvk_revoked_ = false;
   Eg2MpactConfig cfg_;
   bool board_ = false;  // cfg_ given
   eg2_mpact *m_ = nullptr;

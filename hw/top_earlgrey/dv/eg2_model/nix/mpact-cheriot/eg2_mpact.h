@@ -77,10 +77,30 @@ void eg2_mpact_nmi(eg2_mpact *m);
 // model) and the Zba/Zbb/Zbs/Zbc/Zbkb/Zbkx instructions of Ibex's RV32BFull, which MPACT has none
 // of.
 void eg2_mpact_step_emulated(eg2_mpact *m, uint32_t len, unsigned rd, uint32_t value);
+// FENCE.I: drops every decoded instruction MPACT keeps, so the next fetches decode the memory as it
+// is now (Zifencei: code written before a FENCE.I is what runs after it). Call it with the
+// eg2_mpact_step_emulated of the FENCE.I.
+void eg2_mpact_fence_i(eg2_mpact *m);
+#define EG2_MPACT_HAS_FENCE_I 1
+// The load barrier's verdict on the CLC just stepped: clears only the tag of capability register
+// rd (address, bounds, permissions and otype stay as MPACT's CLC left them, its load-permission
+// stripping included). Ibex load_store_unit.rst: "the loaded tag passes through the TRVK revocation
+// filter before reaching the register file. If the filter determines the capability has been
+// software-revoked, the tag is silently cleared". Call it after the eg2_mpact_step of the CLC.
+void eg2_mpact_clear_cap_tag(eg2_mpact *m, unsigned rd);
+#define EG2_MPACT_HAS_CLEAR_CAP_TAG 1
 // The last step executed a WFI (MPACT executes it as a no-op).
 int eg2_mpact_wfi(const eg2_mpact *m);
 uint32_t eg2_mpact_pc(eg2_mpact *m);
 uint32_t eg2_mpact_gpr(eg2_mpact *m, unsigned r);
+// Debug mode (Ibex debug.rst "Debug Mode in CHERIoT"): entry saves PCC in depcc and replaces it by
+// mtcc; resume (dret) restores PCC from depcc. dpc is depcc's address; set_dpc sets that address.
+void eg2_mpact_debug_enter(eg2_mpact *m);
+void eg2_mpact_debug_resume(eg2_mpact *m);
+uint32_t eg2_mpact_dpc(eg2_mpact *m);
+void eg2_mpact_set_dpc(eg2_mpact *m, uint32_t pc);
+// x<r> (1-31) written as an integer: untagged, null metadata, the value as address; -1 if none.
+int eg2_mpact_set_gpr(eg2_mpact *m, unsigned r, uint32_t value);
 // A CSR by name ("mstatus", "mie", "mip", "mcause", "mtval", ...); 0, or -1 if MPACT has none.
 int eg2_mpact_csr(eg2_mpact *m, const char *name, uint32_t *value);
 // The disassembly of the instruction at pc (valid until the next call).

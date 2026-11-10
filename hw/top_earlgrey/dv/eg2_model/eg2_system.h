@@ -379,6 +379,11 @@ class Eg2System {
   // read_error(addr, false) before a load and calls read_error(addr, true) when it takes the error
   // (a load access fault).
   std::function<bool(uint32_t addr, bool take)> read_error;
+  // Whether the memory at `addr` refuses the access (Eg2Memory::refuses: a write to a read-only
+  // window, any access to an error range). Set by eg2sim; a core model that stores through a
+  // direct pointer (Spike) asks it before a store and takes the bus path instead, so the store
+  // faults as the chip's d_error gives.
+  std::function<bool(uint32_t addr, bool write)> bus_refuses;
   // A double fault (Ibex double_fault_seen_o; rv_core_ibex interfaces.md fatal_hw_err "A double
   // fault is seen"): fatal_hw_err, fetch disabled. Set by the rv_core_ibex model.
   std::function<void(const std::string &why)> core_double_fault;

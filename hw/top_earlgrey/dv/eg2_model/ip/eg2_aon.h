@@ -21,6 +21,8 @@
 
 #include "../eg2_ip_model.h"
 #include "eg2_core_system.h"
+#include "eg2_pwrmgr_core.h"
+#include "eg2_rstmgr_core.h"
 
 namespace eg2_model {
 
@@ -29,7 +31,9 @@ namespace eg2_model {
 // cause (POR, LOW_POWER_EXIT, SW_RESET, HW_REQ) and keeps it through resets until software clears
 // it; a power-on reset sets POR alone. A reset requested after a deep-sleep entry records
 // LOW_POWER_EXIT with its own cause (theory_of_operation.md "Reset Information"; Eg2Pwrmgr). The
-// per-IP software resets (SW_RST_CTRL_N) reset their block's model when written 0.
+// per-IP software resets (SW_RST_CTRL_N) reset their block's model when written 0. Every reset but a
+// power-on reset or a low-power exit also resets the registers of clk_i's domain (rst_ni is the
+// lc_io_div4 leaf; see on_reset).
 //
 // The POR_N pad, as the chip bench pulses it (assert_por_reset): eg2sim --stim rstmgr.por=1@<point>
 // is a power-on reset ("If this reset ever asserts, everything in the design is reset",
@@ -42,10 +46,10 @@ namespace eg2_model {
 // ALERT_INFO the word ALERT_INFO_CTRL.INDEX selects. EN is cleared by every reset ("even if rstmgr
 // is not reset"). The CPU dump (CPU_INFO_CTRL, CPU_INFO_ATTR, CPU_INFO) works the same way with the
 // core's crash dump (Eg2System::cpu_crashdump: 8 words).
-class Eg2Rstmgr : public Eg2IpModel {
+class Eg2Rstmgr : public Eg2IpModel, private Eg2RstmgrPort {
  public:
   Eg2Rstmgr(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
-      : Eg2IpModel(n, d, base) {
+      : Eg2IpModel(n, d, base), core_(*this) {
     req_ = reg("RESET_REQ");
     info_ = reg("RESET_INFO");
     alert_ctrl_ = reg("ALERT_INFO_CTRL");
@@ -59,7 +63,11 @@ class Eg2Rstmgr : public Eg2IpModel {
     }
     for (unsigned i = 0; i < kSwResets; ++i) {
       sw_rst_[i] = reg(("SW_RST_CTRL_N_" + std::to_string(i)).c_str());
+      sw_regwen_[i] = reg(("SW_RST_REGWEN_" + std::to_string(i)).c_str());
     }
+    alert_regwen_ = reg("ALERT_REGWEN");
+    cpu_regwen_ = reg("CPU_REGWEN");
+    err_code_ = reg("ERR_CODE");
     sys_.held_in_reset = [this](const std::string &b) {
       for (unsigned i = 0; i < kSwResets; ++i) {
         if (b == kSwResetBlocks[i]) return !(value(sw_rst_[i]) & 1);
@@ -78,48 +86,57 @@ class Eg2Rstmgr : public Eg2IpModel {
     };
   }
 
+  // A triggered reset captures the enabled crash dumps (eg2_rstmgr_core.h).
   void before_reset(Eg2ResetCause c) override {
-    if (c != Eg2ResetCause::kPor && (value(cpu_ctrl_) & 1) && sys_.cpu_crashdump) {
-      cpu_dump_ = sys_.cpu_crashdump();
-      sys_.note("rstmgr: CPU crash dump captured");
-    }
-    if (c == Eg2ResetCause::kPor || !(value(alert_ctrl_) & 1) || !sys_.alert_crashdump) return;
-    alert_dump_ = sys_.alert_crashdump();
-    char buf[64];
-    std::snprintf(buf, sizeof buf, "rstmgr: alert crash dump captured (%zu words)",
-                  alert_dump_.size());
-    sys_.note(buf);
+    if (c == Eg2ResetCause::kPor) return;
+    std::vector<uint32_t> alert, cpu;
+    bool alert_en = (value(alert_ctrl_) & 1) && sys_.alert_crashdump;
+    bool cpu_en = (value(cpu_ctrl_) & 1) && sys_.cpu_crashdump;
+    if (alert_en) alert = sys_.alert_crashdump();
+    if (cpu_en) cpu = sys_.cpu_crashdump();
+    core_.triggered_reset(alert, cpu, alert_en, cpu_en);
   }
 
   void on_reset(Eg2ResetCause c) override {
     if (c == Eg2ResetCause::kPor) {
       Eg2IpModel::on_reset(c);
-      alert_dump_.clear();
-      cpu_dump_.clear();
-      set_value(info_, 1);
+      core_.power_on_reset();
+      // eg2sim's power-on reset ends with the processor running: recording is allowed.
+      core_.processor_reset_released();
       return;
     }
-    set_value(alert_ctrl_, value(alert_ctrl_) & ~1u);
-    set_value(cpu_ctrl_, value(cpu_ctrl_) & ~1u);
-    uint32_t bit = 0;
+    core_.clear_enables();
+    // rst_ni is the always-on lc_io_div4 leaf (top_earlgrey.gen.hjson reset_connections): every
+    // reset but a low-power exit resets the registers of clk_i's domain (all but those rstmgr.hjson
+    // marks `sync: clk_por_i`) to their reset values. 2026-11-07: SW_RST_CTRL_N and the REGWENs used
+    // to survive a hardware or software reset here.
+    if (c != Eg2ResetCause::kLowPowerExit) {
+      for (unsigned i = 0; i < kSwResets; ++i) {
+        set_value(sw_rst_[i], 1);
+        set_value(sw_regwen_[i], 1);
+      }
+      set_value(alert_regwen_, 1);
+      set_value(cpu_regwen_, 1);
+      set_value(err_code_, 0);
+    }
+    uint32_t hw = 0;
     switch (c) {
-      case Eg2ResetCause::kLowPowerExit: bit = 1u << 1; break;
-      case Eg2ResetCause::kSoftware: bit = 1u << 2; break;
       case Eg2ResetCause::kHwRequest:
-        bit = sys_.reset_hw_req() >= 0 ? 1u << (3 + sys_.reset_hw_req()) : 0;
+        hw = sys_.reset_hw_req() >= 0 ? 1u << sys_.reset_hw_req() : 0;
         break;
-      case Eg2ResetCause::kEscalation: bit = 1u << (3 + 3); break;
-      case Eg2ResetCause::kNdm: bit = 1u << (3 + 4); break;
+      case Eg2ResetCause::kEscalation: hw = 1u << 3; break;  // HW_REQ b6
+      case Eg2ResetCause::kNdm: hw = 1u << 4; break;         // HW_REQ b7
       default: break;
     }
-    if (c != Eg2ResetCause::kLowPowerExit && sys_.reset_in_low_power()) bit |= 1u << 1;
-    set_value(info_, value(info_) | bit);
-    set_value(req_, kMuBi4False);
+    bool lp = c == Eg2ResetCause::kLowPowerExit ||
+              (c != Eg2ResetCause::kLowPowerExit && sys_.reset_in_low_power());
+    core_.record(hw, c == Eg2ResetCause::kSoftware, lp);
+    core_.reset_complete();
   }
 
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t, uint32_t) override {
-    if (r == req_ && (value(req_) & 0xf) == kMuBi4True) {
+    if (r == req_ && core_.sw_reset_requested()) {
       sys_.request_reset(Eg2ResetCause::kSoftware, "software reset (rstmgr RESET_REQ)");
     }
     // A peripheral's software reset: SW_RST_CTRL_N_<i> written 0 holds the block in reset (its
@@ -136,26 +153,38 @@ class Eg2Rstmgr : public Eg2IpModel {
       set_value(alert_attr_, sys_.alert_crashdump ? uint32_t(sys_.alert_crashdump().size()) & 0xf
                                                   : 0);
     } else if (r == alert_info_) {
-      uint32_t idx = (value(alert_ctrl_) >> 4) & 0xf;
-      set_value(alert_info_, idx < alert_dump_.size() ? alert_dump_[idx] : 0);
+      set_value(alert_info_, Eg2RstmgrCore::word(core_.alert_dump(), (value(alert_ctrl_) >> 4) & 0xf));
     } else if (r == cpu_attr_) {
       set_value(cpu_attr_, sys_.cpu_crashdump ? 8 : 0);
     } else if (r == cpu_info_) {
-      uint32_t idx = (value(cpu_ctrl_) >> 4) & 0xf;
-      set_value(cpu_info_, idx < cpu_dump_.size() ? cpu_dump_[idx] : 0);
+      set_value(cpu_info_, Eg2RstmgrCore::word(core_.cpu_dump(), (value(cpu_ctrl_) >> 4) & 0xf));
     }
   }
 
  private:
+  // Eg2RstmgrPort.
+  uint16_t id(Eg2RstReg r) const {
+    switch (r) {
+      case Eg2RstReg::kResetReq: return req_;
+      case Eg2RstReg::kResetInfo: return info_;
+      case Eg2RstReg::kAlertCtrl: return alert_ctrl_;
+      case Eg2RstReg::kCpuCtrl: return cpu_ctrl_;
+    }
+    return info_;
+  }
+  uint32_t rd(Eg2RstReg r) override { return value(id(r)); }
+  void wr(Eg2RstReg r, uint32_t v) override { set_value(id(r), v); }
+  void note(const std::string &s) override { sys_.note(s); }
+
+  Eg2RstmgrCore core_;
   uint16_t req_, info_, alert_ctrl_, alert_attr_, alert_info_, cpu_ctrl_, cpu_attr_, cpu_info_;
-  std::vector<uint32_t> cpu_dump_;  // the last capture
   // SW_RST_CTRL_N_<i>: the blocks in the order of rstmgr.hjson's SW_RST countermeasures (usbdev_aon
   // has no model of its own).
   static constexpr unsigned kSwResets = 10;
   static constexpr const char *kSwResetBlocks[kSwResets] = {
       "spi_device", "spi_host0", "spi_host1", "usbdev", "", "i2c0", "i2c1", "i2c2", "i3c0", "i3c1"};
-  uint16_t sw_rst_[kSwResets];
-  std::vector<uint32_t> alert_dump_;  // the last capture
+  uint16_t sw_rst_[kSwResets], sw_regwen_[kSwResets];
+  uint16_t alert_regwen_, cpu_regwen_, err_code_;
 };
 
 // pwrmgr (doc/theory_of_operation.md, doc/programmers_guide.md). CFG_CDC_SYNC is done at once
@@ -189,21 +218,15 @@ enum Eg2WakeSrc : unsigned {
   kEg2WakeCount = 8,
 };
 
-class Eg2Pwrmgr : public Eg2IpModel {
+// eg2sim's binding of the power manager's core (eg2_pwrmgr_core.h): the registers are this
+// model's, the resets and events are the SystemC system's. The behaviour is the core's.
+class Eg2Pwrmgr : public Eg2IpModel, private Eg2PwrmgrPort {
  public:
   Eg2Pwrmgr(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
-      : Eg2IpModel(n, d, base) {
+      : Eg2IpModel(n, d, base), core_(*this) {
     esc_status_ = reg("ESCALATE_RESET_STATUS");
     set_modelled(esc_status_);
-    sys_.esc_receiver(3, [this](bool level) {
-      if (!level) return;
-      set_value(esc_status_, 1);
-      bool asleep = low_power_reset();
-      exit_low_power();
-      sys_.note("pwrmgr: escalation reset request (esc_rst)");
-      sys_.request_reset(Eg2ResetCause::kEscalation, "alert escalation reset (pwrmgr esc_rst)", -1,
-                         asleep);
-    });
+    sys_.esc_receiver(3, [this](bool level) { core_.escalation(level); });
     control_ = reg("CONTROL");
     cdc_ = reg("CFG_CDC_SYNC");
     wake_en_ = reg("WAKEUP_EN");
@@ -219,13 +242,13 @@ class Eg2Pwrmgr : public Eg2IpModel {
     set_modelled(reset_status_);
     set_modelled(wake_info_);
     set_modelled(fault_status_);
-    sys_.low_power_requested = [this] { return enter_low_power(); };
-    sys_.in_low_power = [this] { return low_power_; };
-    sys_.cpu_interrupt_wakeup = [this] { interrupt_wakeup(); };
+    sys_.low_power_requested = [this] { return core_.enter_low_power(); };
+    sys_.in_low_power = [this] { return core_.low_power(); };
+    sys_.cpu_interrupt_wakeup = [this] { core_.interrupt_wakeup(); };
     // The AST's main power-ok dips for a moment (the chip bench's ast_supply_if
     // glitch_vcmain_pok): eg2sim --stim pwrmgr.main_pok_glitch=1@<point>.
     sys_.stim_handlers["pwrmgr.main_pok_glitch"] = [this](const std::string &) {
-      main_pok_glitch();
+      core_.main_pok_glitch();
       return true;
     };
   }
@@ -233,145 +256,62 @@ class Eg2Pwrmgr : public Eg2IpModel {
   void on_reset(Eg2ResetCause c) override {
     uint32_t fault = value(fault_status_);
     Eg2IpModel::on_reset(c);
-    // top_earlgrey.hjson connects pwrmgr rst_ni to the POR reset tree; FAULT_STATUS therefore
-    // survives every internally requested reset and clears only when POR reaches pwrmgr.
-    if (c != Eg2ResetCause::kPor) set_value(fault_status_, fault);
-    low_power_ = false;
-    set_value(esc_status_, 0);
-    // A reset other than a low-power exit resets the wake-up sources too (Eg2IpModel::keeps_state):
-    // their requests drop with them.
-    if (c != Eg2ResetCause::kLowPowerExit) {
-      wake_req_ = 0;
-      show_wake_status();
-    }
-    // The synchronised copy follows CONTROL as the reset leaves it (resval 1; an always-on
-    // register keeps its value over a reset that does not reach the always-on domain).
-    usb_clk_active_ = (value(control_) >> 7) & 1;
+    // top_earlgrey.hjson connects pwrmgr rst_ni to the POR reset tree (eg2_pwrmgr_core.h).
+    core_.after_reset(c == Eg2ResetCause::kPor, c == Eg2ResetCause::kLowPowerExit, fault);
   }
 
-  // A wake-up request from source src (index in the top's wakeups list).
-  // A request is a level: it stays until its source withdraws it (wakeup_clear), and wakes the
-  // chip from low power whenever its WAKEUP_EN bit is set, also if it came before the enable.
-  // WAKE_STATUS: "all current wake requests post enable mask" (pwrmgr.hjson).
-  void wakeup(unsigned src) {
-    wake_req_ |= 1u << src;
-    show_wake_status();
-    if (!((value(wake_en_) >> src) & 1)) return;
-    if (!low_power_) return;
-    if (!(value(capture_dis_) & 1)) set_value(wake_info_, value(wake_info_) | (1u << src));
-    bool deep = deep_sleep_;
-    exit_low_power();
-    if (!deep) {
-      sys_.note("pwrmgr: wake-up " + std::to_string(src) + " from normal sleep, no reset");
-      return;
-    }
-    sys_.request_reset(Eg2ResetCause::kLowPowerExit,
-                       "low-power exit, wake-up " + std::to_string(src));
-  }
-
-  // Wake-up source src no longer requests (WAKE_STATUS shows the requests as they are now).
-  void wakeup_clear(unsigned src) {
-    wake_req_ &= ~(1u << src);
-    show_wake_status();
-  }
-
+  // A wake-up request from source src (index in the top's wakeups list), a level.
+  void wakeup(unsigned src) { core_.wakeup(src); }
+  // Wake-up source src no longer requests.
+  void wakeup_clear(unsigned src) { core_.wakeup_clear(src); }
   // A peripheral reset request from source src (index in the top's peripheral reset requests).
-  void reset_request(unsigned src) {
-    if (!((value(reset_en_) >> src) & 1)) return;
-    set_value(reset_status_, value(reset_status_) | (1u << src));
-    bool asleep = low_power_reset();
-    exit_low_power();
-    sys_.request_reset(Eg2ResetCause::kHwRequest,
-                       "peripheral reset request " + std::to_string(src), int(src), asleep);
-  }
+  void reset_request(unsigned src) { core_.reset_request(src); }
 
-  bool low_power() const { return low_power_; }
+  bool low_power() const { return core_.low_power(); }
   // CONTROL.USB_CLK_EN_ACTIVE as last synchronised to the slow domain (CFG_CDC_SYNC): 0 turns
   // the USB clock off in the active state (pwrmgr.hjson; clkmgr then freezes accesses to usbdev).
-  bool usb_clk_active() const { return usb_clk_active_; }
+  bool usb_clk_active() const { return core_.usb_clk_active(); }
 
  protected:
   void reg_write(uint16_t r, uint32_t, uint32_t, uint32_t) override {
-    if (r == wake_en_) show_wake_status();
-    if (r == cdc_) {
-      usb_clk_active_ = (value(control_) >> 7) & 1;
-      set_value(cdc_, 0);
-    }
+    if (r == wake_en_) core_.reg_written(Eg2PwrReg::kWakeEn);
+    if (r == cdc_) core_.reg_written(Eg2PwrReg::kCdcSync);
   }
 
  private:
-  // Whether pwrmgr has made a low-power entry reset (a deep-sleep entry): rstmgr then records a
-  // reset requested now as a low-power exit too (the class comment).
-  bool low_power_reset() const { return low_power_ && deep_sleep_; }
-  // pwrmgr theory_of_operation.md "Fall Through Handling": right after WFI, an interrupt can make
-  // entry invalid and return the system to active. CONTROL.CORE_CLK_EN says whether the core clock
-  // remains on in low power; pwrmgr.hjson WAKE_INFO.FALL_THROUGH records the cancelled entry.
-  void interrupt_wakeup() {
-    if (!low_power_ || deep_sleep_ || !(value(control_) & (1u << 4))) return;
-    // WAKE_INFO: REASONS (one bit per wake-up source), FALL_THROUGH, ABORT (pwrmgr.hjson).
-    if (!(value(capture_dis_) & 1)) set_value(wake_info_, value(wake_info_) | (1u << kEg2WakeCount));
-    sys_.note("pwrmgr: processor interrupt cancelled normal-sleep entry (fall through)");
-    exit_low_power(false);
-  }
-  // theory_of_operation.md "Main Power Unstable Reset Requests": "If the main power ever becomes
-  // unstable (the power okay indication is low even though it is powered on), the power manager
-  // requests an internal reset. This reset behaves similarly to the escalation reset"; "the main
-  // power unstable checks are valid only during states that power should be on", so not once a
-  // deep-sleep entry has turned the main domain off (during the entry it still is on). rstmgr
-  // records it as HW_REQ's main power glitch (rstmgr.hjson RESET_INFO b5: request index 2).
-  // FAULT_STATUS.MAIN_PD_GLITCH says "When 1, unexpected power glitch was observed on main PD"
-  // (pwrmgr.hjson); pwrmgr is on the POR reset tree, so the sticky bit is held until POR.
-  void main_pok_glitch() {
-    if (low_power_ && deep_sleep_ && !entering_) {
-      sys_.note("pwrmgr: main power-ok low while the main domain is powered down: no glitch reset");
-      return;
+  uint16_t id(Eg2PwrReg r) const {
+    switch (r) {
+      case Eg2PwrReg::kControl: return control_;
+      case Eg2PwrReg::kCdcSync: return cdc_;
+      case Eg2PwrReg::kWakeEn: return wake_en_;
+      case Eg2PwrReg::kWakeStatus: return wake_status_;
+      case Eg2PwrReg::kResetEn: return reset_en_;
+      case Eg2PwrReg::kResetStatus: return reset_status_;
+      case Eg2PwrReg::kWakeInfo: return wake_info_;
+      case Eg2PwrReg::kCaptureDis: return capture_dis_;
+      case Eg2PwrReg::kEscStatus: return esc_status_;
+      case Eg2PwrReg::kFaultStatus: return fault_status_;
     }
-    set_value(fault_status_, value(fault_status_) | (1u << 2));
-    // Assumption: a glitch at the lowpower event counts as a triggered low-power-entry reset, so
-    // rstmgr also records LOW_POWER_EXIT. The documents do not define that point in the entry;
-    // chip_sw_deep_power_glitch_vseq applies the glitch there and the software expects both bits.
-    bool lp_reset = low_power_reset();
-    exit_low_power();
-    sys_.note("pwrmgr: main power glitch: internal reset request");
-    sys_.request_reset(Eg2ResetCause::kHwRequest, "main power glitch (pwrmgr internal reset)", 2,
-                       lp_reset);
+    return control_;
   }
-  bool enter_low_power() {
-    if (!(value(control_) & 1)) return false;
-    low_power_ = true;
-    deep_sleep_ = !((value(control_) >> 8) & 1);  // CONTROL.MAIN_PD_N 0: main powered down
-    // The entry as the chip bench sees it (pwrmgr_low_power_if): what is applied now comes while
-    // the entry is under way, before the main domain is off.
-    entering_ = true;
-    sys_.chip_event("lowpower");
-    entering_ = false;
-    if (sys_.reset_pending()) return true;
-    // A wake-up already requested and enabled wakes the chip at once.
-    uint32_t w = value(wake_status_) & value(wake_en_);
-    for (unsigned s = 0; s < kEg2WakeCount; ++s) {
-      if ((w >> s) & 1) {
-        wakeup(s);
-        break;
-      }
-    }
-    return true;
+  // Eg2PwrmgrPort.
+  uint32_t rd(Eg2PwrReg r) override { return value(id(r)); }
+  void wr(Eg2PwrReg r, uint32_t v) override { set_value(id(r), v); }
+  void set_wakeup_intr() override { set_intr("wakeup"); }
+  void request_reset(Eg2PwrReset why, const std::string &what, int idx, bool lp) override {
+    Eg2ResetCause c = why == Eg2PwrReset::kLowPowerExit ? Eg2ResetCause::kLowPowerExit
+                    : why == Eg2PwrReset::kEscalation   ? Eg2ResetCause::kEscalation
+                    : why == Eg2PwrReset::kSwRequest    ? Eg2ResetCause::kSoftware
+                                                        : Eg2ResetCause::kHwRequest;
+    sys_.request_reset(c, what, idx, lp);
   }
-  void exit_low_power(bool raise_wakeup_interrupt = true) {
-    if (!low_power_) return;
-    low_power_ = false;
-    set_value(control_, value(control_) & ~1u);
-    if (raise_wakeup_interrupt) set_intr("wakeup");
-  }
+  void lowpower_event() override { sys_.chip_event("lowpower"); }
+  bool reset_pending() override { return sys_.reset_pending(); }
+  void note(const std::string &s) override { sys_.note(s); }
 
-  bool usb_clk_active_ = true;
+  Eg2PwrmgrCore core_;
   uint16_t control_, cdc_, wake_en_, wake_status_, reset_en_, reset_status_, wake_info_,
       capture_dis_, esc_status_, fault_status_;
-  void show_wake_status() { set_value(wake_status_, wake_req_ & value(wake_en_)); }
-
-  bool low_power_ = false;
-  bool deep_sleep_ = false;
-  bool entering_ = false;  // during the low-power entry's event (chip_event "lowpower")
-  uint32_t wake_req_ = 0;  // the sources' wake-up requests, before the enable mask
 };
 
 // aon_timer (hw/ip/aon_timer: README.md, doc/theory_of_operation.md), on the always-on clock

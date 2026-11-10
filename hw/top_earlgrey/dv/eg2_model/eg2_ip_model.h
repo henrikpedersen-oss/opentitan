@@ -62,6 +62,17 @@ class Eg2IpModel : public Eg2RegBlock {
     intr_enable_ = reg_index("INTR_ENABLE");
     intr_test_ = reg_index("INTR_TEST");
     alert_test_ = reg_index("ALERT_TEST");
+    if (alert_test_ >= 0) {
+      // Reggen's ALERT_TEST has an optional write-zero-to-clear lock in bit
+      // 31. Inspect the description so older boards without it still work.
+      const auto &test = desc.regs[alert_test_];
+      for (uint16_t i = 0; i < test.nfields; ++i) {
+        const auto &field = desc.fields[test.field0 + i];
+        if (field.lsb == 31 && field.width == 1 && field.sw == eg2_regs::kAccRw0c) {
+          alert_test_lock_ = 1u << 31;
+        }
+      }
+    }
     if (intr_state_ >= 0) set_modelled(uint16_t(intr_state_));
     for (const char *a : eg2_irqs::kAonModules) {
       if (std::string(module()) == a) aon_ = true;
@@ -347,8 +358,15 @@ class Eg2IpModel : public Eg2RegBlock {
       }
       update_irqs();
     } else if (int(r) == alert_test_) {
-      for (uint8_t i = 0; irq_ && i < irq_->nalerts; ++i) {
-        if ((wdata & wmask) >> irq_->alerts[i].bit & 1) sys_.raise_alert(irq_->alerts[i].id);
+      // The previous lock value gates this write: clearing the lock and testing
+      // an alert in the same write is allowed. Subsequent tests are disabled
+      // until reset (util/reggen/reg_block.py, generated ALERT_TEST description).
+      // Same-write ordering is confirmed by uart_reg_top.sv's
+      // alert_test_gated_we = alert_test_we && alert_test_regwen_qs.
+      if (!alert_test_lock_ || (old & alert_test_lock_)) {
+        for (uint8_t i = 0; irq_ && i < irq_->nalerts; ++i) {
+          if ((wdata & wmask) >> irq_->alerts[i].bit & 1) sys_.raise_alert(irq_->alerts[i].id);
+        }
       }
     } else if (int(r) == intr_state_) {
       // Status-type bits follow their source: a write of 1 does not clear them.
@@ -362,6 +380,7 @@ class Eg2IpModel : public Eg2RegBlock {
   }
 
   uint32_t status_level_;
+  uint32_t alert_test_lock_ = 0;
   uint32_t status_test_;  // status-type INTR_TEST bits, held until the next INTR_TEST write
   mutable std::string window_;
   bool debug_irqs_ = false;

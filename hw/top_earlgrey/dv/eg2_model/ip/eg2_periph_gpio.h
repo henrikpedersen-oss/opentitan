@@ -16,7 +16,8 @@
 //                                 the filter enable, of GPIO[i]
 // DATA_IN: the chip routes each GPIO through pinmux to a pad and back. The model does not model the
 // pads: a GPIO whose output is enabled reads its own output, one whose output is disabled reads
-// what outside drives (--stim gpio.in=<hex>, default 0). The input filter (16 stable cycles) is a
+// what outside drives (--stim gpio0.in=<hex> or gpio1.in=<hex>, default 0;
+// gpio.in is an alias for the first bank). The input filter (16 stable cycles) is a
 // pass-through: no model time passes between a write and the next read anyway.
 // Interrupts: "the interrupt for GPIO[i] is raised on a rising edge if INTR_CTRL_EN_RISING[i] is
 // set" and likewise for falling edges; a level interrupt is raised while the input has the level
@@ -24,7 +25,7 @@
 // A write to PER_PIN_IO_i that does not cover its bytes 0 and 1 answers an error and changes nothing
 // (programmer's guide: "A byte write returns an error and has no effect"). Not modelled: the straps
 // (HW_STRAPS_DATA_IN reads its reset value).
-// Output items: on every change of what the pads drive, one line in gpio.model.log,
+// Output items: on every change of what the pads drive, one line in <instance>.model.log,
 // "<data_out & data_oe in hex> <data_oe in hex>": the chip bench's gpio.chip.log line without its
 // "routed" word (the GPIOs pinmux routes to the bench's own GPIO pads, which the model does not
 // know).
@@ -72,17 +73,26 @@ class Eg2Gpio : public Eg2IpModel {
     }
     set_modelled(data_in_);
     debug_irqs();
-    outside_ = Eg2PeriphStim::u32("gpio.in", 0);
-    sys_.stim_handlers["gpio.in"] = [this](const std::string &v) {
-      outside_ = uint32_t(std::stoul(v, nullptr, 0));
-      update();
+    const std::string input_key = std::string(d.window) + ".in";
+    const bool first_bank = std::string(d.window) == "gpio0" || std::string(d.window) == "gpio";
+    outside_ = Eg2PeriphStim::u32(input_key, first_bank ? Eg2PeriphStim::u32("gpio.in", 0) : 0);
+    sys_.inputs[input_key] = [this](uint32_t value) { set_input(value); };
+    sys_.stim_handlers[input_key] = [this](const std::string &v) {
+      set_input(uint32_t(std::stoul(v, nullptr, 0)));
       return true;
     };
+    // Keep the original single-GPIO spelling for the first bank. Registering
+    // it on every bank silently routes the input to whichever is built last.
+    if (first_bank) {
+      sys_.inputs["gpio.in"] = sys_.inputs[input_key];
+      sys_.stim_handlers["gpio.in"] = sys_.stim_handlers[input_key];
+    }
     // A slash-separated sequence of <driven value>:<output enables>. It mirrors the chip bench's
     // ordered pad waits: values before the first expected one are ignored; after that, every pad
     // transition must be the next expected value. gpio theory_of_operation.md defines the output
     // and output-enable signals; the pinmux route used by gpio_test is one-to-one.
-    sys_.stim_handlers["gpio.pad_expect"] = [this](const std::string &v) {
+    const std::string expect_key = std::string(d.window) + ".pad_expect";
+    sys_.stim_handlers[expect_key] = [this](const std::string &v) {
       expected_.clear();
       expected_started_ = false;
       std::istringstream all(v);
@@ -96,6 +106,7 @@ class Eg2Gpio : public Eg2IpModel {
       }
       return !expected_.empty();
     };
+    if (first_bank) sys_.stim_handlers["gpio.pad_expect"] = sys_.stim_handlers[expect_key];
     sys_.verdict_checks.push_back([this] {
       return expected_.empty() ? std::string()
                                : std::string("gpio.pad_expect: software ended before all expected "
@@ -188,7 +199,11 @@ class Eg2Gpio : public Eg2IpModel {
     out_ = oe_ = 0;
     for (uint32_t &c : ctrl_) c = 0;
     in_ = input();
-    driven_ = ~0u;
+    output_valid_ = false;
+    update();
+  }
+  void set_input(uint32_t value) {
+    outside_ = value;
     update();
   }
   uint32_t input() const {
@@ -222,8 +237,8 @@ class Eg2Gpio : public Eg2IpModel {
     }
     // What the pads drive, as an output item when it changes.
     uint32_t drv = out_ & oe_;
-    if (drv != driven_ || oe_ != driven_oe_) {
-      if (driven_ != ~0u) {
+    if (!output_valid_ || drv != driven_ || oe_ != driven_oe_) {
+      if (output_valid_) {
         char item[32];
         std::snprintf(item, sizeof item, "%08x %08x", drv, oe_);
         sys_.emit(desc().window, item);
@@ -231,6 +246,7 @@ class Eg2Gpio : public Eg2IpModel {
       }
       driven_ = drv;
       driven_oe_ = oe_;
+      output_valid_ = true;
       check_pads(drv, oe_);
     }
   }
@@ -257,7 +273,8 @@ class Eg2Gpio : public Eg2IpModel {
   uint16_t en_[5];
   uint16_t pin_io_[kNumIos], pin_oe_[kNumIos], pin_ctrl_[kNumIos];
   uint32_t out_ = 0, oe_ = 0, in_ = 0, outside_ = 0, ctrl_[5] = {};
-  uint32_t driven_ = ~0u, driven_oe_ = 0;
+  uint32_t driven_ = 0, driven_oe_ = 0;
+  bool output_valid_ = false;
   std::deque<std::pair<uint32_t, uint32_t>> expected_;
   bool expected_started_ = false;
 };

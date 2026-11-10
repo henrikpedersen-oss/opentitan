@@ -94,6 +94,9 @@
 
 #include <systemc>
 
+#include "eg2_image.h"
+#include "eg2_stimulus.h"
+
 #include "eg2_bench.h"
 #include "eg2_bench_seq.h"
 #include "eg2_dvlog.h"
@@ -163,416 +166,6 @@ Eg2CoreConfig earlgrey_core() {
   return c;
 }
 
-// Copy every loadable segment of a 32-bit ELF to its load address (p_paddr); collect its symbols.
-bool load_elf(const std::string &path, std::vector<Eg2Memory *> &mems,
-              std::map<std::string, uint32_t> *symbols = nullptr, bool segments = true) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f) {
-    std::fprintf(stderr, "eg2sim: cannot open %s\n", path.c_str());
-    return false;
-  }
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd32 = [&](size_t off) {
-    uint32_t v = 0;
-    if (off + 4 <= elf.size()) std::memcpy(&v, &elf[off], 4);
-    return v;
-  };
-  auto rd16 = [&](size_t off) {
-    uint16_t v = 0;
-    if (off + 2 <= elf.size()) std::memcpy(&v, &elf[off], 2);
-    return v;
-  };
-  if (elf.size() < 52 || std::memcmp(elf.data(), "\x7f" "ELF", 4) != 0 || elf[4] != 1) {
-    std::fprintf(stderr, "eg2sim: %s is not a 32-bit ELF\n", path.c_str());
-    return false;
-  }
-  uint32_t phoff = rd32(28);
-  uint16_t phentsize = rd16(42), phnum = rd16(44);
-  if (symbols) {
-    uint32_t shoff = rd32(32);
-    uint16_t shentsize = rd16(46), shnum = rd16(48);
-    for (uint16_t i = 0; i < shnum; ++i) {
-      size_t sh = shoff + size_t(i) * shentsize;
-      if (rd32(sh + 4) != 2) continue;  // SHT_SYMTAB
-      uint32_t off = rd32(sh + 16), size = rd32(sh + 20), link = rd32(sh + 24);
-      size_t strsh = shoff + size_t(link) * shentsize;
-      uint32_t stroff = rd32(strsh + 16), strsize = rd32(strsh + 20);
-      for (uint32_t e = 0; e + 16 <= size; e += 16) {
-        uint32_t name = rd32(off + e), value = rd32(off + e + 4);
-        if (name == 0 || name >= strsize || stroff + name >= elf.size()) continue;
-        const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-        size_t len = strnlen(n, elf.size() - (stroff + name));
-        (*symbols)[std::string(n, len)] = value;
-      }
-    }
-  }
-  if (!segments) return true;  // symbols only: the image is loaded another way
-  for (uint16_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd32(ph), offset = rd32(ph + 4), paddr = rd32(ph + 12),
-             filesz = rd32(ph + 16);
-    if (type != 1 || filesz == 0) continue;
-    if (size_t(offset) + filesz > elf.size()) return false;
-    bool done = false;
-    for (Eg2Memory *m : mems) done = done || m->write(paddr, &elf[offset], filesz);
-    if (!done) {
-      std::fprintf(stderr, "eg2sim: %s: segment at 0x%08x is in no memory\n", path.c_str(),
-                   paddr);
-      return false;
-    }
-  }
-  return true;
-}
-
-// Load a raw RRAM image (the bench's <test>_rom_ext_assembled.img: ROM_EXT and the signed
-// application, as the secure-boot runs place them) from the RRAM's base.
-bool load_rram_image(const std::string &path, Eg2Memory *rram) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f || !rram) {
-    std::fprintf(stderr, "eg2sim: cannot load %s into RRAM\n", path.c_str());
-    return false;
-  }
-  std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
-  if (img.empty() || img.size() > rram->size() || !rram->write(rram->base(), img.data(), img.size())) {
-    std::fprintf(stderr, "eg2sim: %s (%zu bytes) does not fit the RRAM (%u bytes)\n", path.c_str(),
-                 img.size(), rram->size());
-    return false;
-  }
-  return true;
-}
-
-// Load an OTP image (vmem, "@<word address> <24-bit word>": data in bits 15:0) into otp_ctrl's
-// software read window.
-bool load_otp(const std::string &path, std::vector<Eg2RegBlock *> &blocks) {
-  std::ifstream f(path);
-  if (!f) {
-    std::fprintf(stderr, "eg2sim: cannot open %s\n", path.c_str());
-    return false;
-  }
-  Eg2RegBlock *otp = nullptr;
-  for (Eg2RegBlock *b : blocks) {
-    if (std::string(b->desc().window) == "otp_ctrl.core") otp = b;
-  }
-  if (!otp) return false;
-  std::string line;
-  size_t words = 0;
-  while (std::getline(f, line)) {
-    unsigned addr, word;
-    if (std::sscanf(line.c_str(), "@%x %x", &addr, &word) != 2) continue;
-    uint8_t b[2] = {uint8_t(word), uint8_t(word >> 8)};
-    if (otp->win_write("SW_CFG_WINDOW", 2 * addr, b, 2)) ++words;
-  }
-  std::printf("eg2sim: OTP image %s: %zu words in otp_ctrl.core SW_CFG_WINDOW\n", path.c_str(),
-              words);
-  return words > 0;
-}
-
-// --otp-out: the OTP array as it is at the end of the run, in the image format --otp reads
-// (gen-otp-img.py: one 16-bit word per line with its 6 ECC bits, OTP's extended Hamming code of
-// hw/ip/lc_ctrl/data/lc_ctrl_state.hjson "secded"), so that a life-cycle walkthrough can go on in
-// the next run, and the chip bench can load it.
-uint32_t otp_ecc_word(uint16_t d) {
-  static const std::vector<std::vector<int>> kMatrix = {
-      {0, 1, 3, 4, 6, 8, 10, 11, 13, 15}, {0, 2, 3, 5, 6, 9, 10, 12, 13},
-      {1, 2, 3, 7, 8, 9, 10, 14, 15},     {4, 5, 6, 7, 8, 9, 10},
-      {11, 12, 13, 14, 15},               {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
-                                           11, 12, 13, 14, 15, 16, 17, 18, 19, 20}};
-  uint32_t w = d;
-  for (size_t j = 0; j < kMatrix.size(); ++j) {
-    uint32_t b = 0;
-    for (int k : kMatrix[j]) b ^= (w >> k) & 1;
-    w |= b << (16 + j);
-  }
-  return w;
-}
-
-bool save_otp(const std::string &path, std::vector<Eg2RegBlock *> &blocks) {
-  Eg2RegBlock *otp = nullptr;
-  for (Eg2RegBlock *b : blocks) {
-    if (std::string(b->desc().window) == "otp_ctrl.core") otp = b;
-  }
-  int w = otp ? otp->win_index("SW_CFG_WINDOW") : -1;
-  FILE *f = w >= 0 ? std::fopen(path.c_str(), "w") : nullptr;
-  if (!f) {
-    std::fprintf(stderr, "eg2sim: cannot write %s\n", path.c_str());
-    return false;
-  }
-  const std::vector<uint8_t> &m = otp->win_mem(uint16_t(w));
-  const size_t words = 0x810 / 2;  // the OTP array (otp_ctrl_mmap.md), kEg2OtpSize
-  std::fprintf(f, "//\n// OTP MEM file with %zu x 24bit layout (eg2sim --otp-out)\n", words);
-  for (size_t i = 0; i < words && 2 * i + 1 < m.size(); ++i) {
-    std::fprintf(f, "@%06zx %06x\n", i, otp_ecc_word(uint16_t(m[2 * i] | (m[2 * i + 1] << 8))));
-  }
-  std::fclose(f);
-  std::printf("eg2sim: OTP written to %s\n", path.c_str());
-  return true;
-}
-
-// The size of a symbol of a 32-bit ELF (st_size), or 0 if there is no such symbol.
-uint32_t elf_symbol_size(const std::string &path, const std::string &symbol) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return 0;
-  uint32_t shoff = rd(32, 4), shentsize = rd(46, 2), shnum = rd(48, 2);
-  for (uint32_t i = 0; i < shnum; ++i) {
-    size_t sh = shoff + size_t(i) * shentsize;
-    if (rd(sh + 4, 4) != 2) continue;  // SHT_SYMTAB
-    uint32_t off = rd(sh + 16, 4), size = rd(sh + 20, 4), link = rd(sh + 24, 4);
-    uint32_t stroff = rd(shoff + size_t(link) * shentsize + 16, 4);
-    for (uint32_t e = 0; e + 16 <= size; e += 16) {
-      uint32_t name = rd(off + e, 4);
-      if (name == 0 || stroff + name >= elf.size()) continue;
-      const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-      if (symbol == std::string(n, strnlen(n, elf.size() - (stroff + name)))) {
-        return rd(off + e + 8, 4);
-      }
-    }
-  }
-  return 0;
-}
-
-// The initial bytes of a symbol of a 32-bit ELF (its value in the file's loadable segments): false
-// if there is no such symbol or its bytes are not in the file.
-bool elf_symbol_bytes(const std::string &path, const std::string &symbol, size_t len,
-                      std::vector<uint8_t> *out) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return false;
-  uint32_t shoff = rd(32, 4), shentsize = rd(46, 2), shnum = rd(48, 2), addr = 0;
-  bool found = false;
-  for (uint32_t i = 0; i < shnum && !found; ++i) {
-    size_t sh = shoff + size_t(i) * shentsize;
-    if (rd(sh + 4, 4) != 2) continue;  // SHT_SYMTAB
-    uint32_t off = rd(sh + 16, 4), size = rd(sh + 20, 4), link = rd(sh + 24, 4);
-    uint32_t stroff = rd(shoff + size_t(link) * shentsize + 16, 4);
-    for (uint32_t e = 0; e + 16 <= size && !found; e += 16) {
-      uint32_t name = rd(off + e, 4);
-      if (name == 0 || stroff + name >= elf.size()) continue;
-      const char *n = reinterpret_cast<const char *>(&elf[stroff + name]);
-      if (symbol == std::string(n, strnlen(n, elf.size() - (stroff + name)))) {
-        addr = rd(off + e + 4, 4);
-        found = true;
-      }
-    }
-  }
-  if (!found) return false;
-  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
-  for (uint32_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd(ph, 4), offset = rd(ph + 4, 4), va = rd(ph + 8, 4), filesz = rd(ph + 16, 4);
-    if (type != 1 || addr < va || addr - va + len > filesz) continue;
-    size_t at = size_t(offset) + (addr - va);
-    if (at + len > elf.size()) return false;
-    out->assign(elf.begin() + at, elf.begin() + at + len);
-    return true;
-  }
-  return false;
-}
-
-// Stimulus values may name bytes the bench takes from the test image, as the chip bench's
-// sequences do (they write data into the image with sw_symbol_backdoor_overwrite and then send the
-// same bytes): {sym:<name>:<length>} is the symbol's initial bytes, {rep:<hex byte>:<count>} a byte
-// repeated. They become C escapes in a UART's text (uart<N>.*) and hex bytes everywhere else
-// (ip/eg2_periph_stim.h). False, with a message, if a symbol is missing.
-// A stimulus applied while the model runs, as a chip-bench sequence drives it at a point of the
-// test: --stim <key>=<value>@<point>[@<point>...][+<delay>], or --stim <key>=<value>@<delay> once,
-// <delay> after the start (the header comment gives the points). The points are what the sequence
-// waits for (sw_logger_if printed_log, sw_test_status_if, the core's sleep, pwrmgr_low_power_if),
-// in order: the stimulus applies when the last one happens, after <delay> (<n>us, <n>ns, or
-// <n>cyc: main-clock cycles, the counter that times it against the chip), and the points start
-// again. The keys are the models' (Eg2System::stim_handlers), each documented where its model
-// registers it.
-struct TrigStim {
-  struct Point {
-    enum Kind { kLog, kLogPrefix, kStatus, kEvent } kind;
-    std::string text;  // the message, its prefix, or the event's name
-    uint32_t status = 0;
-  };
-  std::string key, arg;
-  std::vector<std::string> values;  // one: every time; more: the n-th time the n-th
-  std::vector<Point> points;        // none: once, from the start
-  uint64_t ps = 0, cycles = 0;
-  size_t next = 0;   // the point waited for
-  size_t times = 0;  // how often the points have all happened
-  std::vector<std::string> nums;  // the numbers of the last log message a point matched
-};
-
-// The test status words (sw/device/lib/testing/test_framework/status.h), by the name the bench's
-// sw_test_status_e gives them without its SwTestStatus prefix.
-bool status_word(const std::string &name, uint32_t *w) {
-  static const std::map<std::string, uint32_t> kWords = {
-      {"InBootRom", 0xb090}, {"InBootRomHalt", 0xb057}, {"InTest", 0x4354},
-      {"InWfi", 0x1d1e},     {"Passed", 0x900d},        {"Failed", 0xbaad}};
-  auto it = kWords.find(name);
-  if (it != kWords.end()) return *w = it->second, true;
-  if (name.empty() || !std::isdigit(static_cast<unsigned char>(name[0]))) return false;
-  *w = uint32_t(std::stoul(name, nullptr, 0));
-  return true;
-}
-
-// Parses "<key>=<value>@<when>"; false if the argument has no trigger (a plain --stim).
-bool parse_trig_stim(const std::string &arg, TrigStim *t, std::string *err) {
-  size_t eq = arg.find('=');
-  if (eq == std::string::npos) return false;
-  size_t at = arg.find('@', eq);
-  if (at == std::string::npos || at + 1 >= arg.size()) return false;
-  std::string when = arg.substr(at + 1);
-  bool from_start = std::isdigit(static_cast<unsigned char>(when[0]));
-  static const char *kPoints[] = {"log:", "status:", "event:", "wfi", "lowpower"};
-  bool point = false;
-  for (const char *p : kPoints) point |= when.rfind(p, 0) == 0;
-  if (!from_start && !point) return false;
-  t->key = arg.substr(0, eq);
-  t->arg = arg;
-  std::string v = arg.substr(eq + 1, at - eq - 1);
-  for (size_t s = 0;;) {
-    size_t c = v.find(',', s);
-    t->values.push_back(v.substr(s, c == std::string::npos ? std::string::npos : c - s));
-    if (c == std::string::npos) break;
-    s = c + 1;
-  }
-  // The delay: the last "+<n><unit>" of the last point, or the whole of a start trigger.
-  std::string delay;
-  if (from_start) {
-    delay = when;
-  } else {
-    size_t plus = when.rfind('+');
-    if (plus != std::string::npos && plus + 1 < when.size() &&
-        std::isdigit(static_cast<unsigned char>(when[plus + 1]))) {
-      delay = when.substr(plus + 1);
-      when = when.substr(0, plus);
-    }
-    for (size_t s = 0; s <= when.size();) {
-      size_t a = when.find('@', s);
-      std::string p = when.substr(s, a == std::string::npos ? std::string::npos : a - s);
-      s = a == std::string::npos ? when.size() + 1 : a + 1;
-      // %20 is a space (bench.txt splits its lines at spaces).
-      for (size_t q; (q = p.find("%20")) != std::string::npos;) p.replace(q, 3, " ");
-      TrigStim::Point pt;
-      if (p.rfind("log:", 0) == 0) {
-        pt.text = p.substr(4);
-        pt.kind = TrigStim::Point::kLog;
-        if (!pt.text.empty() && pt.text.back() == '*') {
-          pt.kind = TrigStim::Point::kLogPrefix;
-          pt.text.pop_back();
-        }
-        if (pt.text.empty()) return *err = "an empty log message", true;
-      } else if (p.rfind("status:", 0) == 0) {
-        pt.kind = TrigStim::Point::kStatus;
-        pt.text = p.substr(7);
-        if (!status_word(pt.text, &pt.status)) return *err = "test status '" + pt.text + "'", true;
-      } else if (p.rfind("event:", 0) == 0) {
-        pt.kind = TrigStim::Point::kEvent;
-        pt.text = p.substr(6);
-        if (pt.text.empty()) return *err = "an empty event name", true;
-      } else if (p == "wfi" || p == "lowpower") {
-        pt.kind = TrigStim::Point::kEvent;
-        pt.text = p;
-      } else {
-        return *err = "point '" + p + "' (log:, status:, event:, wfi or lowpower)", true;
-      }
-      t->points.push_back(pt);
-    }
-  }
-  if (!delay.empty()) {
-    size_t n = 0;
-    uint64_t v = std::stoull(delay, &n);
-    std::string unit = delay.substr(n);
-    if (unit == "us") t->ps = v * 1000000ull;
-    else if (unit == "ns") t->ps = v * 1000ull;
-    else if (unit == "cyc") t->cycles = v;
-    else return *err = "delay unit '" + unit + "' (us, ns or cyc)", true;
-  }
-  return true;
-}
-
-bool expand_stim(const std::string &test) {
-  for (auto &kv : eg2_model::Eg2PeriphStim::all()) {
-    std::string &v = kv.second;
-    std::string out;
-    bool text = kv.first.rfind("uart", 0) == 0;
-    size_t pos = 0;
-    while (pos < v.size()) {
-      size_t open = v.find('{', pos), close = v.find('}', open);
-      if (open == std::string::npos || close == std::string::npos) break;
-      out += v.substr(pos, open - pos);
-      std::string tok = v.substr(open + 1, close - open - 1);
-      size_t c1 = tok.find(':'), c2 = tok.rfind(':');
-      std::vector<uint8_t> bytes;
-      if (c1 != std::string::npos && c2 > c1) {
-        std::string kind = tok.substr(0, c1), arg = tok.substr(c1 + 1, c2 - c1 - 1);
-        size_t n = std::stoul(tok.substr(c2 + 1), nullptr, 0);
-        if (kind == "rep") bytes.assign(n, uint8_t(std::stoul(arg, nullptr, 16)));
-        if (kind == "sym" && !elf_symbol_bytes(test, arg, n, &bytes)) {
-          std::fprintf(stderr, "eg2sim: --stim %s: the test image has no %zu bytes at %s\n",
-                       kv.first.c_str(), n, arg.c_str());
-          return false;
-        }
-      }
-      char hex[8];
-      for (uint8_t b : bytes) {
-        std::snprintf(hex, sizeof hex, text ? "\\x%02x" : "%02x", b);
-        out += hex;
-      }
-      pos = close + 1;
-    }
-    v = out + v.substr(pos);
-  }
-  return true;
-}
-
-// The load address of run-time address vaddr in a 32-bit ELF: a symbol of an initialised data
-// section (.data) lives at its run-time address only after the start-up code has copied it from
-// its load image, so a write before the run must go to the load image (p_paddr). vaddr unchanged if
-// no segment with a different load address holds it.
-uint32_t elf_load_address(const std::string &path, uint32_t vaddr) {
-  std::ifstream f(path, std::ios::binary);
-  std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), {});
-  auto rd = [&](size_t off, unsigned n) {
-    uint32_t v = 0;
-    if (off + n <= elf.size()) std::memcpy(&v, &elf[off], n);
-    return v;
-  };
-  if (elf.size() < 52) return vaddr;
-  uint32_t phoff = rd(28, 4), phentsize = rd(42, 2), phnum = rd(44, 2);
-  for (uint32_t i = 0; i < phnum; ++i) {
-    size_t ph = phoff + size_t(i) * phentsize;
-    uint32_t type = rd(ph, 4), va = rd(ph + 8, 4), pa = rd(ph + 12, 4), filesz = rd(ph + 16, 4);
-    if (type == 1 && va != pa && vaddr >= va && vaddr - va < filesz) return pa + (vaddr - va);
-  }
-  return vaddr;
-}
-
-// Write a 32-bit little-endian word at a symbol of the test image, as the bench's
-// sw_symbol_backdoor_overwrite does.
-bool write_symbol(const std::map<std::string, uint32_t> &syms, std::vector<Eg2Memory *> &mems,
-                  const std::string &name, uint32_t value) {
-  auto it = syms.find(name);
-  if (it == syms.end()) {
-    std::fprintf(stderr, "eg2sim: the test image has no symbol %s\n", name.c_str());
-    return false;
-  }
-  uint8_t b[4] = {uint8_t(value), uint8_t(value >> 8), uint8_t(value >> 16), uint8_t(value >> 24)};
-  for (Eg2Memory *m : mems) {
-    if (m->write(it->second, b, 4)) {
-      std::printf("eg2sim: %s = %u (0x%08x) at 0x%08x\n", name.c_str(), value, value, it->second);
-      return true;
-    }
-  }
-  std::fprintf(stderr, "eg2sim: %s at 0x%08x is in no memory\n", name.c_str(), it->second);
-  return false;
-}
-
 }  // namespace
 
 #ifdef EG2_MPACT
@@ -581,6 +174,7 @@ int rtos_soc_main(int argc, char **argv,
 #endif
 
 int sc_main(int argc, char **argv) {
+  using namespace eg2_sim;
   // The board: Earl Grey 2 unless --board names another.
   for (int i = 1; i + 1 < argc; ++i) {
     std::string b = argv[i + 1];
@@ -724,6 +318,25 @@ int sc_main(int argc, char **argv) {
   if (revbm != sys.memories.end() && meta != sys.memories.end()) {
     revbm->second->share_start_of(*meta->second);
   }
+  if (revbm != sys.memories.end()) revbm->second->set_word_only();
+  // rram_ctrl's host window: read-only, and its OTP region (pages 4090 to 4095) answers every access
+  // with an error (Eg2Memory::set_read_only / set_error_range; rram_ctrl README.md "Features",
+  // "RRAM Memory Overview"). The core models ask Eg2System::bus_refuses before a direct-pointer store.
+  auto host = sys.memories.find("rram_ctrl.host");
+  if (host != sys.memories.end()) {
+    host->second->set_read_only();
+    host->second->set_error_range(kRramOtpFirstPage * kRramPageBytes,
+                                  kRramOtpLastPage1 * kRramPageBytes);
+  }
+  sys.bus_refuses = [&sys](uint32_t addr, bool write) {
+    for (auto &m : sys.memories) {
+      Eg2Memory *mem = m.second;
+      if (addr >= mem->base() && addr - mem->base() < mem->size()) {
+        return mem->refuses(addr - mem->base(), write);
+      }
+    }
+    return false;
+  };
   std::map<std::string, uint32_t> syms;
   // With --rram-image the test ELF gives its symbols and log strings only: its segments would
   // overwrite the signed image.

@@ -1,0 +1,19 @@
+CAPI=2:
+# Copyright lowRISC contributors (OpenTitan project).
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:eg2_rram_phy_cmodel:0.1"
+description: "rram_ctrl PHY reference model (C++): write path, read data and errors, on the scrambling model; with its DPI functions"
+
+filesets:
+  files_dv:
+    files:
+      - ip/eg2_rram_phy_core.h: { file_type: cppSource, is_include_file: true }
+      - ip/eg2_rram_scramble_core.h: { file_type: cppSource, is_include_file: true }
+      - ../../../ip/prim/dv/prim_prince/crypto_dpi_prince/prince_ref.h: { file_type: cppSource, is_include_file: true }
+      - dpi/eg2_rram_phy_dpi.cc: { file_type: cppSource }
+
+targets:
+  default:
+    filesets:
+      - files_dv

@@ -31,14 +31,13 @@
 //                                     byte the model knows; a register no hardware updates), 0 if it
 //                                     depends on timing the model does not have (a register hardware
 //                                     updates, a memory window inside a register block) or on
-//                                     memory the model never saw written: such a value is an input
-//                                     event (spec: what the model cannot know is an input event,
-//                                     never copied from the chip as a prediction). The error is
+//                                     memory the model never saw written. Observed load values
+//                                     never update reference state or become predictions. The error is
 //                                     always a prediction (the address map and the registers).
 //   eg2_sysmodel_load_event(h, addr, size, data)
-//                                     the chip's value of a load read() returned 0 for: memory
-//                                     takes it (and knows those bytes from then on); a register
-//                                     keeps its own value.
+//                                     legacy ABI entry point; intentionally does nothing. A DUT
+//                                     load cannot establish known memory or change the model's
+//                                     PLIC claim. Existing callers may retain the call.
 //   eg2_sysmodel_write(h, addr, size, data)
 //                                     a store of 1, 2 or 4 bytes within one word; returns 1 if the
 //                                     model answers an error.
@@ -49,7 +48,8 @@
 //                                     a bench backdoor write into memory (the vseq's
 //                                     sw_symbol_backdoor_overwrite): no bus access, no error.
 //   eg2_sysmodel_input(h, key, value)  an agent's item as the chip received it: uart<N>.rx (a byte
-//                                     from the peer), gpio.in (the level outside drives), or a chip
+//                                     from the peer), gpio0.in / gpio1.in (external input levels;
+//                                     gpio.in aliases gpio0.in), or a chip
 //                                     clock's measured frequency in Hz from now on: clk.main,
 //                                     clk.io_div4, clk.aon. Returns 1 for a key no model takes.
 //   eg2_sysmodel_wfi(h)               the core retired WFI: pwrmgr decides whether this is a
@@ -79,8 +79,29 @@
 //   eg2_sysmodel_stop_reason(h)       "" while the model follows; else why it stopped (a feature
 //                                     not modelled yet). From then on read() returns 0 (nothing is
 //                                     a prediction). Software polling a register no model updates,
-//                                     which stops eg2sim, does not stop the library: the chip's
-//                                     value of such a register is an event.
+//                                     which stops eg2sim, does not stop the library: that register's
+//                                     value remains unpredicted and is not learned from the DUT.
+//   eg2_sysmodel_irq_sources(h)       the number of rv_plic sources (source 0 reserved).
+//   eg2_sysmodel_irq_class(h, id)     how the model knows source id (eg2_irq_predict.h): 1 predicted
+//                                     (the IP model raises its hardware event), 2 enable-gated (only
+//                                     what software does to INTR_TEST / INTR_ENABLE / INTR_STATE is
+//                                     predicted, and the line must stay low while INTR_ENABLE's bit
+//                                     is 0), 3 not predicted (no register block), 0 no source.
+//   eg2_sysmodel_irq_name(h, id)      "<module>.<interrupt>" of source id.
+//   eg2_sysmodel_irq_aon(h, id)       1 if source id's block is on the always-on clock
+//                                     (eg2_irqs::kAonModules): its register writes and its
+//                                     interrupt cross clock domains in the chip.
+//   eg2_sysmodel_irq_level(h, id)     the model's level of source id now.
+//   eg2_sysmodel_irq_enabled(h, id)   the model's INTR_ENABLE bit of source id; -1 if none.
+//   eg2_sysmodel_irq_event(h, &id, &level, &t_ps)
+//                                     the next change of a source the model's rv_plic took, at the
+//                                     model's time; returns 0 if none is left.
+//   eg2_sysmodel_core_irqs(h)         the core's interrupt lines in the model: bit 0 software (MSIP),
+//                                     1 timer (MTIP), 2 external (MEIP), 3 NMI (rv_core_ibex's
+//                                     NMI_STATE & NMI_ENABLE).
+//   eg2_sysmodel_plic_claims(h, &adopted, &unknown)
+//                                     legacy diagnostics: both counts are zero because claims
+//                                     are determined independently, never adopted from the DUT.
 //   eg2_sysmodel_release(h)           flush the logs (the UARTs' partial lines).
 
 #ifndef EG2_MODEL_DPI_EG2_SYSMODEL_H_
@@ -110,6 +131,15 @@ const char *eg2_sysmodel_pull(void *h, const char *instance);
 const char *eg2_sysmodel_verdict(void *h);
 const char *eg2_sysmodel_stop_reason(void *h);
 const char *eg2_sysmodel_create_error(void);
+int eg2_sysmodel_irq_sources(void *h);
+int eg2_sysmodel_irq_class(void *h, int id);
+const char *eg2_sysmodel_irq_name(void *h, int id);
+int eg2_sysmodel_irq_aon(void *h, int id);
+int eg2_sysmodel_irq_level(void *h, int id);
+int eg2_sysmodel_irq_enabled(void *h, int id);
+int eg2_sysmodel_irq_event(void *h, int *id, int *level, uint64_t *t_ps);
+int eg2_sysmodel_core_irqs(void *h);
+int eg2_sysmodel_plic_claims(void *h, int *adopted, int *unknown);
 void eg2_sysmodel_release(void *h);
 
 #ifdef __cplusplus

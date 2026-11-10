@@ -166,6 +166,13 @@ Eg2MpactCpu::Eg2MpactCpu(Transport transport, const Eg2MpactConfig *cfg)
 // (Eg2System::core_revbm); a set bit or a failed lookup clears the tag, nothing else. (MPACT's own
 // barrier, which the RTOS test SoC uses, also rewrites the capability's metadata when it revokes;
 // 2026-11-05, eg2_trvk_truth_table_cheriot's high words.)
+// The tag is cleared after MPACT completes the CLC, not in the loaded data: MPACT's CLC applies the
+// load-permission stripping (CHERIoT ISA LoadCapImm: without LG the loaded capability loses GL,
+// without LM it loses SD and LM) only to a tagged capability, and the filter sits between the load
+// and the register file, so a revoked capability reaches rd stripped, with its tag cleared
+// (2026-11-07: clearing it in the loaded data returned the unstripped high word, 0x7e... for
+// 0x3c..., in eg2_trvk_truth_table_cheriot). Without EG2_MPACT_HAS_CLEAR_CAP_TAG (an older
+// libeg2_mpact) the loaded tag is cleared as before.
 bool Eg2MpactCpu::eg2_revoked(uint32_t w0, uint32_t w1) {
   uint32_t p = (w1 >> 25) & 0x3f;
   if (((p >> 3) & 3) == 0 && (p & 7) != 0) return false;  // a sealing capability
@@ -356,7 +363,16 @@ bool Eg2MpactCpu::step() {
     eg2_mpact_step_emulated(m_, 4, rd, value);
     return true;
   }
-  return eg2_mpact_step(m_) == 0;
+  trvk_revoked_ = false;
+  bool ok = eg2_mpact_step(m_) == 0;
+#ifdef EG2_MPACT_HAS_CLEAR_CAP_TAG
+  if (trvk_revoked_) {
+    trvk_revoked_ = false;
+    int rd = clc_rd(last_insn_);
+    if (rd > 0) eg2_mpact_clear_cap_tag(m_, unsigned(rd));
+  }
+#endif
+  return ok;
 }
 
 bool Eg2MpactCpu::take_back(Eg2Handover *s) {
@@ -453,24 +469,63 @@ int Eg2MpactCpu::load_cb(void *user, uint32_t addr, void *data, uint32_t len, ui
     const uint8_t *b = static_cast<const uint8_t *>(data);
     uint32_t w0 = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24;
     uint32_t w1 = uint32_t(b[4]) | uint32_t(b[5]) << 8 | uint32_t(b[6]) << 16 | uint32_t(b[7]) << 24;
-    if (eg2_revoked(w0, w1)) tags[0] = 0;
+    if (eg2_revoked(w0, w1)) {
+#ifdef EG2_MPACT_HAS_CLEAR_CAP_TAG
+      self->trvk_revoked_ = true;  // cleared in rd after the CLC (step)
+#else
+      tags[0] = 0;
+#endif
+    }
   }
   return 0;
+}
+
+int Eg2MpactCpu::clc_rd(uint32_t insn) {
+  if ((insn & 3) == 3) {  // CLC: LOAD opcode, funct3 3 (the RV64 LD encoding)
+    return (insn & 0x707f) == 0x3003 ? int((insn >> 7) & 31) : -1;
+  }
+  unsigned f3 = (insn >> 13) & 7;
+  if ((insn & 3) == 0 && f3 == 3) return int(((insn >> 2) & 7) + 8);  // C.CLC (C.LD's encoding)
+  if ((insn & 3) == 2 && f3 == 3) return int((insn >> 7) & 31);       // C.CLCSP (C.LDSP's)
+  return -1;
 }
 
 int Eg2MpactCpu::store_cb(void *user, uint32_t addr, const void *data, uint32_t len,
                           const uint8_t *tags) {
   auto *self = static_cast<Eg2MpactCpu *>(user);
   self->last_daddr_ = addr;
-  if (!self->transport_(tlm::TLM_WRITE_COMMAND, addr, len,
-                        const_cast<uint8_t *>(static_cast<const uint8_t *>(data)))) {
+  // A capability store with its tag set: a read-only window (the NVM) applies cheriot_mem_sys's WTRC
+  // to it instead of refusing it (Eg2Memory::cap_store_tagged).
+  bool tagged = false;
+  for (uint32_t i = 0; tags && i < (len + kGranule - 1) / kGranule; ++i) tagged |= tags[i] != 0;
+  Eg2Memory::cap_store_tagged() = tagged;
+  bool ok = self->transport_(tlm::TLM_WRITE_COMMAND, addr, len,
+                             const_cast<uint8_t *>(static_cast<const uint8_t *>(data)));
+  Eg2Memory::cap_store_tagged() = false;
+  if (!ok) {
+    // A refused untagged store still clears the tag of each granule it covers (cheriot_mem_sys
+    // programmers_guide.md: "A plain store to the NVM, or a csc of an untagged capability, is refused
+    // by the NVM and clears the tag of the capability it targets"; theory_of_operation.md: "a failed
+    // data write still updates the tag"; TAG_CLEAR_ON_DATA_WRITE). A refused tagged capability store
+    // leaves the tag: "its tag is only written once the store is verified".
+    // The end address is 64-bit: a store at the top of the address space (a byte store to
+    // 0xfffffffc in eg2_rand_mem_cheriot) wrapped the 32-bit counter to 0 and walked all 4 GiB.
+    if (!tagged) {
+      const uint64_t end = uint64_t(addr) + len;
+      for (uint64_t a = addr & ~uint64_t(kGranule - 1); a < end; a += kGranule) {
+        unsigned bit;
+        if (uint8_t *t = self->tag_byte(uint32_t(a), &bit)) *t = uint8_t(*t & ~(1u << bit));
+      }
+    }
     return 1;
   }
   // A capability store sets each granule's tag to the capability's; any other store clears the
   // tag of every granule it writes.
-  for (uint32_t a = addr & ~(kGranule - 1), i = 0; a < addr + len; a += kGranule, ++i) {
+  const uint64_t end = uint64_t(addr) + len;
+  uint32_t i = 0;
+  for (uint64_t a = addr & ~uint64_t(kGranule - 1); a < end; a += kGranule, ++i) {
     unsigned bit;
-    if (uint8_t *t = self->tag_byte(a, &bit)) {
+    if (uint8_t *t = self->tag_byte(uint32_t(a), &bit)) {
       bool set = tags && tags[i];
       *t = uint8_t((*t & ~(1u << bit)) | (set ? 1u << bit : 0));
     }

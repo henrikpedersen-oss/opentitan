@@ -7,7 +7,7 @@
 // failing that, its IP type (for example "uart", which every UART instance gets). A window with no
 // entry is a generic Eg2IpModel: its registers, interrupts and alerts, no behaviour.
 //
-// To add an IP model (Phase B): write the class under ip/ (derive from Eg2IpModel, see
+// To add an IP model: write the class under ip/ (derive from Eg2IpModel, see
 // eg2_ip_model.h), add it to its group's EG2_MODELS_<GROUP> list (ip/eg2_mem.h, ip/eg2_periph.h,
 // ip/eg2_crypto.h).
 
@@ -37,19 +37,19 @@ struct Entry {
 };
 
 const Entry kModels[] = {
-    // Core system (M3).
+    // Interrupt routing, alert handling, CPU configuration, timer and debug.
     {"rv_plic", make<eg2_model::Eg2RvPlic>},
     {"alert_handler", make<eg2_model::Eg2AlertHandler>},
     {"rv_core_ibex.cfg", make<eg2_model::Eg2RvCoreIbexCfg>},
     {"rv_timer", make<eg2_model::Eg2RvTimer>},
     {"rv_dm.regs", make<eg2_model::Eg2RvDm>},
-    // Always-on (M3).
+    // Reset, power, always-on peripherals and clocks.
     {"rstmgr", make<eg2_model::Eg2Rstmgr>},
     {"pwrmgr", make<eg2_model::Eg2Pwrmgr>},
     {"aon_timer", make<eg2_model::Eg2AonTimer>},
     {"sensor_ctrl", make<eg2_model::Eg2SensorCtrl>},
     {"clkmgr", make<eg2_model::Eg2Clkmgr>},
-    // Phase B: each group lists its models in its own header.
+    // Each remaining group lists its models in its own header.
     EG2_MODELS_MEM
     EG2_MODELS_PERIPH
     EG2_MODELS_CRYPTO
