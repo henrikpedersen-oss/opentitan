@@ -10,17 +10,18 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
   );
   `uvm_object_utils(cheriot_mem_sys_base_vseq)
 
-  // The Earl Grey 2 address map (the DUT's default parameters) and the windows of it the sequences
-  // use, preloaded with random words: part of the main SRAM and of the NVM (tagged) and some
-  // untagged memory; the meta SRAM is preloaded with zeros (tags 0, bitmap clear).
-  localparam bit [31:0]   SramBase     = 32'h1000_0000;
-  localparam bit [31:0]   NvmBase      = 32'h3000_0000;
-  localparam bit [31:0]   UntaggedBase = 32'h2000_0000;
-  localparam bit [31:0]   MetaBase     = 32'h1100_0000;
-  localparam int unsigned SramWin      = 'h2000;
-  localparam int unsigned NvmWin       = 'h1000;
-  localparam int unsigned UntaggedWin  = 'h100;
-  localparam int unsigned MetaTop      = 'h9800;  // bitmap, NVM tags, SRAM tags
+  // The address map in use (cms_pkg: Earl Grey 2, or the cms testbench's small map in build mode
+  // cms_map) and the windows of it the sequences use, preloaded with random words: part of the main
+  // SRAM and of the NVM (tagged; the whole of them with the small map) and the untagged memory; the
+  // meta SRAM is preloaded with zeros (tags 0, bitmap clear).
+  localparam bit [31:0]   SramBase     = cms_pkg::MainSramBase;
+  localparam bit [31:0]   NvmBase      = cms_pkg::NvmBase;
+  localparam bit [31:0]   UntaggedBase = cms_pkg::UntaggedBase;
+  localparam bit [31:0]   MetaBase     = cms_pkg::MetaBase;
+  localparam int unsigned SramWin      = (cms_pkg::SramBytes <= 'h4000) ? cms_pkg::SramBytes : 'h2000;
+  localparam int unsigned NvmWin       = (cms_pkg::NvmBytes <= 'h2000) ? cms_pkg::NvmBytes : 'h1000;
+  localparam int unsigned UntaggedWin  = cms_pkg::UntaggedTop - cms_pkg::UntaggedBase;
+  localparam int unsigned MetaTop      = cms_pkg::MetaTop - cms_pkg::MetaBase;
 
   // various knobs to enable certain routines
   bit do_cheriot_mem_sys_init = 1'b1;
@@ -72,6 +73,12 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
     m_cored_h_seq = new_device_seq("m_cored_h_seq", cfg.data_mem);
     m_tbre_h_seq  = new_device_seq("m_tbre_h_seq", cfg.data_mem);
     m_meta_seq    = new_device_seq("m_meta_seq", cfg.meta_mem);
+    // The main crossbar's errors, as the cms testbench's memories: its error range, and writes to
+    // the NVM (read-only on the interconnect; a capability store reaches it as reads).
+    m_cored_h_seq.err_lo = cms_pkg::DataErrBase; m_cored_h_seq.err_hi = cms_pkg::UntaggedTop;
+    m_cored_h_seq.ro_lo  = cms_pkg::NvmBase;     m_cored_h_seq.ro_hi  = cms_pkg::NvmTop;
+    m_tbre_h_seq.err_lo  = cms_pkg::DataErrBase; m_tbre_h_seq.err_hi  = cms_pkg::UntaggedTop;
+    m_tbre_h_seq.ro_lo   = cms_pkg::NvmBase;     m_tbre_h_seq.ro_hi   = cms_pkg::NvmTop;
     fork
       m_cored_h_seq.start(p_sequencer.cored_h_sqr);
       m_tbre_h_seq.start(p_sequencer.tbre_h_sqr);
@@ -97,7 +104,7 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
                            bit [1:0] size, bit [3:0] mask, bit [31:0] data,
                            output tl_seq_item rsp, input bit cored_tag = 1'b0,
                            input bit cored = 1'b0);
-    cip_tl_host_single_seq seq;
+    cheriot_mem_sys_tl_host_seq seq;
     `uvm_create_on(seq, sqr)
     seq.control_addr_alignment = 1'b1;
     seq.control_rand_size = 1'b1;
@@ -136,7 +143,7 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
   // A capability store: W0 then W1, both with tag `tag`. To the NVM it runs alone (A4).
   protected task core_store_cap(bit [31:0] addr, bit [31:0] w0, bit [31:0] w1, bit tag);
     tl_seq_item rsp;
-    bit nvm = addr >= NvmBase && addr < NvmBase + 32'h20_0000;
+    bit nvm = addr >= NvmBase && addr < cms_pkg::NvmTop;
     cored_excl.get(nvm ? 2 : 1);
     tl_access(p_sequencer.cored_sqr, addr, tlul_pkg::PutFullData, 2, 4'hf, w0, rsp, tag, 1'b1);
     tl_access(p_sequencer.cored_sqr, addr + 4, tlul_pkg::PutFullData, 2, 4'hf, w1, rsp, tag, 1'b1);

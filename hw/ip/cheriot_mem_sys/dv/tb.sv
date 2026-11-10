@@ -21,6 +21,8 @@ module tb;
   tl_if tl_if(.clk(clk), .rst_n(rst_n));
   pins_if #(NUM_MAX_INTERRUPTS) intr_if(.pins(interrupts));
 
+  `DV_ALERT_IF_CONNECT()
+
   // The memory side: hosts on the core data port (with its tag sideband), the core's revocation
   // bitmap port and the bitmap window; devices on the host ports towards the main crossbar (core,
   // revocation engine) and the meta SRAM.
@@ -34,10 +36,22 @@ module tb;
   cheriot_mem_sys_side_if side_if(.clk(clk), .rst_n(rst_n), .h2d(cored_tl_if.h2d),
                                   .d2h(cored_tl_if.d2h), .tag_d2h(cored_tag_d2h));
 
-  `DV_ALERT_IF_CONNECT()
 
   // dut
+  // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM; build mode cms_map) for the
+  // tests ported from it, which sweep and fill whole regions; Earl Grey 2's otherwise.
+`ifdef CHERIOT_MEM_SYS_CMS_MAP
+  cheriot_mem_sys #(
+    .MainSramBaseAddr(cms_pkg::MainSramBase),
+    .MainSramTopAddr (cms_pkg::MainSramTop),
+    .NvmBaseAddr     (cms_pkg::NvmBase),
+    .NvmTopAddr      (cms_pkg::NvmTop),
+    .MetaSramBaseAddr(cms_pkg::MetaBase),
+    .MemSizeRevbm    (cms_pkg::RevbmBytes)
+  ) dut (
+`else
   cheriot_mem_sys dut (
+`endif
     .clk_i                (clk      ),
     .rst_ni               (rst_n    ),
 

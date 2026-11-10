@@ -23,6 +23,7 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
   uvm_tlm_analysis_fifo #(tl_seq_item) revbm_fifo;
   uvm_tlm_analysis_fifo #(tl_seq_item) cored_h_fifo;
   uvm_tlm_analysis_fifo #(tl_seq_item) regs_fifo;
+  uvm_tlm_analysis_fifo #(alert_agent_pkg::alert_seq_item) alert_fifo;  // fatal_fault
 
   protected chandle      h;
   protected bit          host_err_q[$];
@@ -31,8 +32,8 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
   protected string       hist[$];  // the last transactions, for a mismatch report
   int unsigned           hist_len = 24;
 
-  // The Earl Grey 2 address map of the model (cms_new(0)), as the DUT's default parameters.
-  localparam bit [31:0] MetaBase = 32'h1100_0000;
+  // The meta SRAM base of the address map in use (cms_pkg: Earl Grey 2, or the small cms_map).
+  localparam bit [31:0] MetaBase = cms_pkg::MetaBase;
 
   function new(string name = "", uvm_component parent = null);
     super.new(name, parent);
@@ -45,7 +46,12 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
     revbm_fifo     = new("revbm_fifo", this);
     cored_h_fifo   = new("cored_h_fifo", this);
     regs_fifo      = new("regs_fifo", this);
-    h = cms_cmodel_pkg::cms_new(0);
+    alert_fifo     = new("alert_fifo", this);
+`ifdef CHERIOT_MEM_SYS_CMS_MAP
+    h = cms_cmodel_pkg::cms_new(1);  // the cms testbench's small map
+`else
+    h = cms_cmodel_pkg::cms_new(0);  // Earl Grey 2
+`endif
     cfg.cmodel_h = h;  // the sequences give the model what they preload (cms_backdoor_data)
   endfunction
 
@@ -101,6 +107,15 @@ class cheriot_mem_sys_cmodel_sb extends uvm_component;
         tl_seq_item it;
         regs_fifo.get(it);
         check_csr(it);
+      end
+      // A real alert, not the answer to the agent's ping (as cip_base_scoreboard counts them).
+      forever begin
+        alert_agent_pkg::alert_seq_item it;
+        alert_fifo.get(it);
+        if (it.m_trans_type == alert_agent_pkg::AlertSigTrans && !it.m_ping_timeout &&
+            it.m_alert_handshake_sta == alert_agent_pkg::AlertReceived) begin
+          cfg.fatal_alert_cnt++;
+        end
       end
     join
   endtask

@@ -62,6 +62,14 @@ class cheriot_mem_sys_env extends cip_base_env #(
       m_cored_h_agent.monitor.d_chan_port.connect(m_cmodel_sb.cored_h_fifo.analysis_export);
       m_tl_agents[cheriot_mem_sys_regs_reg_block::type_name].monitor.d_chan_port.connect(
           m_cmodel_sb.regs_fifo.analysis_export);
+      begin
+        // The CIP environment keeps its alert agents local: found by name.
+        alert_agent_pkg::alert_agent fatal_agent;
+        if (!$cast(fatal_agent, lookup("m_alert_agent_fatal_fault"))) begin
+          `uvm_fatal(`gfn, "no alert agent m_alert_agent_fatal_fault")
+        end
+        fatal_agent.m_alert_port.connect(m_cmodel_sb.alert_fifo.analysis_export);
+      end
     end
   endfunction
 

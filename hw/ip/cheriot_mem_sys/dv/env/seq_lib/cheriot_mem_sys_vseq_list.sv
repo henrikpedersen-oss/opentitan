@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 `include "cheriot_mem_sys_mem_device_seq.sv"
+`include "cheriot_mem_sys_tl_host_seq.sv"
 `include "cheriot_mem_sys_base_vseq.sv"
 `include "cheriot_mem_sys_smoke_vseq.sv"
 `include "cheriot_mem_sys_common_vseq.sv"
 `include "cheriot_mem_sys_cmodel_random_vseq.sv"
+`include "cheriot_mem_sys_cms_vseq.sv"

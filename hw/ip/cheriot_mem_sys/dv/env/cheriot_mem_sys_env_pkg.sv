@@ -15,6 +15,7 @@ package cheriot_mem_sys_env_pkg;
   import csr_utils_pkg::*;
   import cheriot_mem_sys_regs_ral_pkg::*;
   import mem_model_pkg::*;
+  import cms_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"

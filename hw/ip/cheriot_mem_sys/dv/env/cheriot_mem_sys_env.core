@@ -12,6 +12,8 @@ filesets:
       - lowrisc:dv:mem_model
       - lowrisc:dv:cheriot_mem_sys_cmodel
     files:
+      - ../cms/tb/cms_pkg.sv: {is_include_file: true}
+      - cheriot_mem_sys_cms_pkg.sv
       - cheriot_mem_sys_side_if.sv
       - cheriot_mem_sys_env_pkg.sv
       - cheriot_mem_sys_env_cfg.sv: {is_include_file: true}
@@ -22,10 +24,12 @@ filesets:
       - cheriot_mem_sys_env.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_vseq_list.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_mem_device_seq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_tl_host_seq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_base_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_common_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_smoke_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_cmodel_random_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_cms_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 generate:

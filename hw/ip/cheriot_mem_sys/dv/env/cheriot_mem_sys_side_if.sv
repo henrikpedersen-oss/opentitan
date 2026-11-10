@@ -28,6 +28,7 @@ interface cheriot_mem_sys_side_if (
   bit                    req_tag_q[int unsigned][$];
   prim_mubi_pkg::mubi4_t req_ena_q[int unsigned][$];
   bit                    rsp_tag_q[int unsigned][$];
+  bit                    vseq_rsp_tag_q[int unsigned][$];  // the same, for the sequences
 
   assign tag_h2d = (tag_q.size() > 0) ? tag_q[0] : 1'b0;
 
@@ -41,6 +42,11 @@ interface cheriot_mem_sys_side_if (
     ena = req_ena_q[source].pop_front();
   endtask
 
+  task automatic get_vseq_rsp_tag(int unsigned source, output bit tag);
+    wait (vseq_rsp_tag_q.exists(source) && vseq_rsp_tag_q[source].size() > 0);
+    tag = vseq_rsp_tag_q[source].pop_front();
+  endtask
+
   task automatic get_rsp_tag(int unsigned source, output bit tag);
     wait (rsp_tag_q.exists(source) && rsp_tag_q[source].size() > 0);
     tag = rsp_tag_q[source].pop_front();
@@ -52,14 +58,19 @@ interface cheriot_mem_sys_side_if (
       req_tag_q.delete();
       req_ena_q.delete();
       rsp_tag_q.delete();
+      vseq_rsp_tag_q.delete();
     end else begin
+
       if (h2d.a_valid && d2h.a_ready) begin
         req_tag_q[h2d.a_source].push_back(tag_h2d);
         req_ena_q[h2d.a_source].push_back(cheriot_ena);
         if (tag_q.size() > 0) void'(tag_q.pop_front());
         -> a_taken;
       end
-      if (d2h.d_valid && h2d.d_ready) rsp_tag_q[d2h.d_source].push_back(tag_d2h);
+      if (d2h.d_valid && h2d.d_ready) begin
+        rsp_tag_q[d2h.d_source].push_back(tag_d2h);
+        vseq_rsp_tag_q[d2h.d_source].push_back(tag_d2h);
+      end
     end
   end
 endinterface

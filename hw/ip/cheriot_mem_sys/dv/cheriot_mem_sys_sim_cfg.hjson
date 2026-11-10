@@ -46,7 +46,115 @@
   uvm_test_seq: cheriot_mem_sys_base_vseq
 
   // List of test specifications.
+  // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM) for the tests ported from it.
+  build_modes: [
+    {
+      name: cms_map
+      build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP"]
+    }
+  ]
+
   tests: [
+    // The directed tests of the cms testbench (cms/tb/cms_tests.svh), ported (cheriot_mem_sys_cms_vseq):
+    // its small address map (build mode cms_map), the C model as the checker, the cms seed counts.
+    {
+      name: cheriot_mem_sys_cms_smoke
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_smoke"]
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_cms_tag_store_load
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tag_store_load"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_tag_clear_subword
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tag_clear_subword"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_cap_load_hint
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_cap_load_hint"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_access_check
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_access_check"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_mode_gating
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_mode_gating"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_rmw_same_word
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_rmw_same_word"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_rmw_core_tbre_same_word
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_rmw_core_tbre_same_word"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_sweep
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_sweep"]
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_base_decode
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_base_decode"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_csr
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_csr"]
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_concurrent
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_concurrent"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_tbre_snoop_window
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_tbre_snoop_window"]
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_cms_random
+      uvm_test_seq: cheriot_mem_sys_cms_vseq
+      build_mode: cms_map
+      run_opts: ["+en_scb=0", "+cheriot_mem_sys_cmodel=1", "+cms_test=cms_random"]
+      reseed: 20
+    }
     {
       name: cheriot_mem_sys_smoke
       uvm_test_seq: cheriot_mem_sys_smoke_vseq
@@ -74,6 +182,10 @@
     {
       name: smoke
       tests: ["cheriot_mem_sys_smoke"]
+    }
+    {
+      name: cms
+      tests: ["cheriot_mem_sys_cms_smoke", "cheriot_mem_sys_cms_tag_store_load", "cheriot_mem_sys_cms_tag_clear_subword", "cheriot_mem_sys_cms_cap_load_hint", "cheriot_mem_sys_cms_access_check", "cheriot_mem_sys_cms_mode_gating", "cheriot_mem_sys_cms_rmw_same_word", "cheriot_mem_sys_cms_rmw_core_tbre_same_word", "cheriot_mem_sys_cms_tbre_sweep", "cheriot_mem_sys_cms_tbre_base_decode", "cheriot_mem_sys_cms_tbre_csr", "cheriot_mem_sys_cms_tbre_concurrent", "cheriot_mem_sys_cms_tbre_snoop_window", "cheriot_mem_sys_cms_random"]
     }
   ]
 }
