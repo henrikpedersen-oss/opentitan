@@ -161,10 +161,15 @@ module cheriot_wtrc #(
                            tl_d_i.a_mask   == '1                    &&
                            tl_d_i.a_size   == WordSize);
 
+  // A capability store with a broken command integrity is refused like a partial or out-of-sequence
+  // one: d_error, no tag write, and W0 not counted as matched ("Error Handling": "Capability store to
+  // the NVM with a bad command or data integrity: d_error towards the core, tag unchanged, and
+  // fatal_fault alert"). The forwarded read carries a recomputed integrity, so nothing downstream
+  // can see the fault; err_o raises the alert.
   assign exp_req = '{
     cap_store: cap_store_i,
     upper:     tl_d_i.a_address[2],
-    bad:       partial_write || seq_violation,
+    bad:       partial_write || seq_violation || cmd_intg_err,
     data:      tl_d_i.a_data,
     data_intg: tl_d_i.a_user.data_intg
   };
