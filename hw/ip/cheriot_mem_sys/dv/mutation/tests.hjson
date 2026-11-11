@@ -1,0 +1,504 @@
+// Mutation evidence only: expected failures; never merge into coverage.
+{
+  "tests": [
+    {
+      "name": "cheriot_mem_sys_mut_partial_write_keeps_tag_tag_clear_subword",
+      "uvm_test_seq": "cheriot_mem_sys_tag_clear_subword_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=partial_write_keeps_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_partial_write_keeps_tag_rmw_same_word",
+      "uvm_test_seq": "cheriot_mem_sys_rmw_same_word_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=partial_write_keeps_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_partial_write_keeps_tag_mixed_random",
+      "uvm_test_seq": "cheriot_mem_sys_mixed_random_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=partial_write_keeps_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_datastore_sets_tag_tag_smoke",
+      "uvm_test_seq": "cheriot_mem_sys_tag_smoke_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=datastore_sets_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_datastore_sets_tag_tag_clear_subword",
+      "uvm_test_seq": "cheriot_mem_sys_tag_clear_subword_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=datastore_sets_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_datastore_sets_tag_tag_store_load",
+      "uvm_test_seq": "cheriot_mem_sys_tag_store_load_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=datastore_sets_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_datastore_sets_tag_mixed_random",
+      "uvm_test_seq": "cheriot_mem_sys_mixed_random_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=datastore_sets_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_capstore_drops_tag_tag_smoke",
+      "uvm_test_seq": "cheriot_mem_sys_tag_smoke_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=capstore_drops_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_capstore_drops_tag_tag_store_load",
+      "uvm_test_seq": "cheriot_mem_sys_tag_store_load_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=capstore_drops_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_capstore_drops_tag_cap_load_hint",
+      "uvm_test_seq": "cheriot_mem_sys_cap_load_hint_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=capstore_drops_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_capstore_drops_tag_tbre_sweep",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_sweep_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=capstore_drops_tag",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_base_decode",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_base_decode_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=trvk_wrong_bit",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_sweep",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_sweep_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=trvk_wrong_bit",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_skip_last_tbre_sweep",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_sweep_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_skip_last",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_skip_last_tbre_base_decode",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_base_decode_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_skip_last",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_skip_last_tbre_epoch",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_epoch_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_skip_last",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_no_inval_tbre_sweep",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_sweep_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_no_inval",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_no_inval_tbre_base_decode",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_base_decode_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_no_inval",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_no_inval_rmw_core_tbre_same_word",
+      "uvm_test_seq": "cheriot_mem_sys_rmw_core_tbre_same_word_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_no_inval",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_no_inval_tbre_snoop_window",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_snoop_window_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_no_inval",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_epoch",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_epoch_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_epoch_stuck",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_csr",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_csr_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_epoch_stuck",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_epoch_stuck_mixed_random",
+      "uvm_test_seq": "cheriot_mem_sys_mixed_random_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_epoch_stuck",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_done_early_tbre_sweep",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_sweep_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_done_early",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_done_early_tbre_intr",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_intr_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_done_early",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_snoop_off_tbre_store_race",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_store_race_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=snoop_off",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_snoop_off_tbre_snoop_window",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_snoop_window_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=snoop_off",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_meta_intg_unreported_err_meta_intg",
+      "uvm_test_seq": "cheriot_mem_sys_err_meta_intg_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=meta_intg_unreported",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_data_err_dropped_err_data_path",
+      "uvm_test_seq": "cheriot_mem_sys_err_data_path_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=data_err_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_data_err_dropped_nvm_cap_store",
+      "uvm_test_seq": "cheriot_mem_sys_nvm_cap_store_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=data_err_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_data_err_dropped_tag_store_load",
+      "uvm_test_seq": "cheriot_mem_sys_tag_store_load_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=data_err_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_alert_dropped_err_tag_path",
+      "uvm_test_seq": "cheriot_mem_sys_err_tag_path_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=alert_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_alert_dropped_err_csr_intg",
+      "uvm_test_seq": "cheriot_mem_sys_err_csr_intg_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=alert_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_alert_dropped_err_tbre_read",
+      "uvm_test_seq": "cheriot_mem_sys_err_tbre_read_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=alert_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_alert_dropped_nvm_cap_store",
+      "uvm_test_seq": "cheriot_mem_sys_nvm_cap_store_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=alert_dropped",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_read_err_fatal_err_tbre_read",
+      "uvm_test_seq": "cheriot_mem_sys_err_tbre_read_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_read_err_fatal",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_epoch",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_epoch_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_read_err_fatal",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_intr",
+      "uvm_test_seq": "cheriot_mem_sys_tbre_intr_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=tbre_read_err_fatal",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_wtrc_presented_unflagged_nvm_cap_store",
+      "uvm_test_seq": "cheriot_mem_sys_nvm_cap_store_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=wtrc_presented_unflagged",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_alert_test_unlocked_alert_test_reg",
+      "uvm_test_seq": "cheriot_mem_sys_alert_test_reg_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=alert_test_unlocked",
+        "+max_quit_count=100"
+      ]
+    },
+    {
+      "name": "cheriot_mem_sys_mut_mode_loose_mubi_mode_gating",
+      "uvm_test_seq": "cheriot_mem_sys_mode_gating_vseq",
+      "build_mode": "cms_mutation",
+      "reseed": 1,
+      "run_opts": [
+        "+cheriot_mem_sys_cmodel=1",
+        "+cms_mutate=mode_loose_mubi",
+        "+max_quit_count=100"
+      ]
+    }
+  ],
+  "regressions": [
+    {
+      "name": "rtl_mutations",
+      "tests": [
+        "cheriot_mem_sys_mut_partial_write_keeps_tag_tag_clear_subword",
+        "cheriot_mem_sys_mut_partial_write_keeps_tag_rmw_same_word",
+        "cheriot_mem_sys_mut_partial_write_keeps_tag_mixed_random",
+        "cheriot_mem_sys_mut_datastore_sets_tag_tag_smoke",
+        "cheriot_mem_sys_mut_datastore_sets_tag_tag_clear_subword",
+        "cheriot_mem_sys_mut_datastore_sets_tag_tag_store_load",
+        "cheriot_mem_sys_mut_datastore_sets_tag_mixed_random",
+        "cheriot_mem_sys_mut_capstore_drops_tag_tag_smoke",
+        "cheriot_mem_sys_mut_capstore_drops_tag_tag_store_load",
+        "cheriot_mem_sys_mut_capstore_drops_tag_cap_load_hint",
+        "cheriot_mem_sys_mut_capstore_drops_tag_tbre_sweep",
+        "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_base_decode",
+        "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_sweep",
+        "cheriot_mem_sys_mut_tbre_skip_last_tbre_sweep",
+        "cheriot_mem_sys_mut_tbre_skip_last_tbre_base_decode",
+        "cheriot_mem_sys_mut_tbre_skip_last_tbre_epoch",
+        "cheriot_mem_sys_mut_tbre_no_inval_tbre_sweep",
+        "cheriot_mem_sys_mut_tbre_no_inval_tbre_base_decode",
+        "cheriot_mem_sys_mut_tbre_no_inval_rmw_core_tbre_same_word",
+        "cheriot_mem_sys_mut_tbre_no_inval_tbre_snoop_window",
+        "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_epoch",
+        "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_csr",
+        "cheriot_mem_sys_mut_tbre_epoch_stuck_mixed_random",
+        "cheriot_mem_sys_mut_tbre_done_early_tbre_sweep",
+        "cheriot_mem_sys_mut_tbre_done_early_tbre_intr",
+        "cheriot_mem_sys_mut_snoop_off_tbre_store_race",
+        "cheriot_mem_sys_mut_snoop_off_tbre_snoop_window",
+        "cheriot_mem_sys_mut_meta_intg_unreported_err_meta_intg",
+        "cheriot_mem_sys_mut_data_err_dropped_err_data_path",
+        "cheriot_mem_sys_mut_data_err_dropped_nvm_cap_store",
+        "cheriot_mem_sys_mut_data_err_dropped_tag_store_load",
+        "cheriot_mem_sys_mut_alert_dropped_err_tag_path",
+        "cheriot_mem_sys_mut_alert_dropped_err_csr_intg",
+        "cheriot_mem_sys_mut_alert_dropped_err_tbre_read",
+        "cheriot_mem_sys_mut_alert_dropped_nvm_cap_store",
+        "cheriot_mem_sys_mut_tbre_read_err_fatal_err_tbre_read",
+        "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_epoch",
+        "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_intr",
+        "cheriot_mem_sys_mut_wtrc_presented_unflagged_nvm_cap_store",
+        "cheriot_mem_sys_mut_alert_test_unlocked_alert_test_reg",
+        "cheriot_mem_sys_mut_mode_loose_mubi_mode_gating"
+      ]
+    }
+  ]
+}

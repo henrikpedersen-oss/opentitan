@@ -27,6 +27,9 @@ class cheriot_mem_sys_env extends cip_base_env #(
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+`ifdef CHERIOT_MEM_SYS_MUTATION
+    if (cfg.en_cov) `uvm_fatal(`gfn, "RTL mutation runs must not contribute coverage")
+`endif
     m_core_agent = cheriot_mem_sys_core_agent::type_id::create("m_core_agent", this);
     uvm_config_db#(cheriot_mem_sys_core_agent_cfg)::set(this, "m_core_agent*", "cfg",
                                                         cfg.m_core_agent_cfg);

@@ -57,10 +57,21 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
 
   virtual protected task collect_trans();
     forever begin
+      bit response_published;
       @(cfg.vif.mon_cb);
       if (cfg.in_reset) begin
         presented = 1'b0;
         continue;
+      end
+      // Retire an older request before publishing this edge's next request.
+      // WTRC permits the next W0 on W1's response handshake; publishing A first
+      // would make a legal external handoff look like a premature presentation.
+      response_published = 0;
+      if (cfg.vif.mon_cb.d2h.d_valid && cfg.vif.mon_cb.h2d.d_ready &&
+          in_flight.exists(cfg.vif.mon_cb.d2h.d_source) &&
+          in_flight[cfg.vif.mon_cb.d2h.d_source].size() != 0) begin
+        collect_response();
+        response_published = 1;
       end
       if (cfg.vif.mon_cb.h2d.a_valid && !presented) begin
         present_port.write(request_item());
@@ -70,7 +81,9 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
         collect_request();
         presented = 1'b0;
       end
-      if (cfg.vif.mon_cb.d2h.d_valid && cfg.vif.mon_cb.h2d.d_ready) collect_response();
+      // Also support a zero-latency response to the request just accepted.
+      if (!response_published && cfg.vif.mon_cb.d2h.d_valid && cfg.vif.mon_cb.h2d.d_ready)
+        collect_response();
     end
   endtask
 

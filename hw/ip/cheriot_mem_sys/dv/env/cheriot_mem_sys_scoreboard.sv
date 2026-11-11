@@ -339,6 +339,14 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     forever begin
       @(cfg.clk_rst_vif.cbn);
       cycle++;
+      // CIP interrupt coverage uses the RAL's expected state and the external pin.
+      // Run for common CIP tests too, where there is no C reference model.
+      if (cfg.en_cov && !cfg.under_reset) begin
+        bit [31:0] intr_en = cfg.ral.intr_enable.get_mirrored_value();
+        bit [31:0] intr_state = cfg.ral.intr_state.get_mirrored_value();
+        cov.intr_cg.sample(0, intr_en[0], intr_state[0]);
+        cov.intr_pins_cg.sample(0, cfg.intr_vif.pins[0]);
+      end
       if (ref_model == null || cfg.under_reset) continue;
       if (alert_tests_q.size() > 0 && cycle - alert_tests_q[0] > AlertWindow) begin
         void'(alert_tests_q.pop_front());
@@ -497,6 +505,16 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     if (csr == null) return;
     if (channel == AddrChannel && item.is_write()) begin
       void'(csr.predict(.value(item.a_data), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      // INTR_TEST is write-only: predict its effect on the sticky state, rather
+      // than deriving expected state from the observed interrupt pin.
+      if (csr == cfg.ral.intr_test && item.a_mask[0]) begin
+        bit [31:0] intr_en = cfg.ral.intr_enable.get_mirrored_value();
+        bit [31:0] intr_state = cfg.ral.intr_state.get_mirrored_value();
+        intr_state[0] |= item.a_data[0];
+        void'(cfg.ral.intr_state.predict(.value(intr_state), .kind(UVM_PREDICT_DIRECT)));
+        if (cfg.en_cov)
+          cov.intr_test_cg.sample(0, item.a_data[0], intr_en[0], intr_state[0]);
+      end
     end
     if (channel == DataChannel && !item.is_write()) begin
       void'(csr.predict(.value(item.d_data), .kind(UVM_PREDICT_READ)));

@@ -19,6 +19,24 @@
   // (dv/env/seq_lib/cheriot_mem_sys_<name>_vseq.sv) describes the stimulus in full.
   testpoints: [
     {
+      name: directed_closure
+      desc: '''
+        Pipelined WTRC handoffs and malformed NVM corners; the mode/region/core
+        access matrix; combined bitmap/error/integrity causes; the non-power-of-two
+        bitmap boundaries; ambiguous external overlaps; invalidation-write errors;
+        INTR_TEST byte-enable refusal; legal address, data and source-ID sweeps.
+        Every expected response and tag comes from external monitor history and the
+        independent model. Internal coverage observes only. See each sequence header
+        for its requirements; passing a sequence does not waive unhit bins.
+      '''
+      stage: V2
+      tests: ["cheriot_mem_sys_wtrc_handoffs", "cheriot_mem_sys_nvm_corners",
+              "cheriot_mem_sys_core_matrix", "cheriot_mem_sys_revocation_causes",
+              "cheriot_mem_sys_bitmap_boundaries", "cheriot_mem_sys_ambiguous_overlaps",
+              "cheriot_mem_sys_invalidation_error", "cheriot_mem_sys_csr_byte_enable",
+              "cheriot_mem_sys_toggle_sweeps"]
+    }
+    {
       name: smoke
       desc: '''
             The registers' reset values; ePMP mode out of reset with no meta SRAM access and no

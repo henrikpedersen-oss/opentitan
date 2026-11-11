@@ -31,7 +31,8 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
   int unsigned n_reads, n_writes, n_inj_applied;
 
   typedef struct {
-    inj_kind_e   kind;
+    bit [2:0] faults; // {data integrity, response integrity, d_error}
+    bit keep_error_data;
     bit [31:0]   lo, hi;
     inj_dir_e    dir;
     int unsigned count;
@@ -40,8 +41,18 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
 
   function void inject(inj_kind_e kind, bit [31:0] lo, bit [31:0] hi, inj_dir_e dir,
                        int unsigned count = 1);
+    inject_combined(3'b001 << int'(kind), lo, hi, dir, count);
+  endfunction
+
+  // One descriptor applies all requested faults to the same external response.
+  // An error response may retain its memory data to exercise combined revocation
+  // causes; that payload is never treated as successful data by the checker.
+  function void inject_combined(bit [2:0] faults, bit [31:0] lo, bit [31:0] hi,
+                                inj_dir_e dir, int unsigned count = 1,
+                                bit keep_error_data = 0);
     inj_t i;
-    i.kind  = kind;
+    i.faults = faults;
+    i.keep_error_data = keep_error_data;
     i.lo    = lo;
     i.hi    = hi;
     i.dir   = dir;
@@ -60,12 +71,12 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
            (inj_q[i].dir == InjWrites && write))) begin
         inj_q[i].count--;
         n_inj_applied++;
-        `uvm_info(`gfn, $sformatf("injected %s on the %s of 0x%08x", inj_q[i].kind.name(),
+        `uvm_info(`gfn, $sformatf("injected faults %03b on the %s of 0x%08x", inj_q[i].faults,
                                   write ? "write" : "read", addr), UVM_LOW)
-        return int'(inj_q[i].kind);
+        return int'({inj_q[i].keep_error_data, inj_q[i].faults});
       end
     end
-    return -1;
+    return 0;
   endfunction
 
   // The response is a clone of the request, randomised with its A-channel fields fixed: a request
@@ -85,7 +96,7 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
     if (write) n_writes++;
     else n_reads++;
     rsp.d_error = (rsp.a_addr >= err_lo && rsp.a_addr < err_hi) ||
-                  (write && rsp.a_addr >= ro_lo && rsp.a_addr < ro_hi) || inj == int'(InjErr);
+                  (write && rsp.a_addr >= ro_lo && rsp.a_addr < ro_hi) || inj[0];
     if (write) begin
       if (!rsp.d_error) begin
         for (int i = 0; i < 4; i++) begin
@@ -93,7 +104,7 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
         end
       end
       rsp.d_data = '0;
-    end else if (rsp.d_error) begin
+    end else if (rsp.d_error && !inj[3]) begin
       rsp.d_data = '0;
     end else begin
       for (int i = 0; i < 4; i++) rsp.d_data[8*i +: 8] = mem.read_byte(word_addr + i);
@@ -101,10 +112,10 @@ class cheriot_mem_sys_mem_device_seq extends cip_tl_device_seq;
     // Every response, write acknowledgements included: the subsystem's RMW filter checks the data
     // integrity of each response from the meta SRAM.
     rsp.d_user = rsp.compute_d_user();
-    if (inj inside {int'(InjRspIntg), int'(InjDataIntg)}) begin
+    if (inj[1] || inj[2]) begin
       tlul_pkg::tl_d_user_t u = tlul_pkg::tl_d_user_t'(rsp.d_user);
-      if (inj == int'(InjRspIntg)) u.rsp_intg[0] = !u.rsp_intg[0];
-      else                         u.data_intg[0] = !u.data_intg[0];
+      if (inj[1]) u.rsp_intg[0] = !u.rsp_intg[0];
+      if (inj[2]) u.data_intg[0] = !u.data_intg[0];
       rsp.d_user = u;
     end
   endfunction

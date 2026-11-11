@@ -18,6 +18,13 @@ class cheriot_mem_sys_core_item extends uvm_sequence_item;
   // Driven fault stimulus, reconstructed from A-channel integrity by the monitor.
   bit bad_cmd_intg, bad_data_intg;
 
+  // Driver controls only, never inputs to reference-model predictions. Permit a
+  // request to be presented while all acceptance slots are occupied; a_ready must
+  // still prevent an extra acceptance. Handoffs release D backpressure with A.
+  bit present_when_full, release_d_ready;
+  bit presented, accepted;
+  bit use_fixed_source;
+
   // Response
   bit [31:0]               rdata;
   bit                      rtag;

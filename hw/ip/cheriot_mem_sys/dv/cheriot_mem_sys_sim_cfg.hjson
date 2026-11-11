@@ -33,10 +33,13 @@
                 "{proj_root}/hw/dv/tools/dvsim/tests/csr_tests.hjson",
                 "{proj_root}/hw/dv/tools/dvsim/tests/alert_test.hjson",
                 "{proj_root}/hw/dv/tools/dvsim/tests/intr_test.hjson",
+                "{proj_root}/hw/dv/tools/dvsim/tests/sec_cm_tests.hjson",
+                "{proj_root}/hw/ip/cheriot_mem_sys/dv/mutation/tests.hjson",
+                // This fork defines tl_intg_err here (no tl_intg_err_tests.hjson).
                 "{proj_root}/hw/dv/tools/dvsim/tests/tl_access_tests.hjson"]
 
   // Add additional tops for simulation.
-  sim_tops: ["cheriot_mem_sys_bind"]
+  sim_tops: ["cheriot_mem_sys_bind", "sec_cm_prim_onehot_check_bind"]
 
   // Default iterations for all tests - each test entry can override this.
   reseed: 1
@@ -59,6 +62,10 @@
   // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM) for the tests ported from it.
   build_modes: [
     {
+      name: cms_mutation
+      build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP", "+define+CHERIOT_MEM_SYS_MUTATION"]
+    }
+    {
       name: cms_map
       build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP"]
     }
@@ -68,6 +75,57 @@
   cms_map_xcelium_cov_cfg_file: "{default_xcelium_cov_cfg_file}"
 
   tests: [
+    {
+      name: cheriot_mem_sys_csr_byte_enable
+      uvm_test_seq: cheriot_mem_sys_csr_byte_enable_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_toggle_sweeps
+      uvm_test_seq: cheriot_mem_sys_toggle_sweeps_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_core_matrix
+      uvm_test_seq: cheriot_mem_sys_core_matrix_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_revocation_causes
+      uvm_test_seq: cheriot_mem_sys_revocation_causes_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_bitmap_boundaries
+      uvm_test_seq: cheriot_mem_sys_bitmap_boundaries_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_ambiguous_overlaps
+      uvm_test_seq: cheriot_mem_sys_ambiguous_overlaps_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_invalidation_error
+      uvm_test_seq: cheriot_mem_sys_invalidation_error_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_nvm_corners
+      uvm_test_seq: cheriot_mem_sys_nvm_corners_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_wtrc_handoffs
+      uvm_test_seq: cheriot_mem_sys_wtrc_handoffs_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
     // Each feature is its virtual sequence and this entry; the base test is shared.
     // checked by the C reference model. All but cmodel_random use the small address map (build
     // mode cms_map).
@@ -429,12 +487,16 @@
   // List of regressions.
   regressions: [
     {
+      name: closure
+      tests: ["cheriot_mem_sys_wtrc_handoffs", "cheriot_mem_sys_nvm_corners", "cheriot_mem_sys_core_matrix", "cheriot_mem_sys_revocation_causes", "cheriot_mem_sys_bitmap_boundaries", "cheriot_mem_sys_ambiguous_overlaps", "cheriot_mem_sys_invalidation_error"]
+    }
+    {
       name: smoke
       tests: ["cheriot_mem_sys_tag_smoke"]
     }
     {
       name: feature
-      tests: ["cheriot_mem_sys_tag_smoke", "cheriot_mem_sys_tag_store_load", "cheriot_mem_sys_tag_clear_subword", "cheriot_mem_sys_cap_load_hint", "cheriot_mem_sys_access_check", "cheriot_mem_sys_mode_gating", "cheriot_mem_sys_rmw_same_word", "cheriot_mem_sys_rmw_core_tbre_same_word", "cheriot_mem_sys_tbre_sweep", "cheriot_mem_sys_tbre_base_decode", "cheriot_mem_sys_tbre_csr", "cheriot_mem_sys_tbre_concurrent", "cheriot_mem_sys_tbre_snoop_window", "cheriot_mem_sys_mixed_random", "cheriot_mem_sys_alert_test_reg", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_data_path", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tag_path", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_nvm_cap_store", "cheriot_mem_sys_tbre_epoch", "cheriot_mem_sys_tbre_intr", "cheriot_mem_sys_cmodel_random", "cheriot_mem_sys_cmodel_random_inject_fail", "cheriot_mem_sys_reset", "cheriot_mem_sys_tbre_store_race", "cheriot_mem_sys_random_long", "cheriot_mem_sys_err_cmd_intg"]
+      tests: ["cheriot_mem_sys_wtrc_handoffs", "cheriot_mem_sys_nvm_corners", "cheriot_mem_sys_core_matrix", "cheriot_mem_sys_revocation_causes", "cheriot_mem_sys_bitmap_boundaries", "cheriot_mem_sys_ambiguous_overlaps", "cheriot_mem_sys_invalidation_error", "cheriot_mem_sys_csr_byte_enable", "cheriot_mem_sys_toggle_sweeps", "cheriot_mem_sys_tag_smoke", "cheriot_mem_sys_tag_store_load", "cheriot_mem_sys_tag_clear_subword", "cheriot_mem_sys_cap_load_hint", "cheriot_mem_sys_access_check", "cheriot_mem_sys_mode_gating", "cheriot_mem_sys_rmw_same_word", "cheriot_mem_sys_rmw_core_tbre_same_word", "cheriot_mem_sys_tbre_sweep", "cheriot_mem_sys_tbre_base_decode", "cheriot_mem_sys_tbre_csr", "cheriot_mem_sys_tbre_concurrent", "cheriot_mem_sys_tbre_snoop_window", "cheriot_mem_sys_mixed_random", "cheriot_mem_sys_alert_test_reg", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_data_path", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tag_path", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_nvm_cap_store", "cheriot_mem_sys_tbre_epoch", "cheriot_mem_sys_tbre_intr", "cheriot_mem_sys_cmodel_random", "cheriot_mem_sys_cmodel_random_inject_fail", "cheriot_mem_sys_reset", "cheriot_mem_sys_tbre_store_race", "cheriot_mem_sys_random_long", "cheriot_mem_sys_err_cmd_intg"]
     }
     {
       name: known_gaps

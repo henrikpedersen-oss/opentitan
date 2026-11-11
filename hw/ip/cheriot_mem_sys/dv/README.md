@@ -90,6 +90,19 @@ They extend `cheriot_mem_sys_base_vseq`, which brings the environment up (reset,
 * sweeps (`tbre_sweep`, `tbre_wait_idle`, `tbre_wait_intr`), resets and fault injection
 
 `cheriot_mem_sys_common_vseq` runs the common CSR, alert, interrupt and TL-UL tests.
+The standard `sec_cm` entry injects the register write-enable checker through
+`sec_cm_prim_onehot_check_bind` and checks the external TL error and fatal alert.
+Its hook requires the register-checker proxy to exist. In this fork the standard
+`tl_intg_err` entry comes from `tl_access_tests.hjson`.
+
+The `closure` regression contains the seven directed families in order: WTRC
+handoffs, NVM corners, core matrix, combined revocation causes, bitmap boundaries,
+ambiguous overlaps, invalidation-write error. The feature regression also includes
+these and the CSR byte-enable and legal toggle-sweep sequences. Bitmap boundaries
+and toggle sweeps use the full EG2 map. Presentation-only driver controls allow a
+third stalled request without increasing accepted depth; the monitor retires an
+older response before publishing the same edge's next request. Combined faults
+are applied by one descriptor to one external memory response.
 
 #### Functional coverage
 `cheriot_mem_sys_env_cov` samples, from the scoreboard:
@@ -218,7 +231,7 @@ The declared injected granule alone may retain either tag; other comparisons rem
 | REQ_CMS_02 / LOGIC.SHADOW | Known gap: no lockstep copy (TODO #30572); `tests: []`; TRVK fault probes are separate evidence |
 | REQ_CMS_07 | Existing extra-cycle latency gap; measured at external core/crossbar ports, never counted as a pass |
 | Internal TRVK verdict latency / per-owner bitmap outstanding count | Unobservable from this IP's external ports under overlap; not checked using internal taps |
-| NVM capability-store command integrity | New failure CMS-NVM-CMD-INTG: bad command integrity returns success and can set a previously clear tag; prediction remains the documented error/no-change/alert contract |
+| NVM capability-store command integrity | CMS-NVM-CMD-INTG fixed by `269afde566`: `err_cmd_intg` passes with the documented error/no-change/alert contract; retained as a regression test |
 | Ordinary core and bitmap command integrity | CMS-CMD-INTG question: no documented response/alert contract; no invented check |
 
 `sec_cm_intersig_mubi`, `sec_cm_mem_sw_noaccess` and `sec_cm_bus_integrity` map to their actual
@@ -269,11 +282,38 @@ Of 88 original RTL assertion macro names, 87 are present and 86 record finishes,
 failures. `UnknownArbImpl_A` is unelaborated; the register write-enable fault property lacks a
 fault campaign. All four interface assertions and three witnesses record finishes.
 
-This is not sign-off. The shared CIP interrupt groups lack sampling hooks despite passing
-interrupt tests; their 31 unhit bins are reported separately. Shared outstanding-depth bins,
-fixed/bounded toggles and event expressions need reachability review. The seven proposed test
-families target the 47 CMS functional holes and have not been started. REQ_CMS_01 and
-REQ_CMS_02 remain known RTL gaps, not passes.
+Those figures describe the measurement baseline. The closure checkpoint on
+`c857e6c834` plus the uncommitted bench passes all 38 positive feature tests at
+each seed 1110/1111 and all 11 common tests, including `sec_cm`; both intentional
+checker-negative twins are detected. Targeted NVM and CSR byte-enable reruns at
+both seeds add the held-W1 and zero-INTR_TEST controls and narrow assertion disabling.
+The 87 passing databases merge without conflicts or omissions: CMS 532/532 bins,
+interrupts 31/31, all 87 elaborated RTL assertion names with finishes and no failures.
+The register write-enable property has 20 finishes; a separate custom fault campaign
+is unnecessary. All 16 RTL mutations and 41 original pairs are caught in a complete
+repeat, with passing unmutated controls. Initial misses and their fixes remain in
+the evidence, separate from checker-corruption tests.
+
+Seven-module block/branch/statement/expression/toggle/FSM coverage is
+99.14/98.24/98.67/96.69/77.10/100.00%. No new exclusion is applied. Results and all
+remaining hole dispositions live in the harness's `evidence/cms-closure-1111` and
+`test-reports/cheriot_mem_sys_verification_report.md`. Shared outstanding-depth bins,
+fixed/bounded toggles and event expressions still need Claude's UNR and review.
+REQ_CMS_01 and REQ_CMS_02 remain known RTL gaps, not passes. Final sign-off also
+requires the reviewed flows, designer decisions and a frozen-revision rerun.
+
+### RTL mutation evidence
+
+`mutation/manifest.json` preserves the retired bench's 16 mutations and 41
+test/mutation pairs from `cde6b0a7e0`. Run `-i rtl_mutations --fixed-seed 1110
+--reseed 1` without coverage, then run `python3 mutation/check.py <scratch-path>
+--out <evidence-directory>`. This uses a separate `cms_mutation` build. Nonzero
+DVSim exits are expected; the grader distinguishes an independent checker failure
+from a bare RTL assertion, timeout, inactive force or missing log. Internal forces
+plant faults and their activity diagnostics qualify the experiment; neither feeds
+the functional model or checker. The build refuses enabled coverage. Normal
+unmutated feature tests provide the positive controls, and checker-corruption
+twins remain separate evidence.
 
 For the gap and negative campaigns (their nonzero exits require classification, not a green pass):
 

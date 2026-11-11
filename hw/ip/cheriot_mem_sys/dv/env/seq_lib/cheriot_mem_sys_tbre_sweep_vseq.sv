@@ -6,7 +6,8 @@
 // the tag of exactly the tagged, non-sealing capabilities whose base has its revocation bit set,
 // and nothing else; it never writes memory (theory_of_operation.md, "Revocation Engine";
 // programmers_guide.md, "Revoking Capabilities"). Whole regions, random sub-ranges and single
-// capabilities at both ends.
+// capabilities at both ends. An isolated sweep checks that completion waits for
+// external read/write responses, rather than merely checking memory after quiet.
 // Requirements: REQ_TBRE_13–21, REQ_TBRE_37–38.
 class cheriot_mem_sys_tbre_sweep_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_sweep_vseq)
@@ -16,6 +17,7 @@ class cheriot_mem_sys_tbre_sweep_vseq extends cheriot_mem_sys_base_vseq;
     bit [31:0]   b;
     int unsigned n;
     cheriot_on();
+    isolated_sweep_completion(0);
     randomize_timing(0);
 
     // The main SRAM

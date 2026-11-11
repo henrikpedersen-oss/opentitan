@@ -5,6 +5,7 @@
 // The tbre_done interrupt is raised when the engine stops being active, also after a sweep with
 // an error; INTR_STATE is a level until written 1; INTR_ENABLE masks intr_tbre_done_o; INTR_TEST
 // sets INTR_STATE; an ignored start raises none (theory_of_operation.md, "Revocation Engine";
+// an isolated sweep also checks that completion waits for external read/write responses.
 // registers.md, INTR_STATE, INTR_ENABLE and INTR_TEST; interfaces.md, "Interrupts";
 // programmers_guide.md, "Revoking Capabilities" and "Tracking Completed Sweeps").
 // Requirements: REQ_TBRE_28–31; REQ_CMS_12 (block part).
@@ -16,6 +17,7 @@ class cheriot_mem_sys_tbre_intr_vseq extends cheriot_mem_sys_base_vseq;
     bit [31:0]   d, a, b, cb, w0, w1;
     int unsigned n;
     cheriot_on();
+    isolated_sweep_completion(1);
     // The meta SRAM slowed down, so that the interrupt can come before the last tag is written
     cfg.m_meta_agent_cfg.a_ready_delay_max = 2;
     m_meta_seq.min_rsp_delay = 4;

@@ -446,6 +446,42 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
 
   // ---- the revocation engine, as software drives it ----
 
+  // An isolated revoked capability: completion must wait for the externally
+  // visible read responses. Waiting also for the meta invalidation-write
+  // acknowledgement is DV's reading of Q16 / REQ_TBRE_07: ToO, "Revocation
+  // Engine", says completion waits until every swept capability is resolved.
+  // This write-acknowledgement check depends on the designers' answer to Q16;
+  // change it if they define "resolved" differently (spec assumption DV-Q16).
+  // Device queues contain only requests accepted at external A handshakes and
+  // remove them after external D handshakes; no internal mover state is used.
+  protected task isolated_sweep_completion(bit use_interrupt);
+    bit [31:0] g = MainSramBase + 32'h700;
+    bit [31:0] w0, w1;
+    revbm_set_base(MainSramBase, 1);
+    make_kind_cap(MainSramBase, CapMemRw, 0, w0, w1);
+    core_store_cap(g, w0, w1, 1);
+    wait_quiet();
+    csr_wr(.ptr(ral.intr_state), .value(1));
+    csr_wr(.ptr(ral.intr_enable), .value(use_interrupt));
+    m_tbre_h_seq.min_rsp_delay = 50;
+    m_tbre_h_seq.max_rsp_delay = 50;
+    m_meta_seq.min_rsp_delay = 50;
+    m_meta_seq.max_rsp_delay = 50;
+    tbre_sweep(g, 1, 0);
+    if (use_interrupt) wait_intr_pin(1);
+    else tbre_wait_idle();
+    `DV_CHECK_EQ(m_tbre_h_seq.req_q.size(), 0, "sweep completed before external read responses")
+    `DV_CHECK_EQ(m_meta_seq.req_q.size(), 0, "sweep completed before external meta responses")
+    wait_quiet();
+    tbre_wait_idle();
+    csr_wr(.ptr(ral.intr_state), .value(1));
+    csr_wr(.ptr(ral.intr_enable), .value(0));
+    m_tbre_h_seq.min_rsp_delay = 0;
+    m_tbre_h_seq.max_rsp_delay = 10;
+    m_meta_seq.min_rsp_delay = 0;
+    m_meta_seq.max_rsp_delay = 10;
+  endtask
+
   // Polls TBRE_STATUS.busy until the sweep is over (programmers_guide.md, "Revoking
   // Capabilities").
   protected task tbre_wait_idle(int unsigned max_polls = 100000);

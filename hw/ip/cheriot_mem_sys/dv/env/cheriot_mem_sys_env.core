@@ -62,6 +62,15 @@ filesets:
       - seq_lib/cheriot_mem_sys_trvk_backpressure_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_trvk_fault_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_err_cmd_intg_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_wtrc_handoffs_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_nvm_corners_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_core_matrix_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_revocation_causes_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_bitmap_boundaries_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_ambiguous_overlaps_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_invalidation_error_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_csr_byte_enable_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_toggle_sweeps_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 generate:

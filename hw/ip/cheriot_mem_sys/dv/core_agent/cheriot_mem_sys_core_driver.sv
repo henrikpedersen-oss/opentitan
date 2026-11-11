@@ -59,7 +59,8 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
   // Present one request and hold it until it is taken (or a reset drops it).
   protected task drive_request(cheriot_mem_sys_core_item it);
     tlul_pkg::tl_h2d_t h2d;
-    while (cfg.in_reset || pending.size() >= cfg.max_outstanding || !free_source(it.source)) begin
+    while (cfg.in_reset || (!it.present_when_full && pending.size() >= cfg.max_outstanding) ||
+           (it.use_fixed_source ? !source_available(it.source) : !free_source(it.source))) begin
       @(cfg.vif.host_cb);
     end
     repeat ($urandom_range(cfg.a_valid_delay_max)) @(cfg.vif.host_cb);
@@ -87,6 +88,8 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
     cfg.vif.host_cb.h2d.a_user    <= h2d.a_user;
     cfg.vif.host_cb.h2d.a_valid   <= 1'b1;
     cfg.vif.host_cb.tag_h2d       <= it.tag;
+    it.presented = 1'b1;
+    if (it.release_d_ready) cfg.hold_d_ready = 0;
 
     do begin
       @(cfg.vif.host_cb);
@@ -95,13 +98,23 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
     if (cfg.in_reset) begin
       it.aborted = 1'b1;
     end else begin
+      // A simultaneous response frees a slot, regardless of thread scheduling.
+      if (pending.size() >= cfg.max_outstanding &&
+          !(cfg.vif.mon_cb.h2d.d_ready && cfg.vif.host_cb.d2h.d_valid))
+        `uvm_error(`gfn, "presentation-only request accepted beyond the configured depth")
       pending.push_back(it);
+      it.accepted = 1'b1;
     end
     cfg.vif.host_cb.h2d.a_valid <= 1'b0;
     cfg.vif.host_cb.tag_h2d     <= 1'b0;
   endtask
 
   // A source ID no request in flight uses.
+  protected function bit source_available(bit [top_pkg::TL_AIW-1:0] source);
+    foreach (pending[i]) if (pending[i].source == source) return 0;
+    return 1;
+  endfunction
+
   protected function bit free_source(output bit [top_pkg::TL_AIW-1:0] source);
     for (int unsigned s = 0; s < cfg.num_sources; s++) begin
       bit used = 1'b0;
@@ -121,8 +134,11 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
     int unsigned stall = $urandom_range(cfg.d_ready_delay_max);
     bit          ready = 1'b0;
     forever begin
+      // Let this edge's A presentation release a held D response, so a directed
+      // next-W0 handoff can put A-valid and D-ready in the same external cycle.
+      uvm_wait_for_nba_region();
       if (!cfg.in_reset) begin
-        ready = (stall == 0);
+        ready = (stall == 0) && !cfg.hold_d_ready;
         if (stall > 0) stall--;
       end else begin
         ready = 1'b0;

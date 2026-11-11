@@ -138,4 +138,9 @@ module tb;
     run_test();
   end
 
+  // Separate fault-evidence build only. Internal forces plant mutations; all
+  // expected behavior and checker verdicts still come from external interfaces.
+`ifdef CHERIOT_MEM_SYS_MUTATION
+  `include "cheriot_mem_sys_mutations.svh"
+`endif
 endmodule

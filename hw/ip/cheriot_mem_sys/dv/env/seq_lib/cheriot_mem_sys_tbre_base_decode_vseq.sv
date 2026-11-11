@@ -18,6 +18,7 @@ class cheriot_mem_sys_tbre_base_decode_vseq extends cheriot_mem_sys_base_vseq;
   virtual task body();
     int unsigned exps[16] = '{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 24};
     bit [31:0]   base;
+    int unsigned reads_before;
     cheriot_on();
     foreach (exps[i]) begin
       for (int unsigned v = 0; v < 4; v++) begin
@@ -50,8 +51,13 @@ class cheriot_mem_sys_tbre_base_decode_vseq extends cheriot_mem_sys_base_vseq;
     store_slot(MainSramTop - 8, 0);
     store_slot(MainSramTop, 0);
     wait_quiet();
+    reads_before = m_tbre_h_seq.n_reads;
     tbre_sweep(Slots, n_slots);
     wait_quiet();
+    // Even a final capability outside the bitmap must be read and resolved.
+    // Its retained tag alone cannot detect a sweep that skipped that last slot.
+    `DV_CHECK_EQ(m_tbre_h_seq.n_reads - reads_before, 2 * n_slots,
+                 "sweep must read both words of every requested capability")
     load_all_caps(Slots, n_slots);
   endtask
 

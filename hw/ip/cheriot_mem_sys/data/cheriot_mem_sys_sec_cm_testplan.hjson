@@ -27,7 +27,7 @@
       name: sec_cm_bus_integrity
       desc: "Verify BUS.INTEGRITY using CSR, meta response, TBRE read and bitmap-lookup faults, and the documented NVM capability-store command/data integrity response. Ordinary core requests and bitmap-port command-integrity responses await specification clarification (CMS-CMD-INTG). The full end-to-end countermeasure also relies on LOGIC.SHADOW, which is not implemented."
       stage: V2S
-      tests: ["cheriot_mem_sys_tl_intg_err", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_err_cmd_intg"]
+      tests: ["cheriot_mem_sys_sec_cm", "cheriot_mem_sys_tl_intg_err", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_err_cmd_intg"]
     }
     {
       name: sec_cm_logic_shadow
