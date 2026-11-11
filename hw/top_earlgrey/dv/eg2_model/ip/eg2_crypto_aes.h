@@ -30,6 +30,13 @@
 //                is KEY_SHARE0 ^ KEY_SHARE1, or the key keymgr sideloads (set_sideload_key) when
 //                CTRL.SIDELOAD is set. Writes to CTRL, KEY and IV while the unit is busy are
 //                ignored.
+//   Shadowing    CTRL, CTRL_AUX and CTRL_GCM use the shared per-field two-write
+//                protocol (util/reggen/README.md). Reads/reset cancel staging. An
+//                update mismatch raises recov_ctrl_update_err and STATUS bit 5;
+//                operation must be restarted with a successful CTRL update
+//                (aes.hjson, STATUS.ALERT_RECOV_CTRL_UPDATE_ERR). CTRL/GCM writes
+//                while non-idle are ignored before staging. AUX is REGWEN gated.
+//                Redundant-storage fault injection is not modelled here.
 //   Entropy      the masking PRNG is reseeded from edn0 after reset (TRIGGER.PRNG_RESEED),
 //                when a key is written and CTRL_AUX.KEY_TOUCH_FORCES_RESEED is set, on
 //                TRIGGER.PRNG_RESEED, and every 1, 64 or 8192 blocks (CTRL.PRNG_RESEED_RATE),
@@ -78,6 +85,7 @@ class Eg2Aes : public Eg2IpModel {
       set_modelled(iv_[i]);
       set_modelled(dout_[i]);
     }
+    enable_shadowed_registers();
     ctrl_ = reg("CTRL_SHADOWED");
     aux_ = reg("CTRL_AUX_SHADOWED");
     trigger_ = reg("TRIGGER");
@@ -122,6 +130,7 @@ class Eg2Aes : public Eg2IpModel {
   void on_reset(Eg2ResetCause c) override {
     Eg2IpModel::on_reset(c);
     fatal_ = false;
+    shadow_error_ = false;
     start_after_reset();
   }
   // aes.hjson STATUS.ALERT_FATAL_FAULT: "A fatal fault has occurred and the AES unit needs to be
@@ -142,8 +151,20 @@ class Eg2Aes : public Eg2IpModel {
   }
 
  protected:
+  bool reg_before_write(uint16_t r, uint32_t, uint32_t) override {
+    return (r != ctrl_ && r != gcm_ctrl_) || idle();
+  }
+  void shadow_update(uint16_t r, bool error) override {
+    if (error) {
+      shadow_error_ = true;
+      raise_alert("recov_ctrl_update_err");
+    } else if (r == ctrl_) {
+      shadow_error_ = false;
+    }
+    update();
+  }
   void reg_write(uint16_t r, uint32_t old, uint32_t, uint32_t) override {
-    bool cfg = r == ctrl_ || r == aux_;
+    bool cfg = r == ctrl_;
     bool is_key = false, is_iv = false, is_din = false;
     for (unsigned i = 0; i < 8; ++i) is_key |= r == key0_[i] || r == key1_[i];
     for (unsigned i = 0; i < 4; ++i) is_iv |= r == iv_[i];
@@ -250,6 +271,7 @@ class Eg2Aes : public Eg2IpModel {
   // Cycles of a block (masked DOM S-Box, AES-128/192/256).
   unsigned block_cycles() const { return key_len() == 16 ? 56 : key_len() == 24 ? 66 : 72; }
   bool start_pending() const {
+    if (shadow_error_) return false;  // permit the required CTRL rewrite before restarting
     if (mode() == kGcm && gcm_phase() == kGcmInit) {
       // INIT runs once the IV is complete (automatic mode), or on each START (manual mode).
       return gcm_init_step_ < 2 && (manual() ? start_ : iv_written_ == 0xf);
@@ -298,7 +320,7 @@ class Eg2Aes : public Eg2IpModel {
       for (unsigned i = 0; i < 4; ++i) set_value(dout_[i], 0);
     }
     set_value(trigger_, t & ~0xeu);
-    if (start_pending()) {
+    if (start_pending() && !shadow_error_) {
       if (output_valid_ && !manual()) {
         stalled_ = true;  // the previous output has not been read
       } else if (block_ctr_ == 0) {
@@ -555,13 +577,14 @@ class Eg2Aes : public Eg2IpModel {
     if (stalled_) st |= 2;
     if (output_valid_) st |= 8;
     if (!stalled_ && !(manual() && start_) && !reseed_needed_) st |= 16;
+    if (shadow_error_) st |= 32;
     if (fatal_) st |= 64;  // ALERT_FATAL_FAULT (6)
     set_value(status_, st);
   }
 
   uint16_t key0_[8], key1_[8], iv_[4], din_[4], dout_[4];
   uint16_t ctrl_, aux_, trigger_, status_, gcm_ctrl_;
-  bool fatal_ = false;
+  bool fatal_ = false, shadow_error_ = false;
   bool reseed_needed_ = true, output_valid_ = false, start_ = false, stalled_ = false;
   bool side_valid_ = false, computing_ = false, dec_key_stale_ = true;
   uint64_t done_at_ = 0;

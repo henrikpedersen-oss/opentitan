@@ -14,19 +14,26 @@
 
 #include "../eg2_ip_model.h"
 #include "eg2_mem_otp.h"
-#include "eg2_kmac.h"
 
 namespace eg2_model {
 
-// rom_ctrl (hw/ip/rom_ctrl: doc/theory_of_operation.md). "We expect to use the `cSHAKE256`
-// algorithm, with prefix \"ROM_CTRL\"." "Each read produces 39 bits of data, which are padded with
-// a zero to 40 bits to match the interface expected by the KMAC block." "The top eight words in ROM
-// (by logical address) are interpreted as a 256-bit expected hash." The model computes cSHAKE256
-// over five little-endian bytes per body word. The model's ELF memory has neither the seven ECC
-// bits nor the netlist-random address/data scrambling constants, so the fifth byte is zero and the
-// model derives the good expected value from that same independently computed body digest before
-// applying a requested backing-ROM corruption. This is a gap draft, not a copy of EXP_DIGEST into
-// DIGEST: changing any body word changes DIGEST, and changing only the expected digest does not.
+// rom_ctrl (hw/ip/rom_ctrl: doc/theory_of_operation.md, "The startup ROM check").
+// The checker consumes stored 39-bit words, including their seven integrity bits,
+// in logical address order. Each is zero-padded to five little-endian bytes for
+// cSHAKE256. The final eight stored words supply EXP_DIGEST independently; only
+// their low 32 bits participate in the comparison. DIGEST is the computed hash.
+//
+// Eg2System::rom_image carries these words separately from the executable ELF.
+// tools/prepare_rom_check.py extracts them from an existing scrambled VMEM and
+// verifies its decoded body against the ELF. The checker does not manufacture
+// ECC, recompute expected words or use observed DUT values. Missing input stops
+// the run as not modelled. The cSHAKE N/S split is explicit image configuration:
+// the docs name the ROM_CTRL prefix but do not define that split (DV ticket).
+//
+// Not modelled: cycle timing, checker FSM fault encodings, and bus-side ROM ECC
+// faults. A bad checker digest still follows the documented lifecycle bypass.
+// rom_ctrl.corrupt_digest flips a bit of the supplied expected word as a fault
+// input; it never substitutes a freshly computed expected digest.
 //
 // top_earlgrey/doc/design/README.md, "ROM Controller": "It compares the digest with the expected
 // digest stored in the top words of the ROM and reports the result to the power manager, which
@@ -61,24 +68,21 @@ class Eg2RomCtrl : public Eg2IpModel {
   void check() {
     auto it = sys_.memories.find("rom_ctrl.rom");
     if (it == sys_.memories.end()) return;
-    std::vector<uint8_t> &m = it->second->data();
-    size_t top = m.size() - 32;
-    std::vector<uint8_t> msg;
-    msg.reserve((top / 4) * 5);
-    for (size_t off = 0; off + 4 <= top; off += 4) {
-      msg.insert(msg.end(), m.begin() + off, m.begin() + off + 4);
-      msg.push_back(0);
+    const auto &image = sys_.rom_image;
+    if (image.words.size() != it->second->size() / 4 || image.words.size() < 8) {
+      Eg2ModelStop::request(image.error.empty()
+          ? "not modelled: ROM checker needs the stored 39-bit words and expected digest"
+          : image.error);
+      return;
     }
-    const std::vector<uint8_t> name = {'R', 'O', 'M', '_', 'C', 'T', 'R', 'L'};
-    std::vector<uint8_t> got = Eg2Kmac::app_cshake(name, {}, msg, 32);
+    const auto digest = image.computed_digest();
     bool good = true;
     for (uint16_t i = 0; i < 8; ++i) {
-      uint32_t v = uint32_t(got[4 * i]) | (uint32_t(got[4 * i + 1]) << 8) |
-                   (uint32_t(got[4 * i + 2]) << 16) | (uint32_t(got[4 * i + 3]) << 24);
-      uint32_t expected = v ^ (corrupt_digest_ && i == 7 ? 1u : 0u);
-      set_value(uint16_t(digest_ + i), v);
+      uint32_t expected = uint32_t(image.words[image.words.size() - 8 + i]);
+      if (corrupt_digest_ && i == 7) expected ^= 1;
+      set_value(uint16_t(digest_ + i), digest[i]);
       set_value(uint16_t(exp_ + i), expected);
-      good = good && v == expected;
+      good = good && digest[i] == expected;
     }
     if (good) return;
     sys_.chip_event("rom_integrity_bad");

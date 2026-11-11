@@ -180,7 +180,7 @@ $(OUT)/eg2_model_test: tests/eg2_model_test.cc $(IP_SRCS) $(HDRS) $(TOOLPATHS)
 	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $(filter %.cc,$^) -o $@ \
 	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
 
-$(OUT)/eg2_sysmodel_test: tests/eg2_sysmodel_test.cc dpi/eg2_sysmodel.h \
+$(OUT)/eg2_sysmodel_test: tests/eg2_sysmodel_test.cc tests/rom_fixture.h dpi/eg2_sysmodel.h \
     eg2_model_regs.h $(OUT)/libeg2sysmodel.so
 	@mkdir -p $(@D)
 	$(CXX) $(CORE_TEST_FLAGS) $< -o $@ \
@@ -194,8 +194,8 @@ sysmodel_test: $(OUT)/eg2_sysmodel_test
 	@mkdir -p $(OUT)/sysmodel-test-logs
 	cd $(OUT)/sysmodel-test-logs && $(abspath $(OUT))/eg2_sysmodel_test
 
-replay_test: $(OUT)/eg2_sysmodel_replay
-	bash tests/run_replay_tests.sh $(abspath $(OUT))/eg2_sysmodel_replay $(abspath $(OUT))/replay-test-logs
+replay_test: $(OUT)/eg2_sysmodel_replay $(OUT)/eg2_rom_test
+	bash tests/run_replay_tests.sh $(abspath $(OUT))/eg2_sysmodel_replay $(abspath $(OUT))/replay-test-logs $(abspath $(OUT))/eg2_rom_test
 
 # Parser and cryptographic known-answer checks need only a C++17 compiler.
 .PHONY: utility_tests
@@ -221,3 +221,43 @@ transport_test: $(OUT)/eg2_transport_test
 	$(OUT)/eg2_transport_test
 
 check: core_tests model_test sysmodel_test replay_test utility_tests transport_test
+
+$(OUT)/eg2_rom_test: tests/eg2_rom_test.cc tests/rom_fixture.h $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $< -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+.PHONY: rom_test
+rom_test: $(OUT)/eg2_rom_test
+	@mkdir -p $(OUT)/rom-test-logs
+	cd $(OUT)/rom-test-logs && $(abspath $(OUT))/eg2_rom_test
+check: rom_test
+
+$(OUT)/eg2_shadow_test: tests/eg2_shadow_test.cc $(IP_SRCS) $(EG2_ROOT)/hw/ip/aes/model/aes.c $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $(filter %.cc %.c,$^) -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+.PHONY: shadow_test
+shadow_test: $(OUT)/eg2_shadow_test
+	@mkdir -p $(OUT)/shadow-test-logs
+	cd $(OUT)/shadow-test-logs && $(abspath $(OUT))/eg2_shadow_test
+check: shadow_test
+
+$(OUT)/eg2_keymgr_test: tests/eg2_keymgr_test.cc $(IP_SRCS) $(EG2_ROOT)/hw/ip/aes/model/aes.c $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $(filter %.cc %.c,$^) -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+.PHONY: keymgr_test
+keymgr_test: $(OUT)/eg2_keymgr_test
+	@mkdir -p $(OUT)/keymgr-test-logs
+	cd $(OUT)/keymgr-test-logs && $(abspath $(OUT))/eg2_keymgr_test
+check: keymgr_test
+
+$(OUT)/eg2_otp_adapter_test: tests/eg2_otp_adapter_test.cc $(IP_SRCS) $(EG2_ROOT)/hw/ip/aes/model/aes.c $(HDRS) $(TOOLPATHS)
+	@mkdir -p $(@D)
+	$(CXX) $(CORE_TEST_FLAGS) -I$(EG2_SYSTEMC)/include $(filter %.cc %.c,$^) -o $@ \
+	  -L$(EG2_SYSTEMC)/lib -Wl,-rpath,$(EG2_SYSTEMC)/lib -lsystemc -lpthread
+.PHONY: otp_adapter_test
+otp_adapter_test: $(OUT)/eg2_otp_adapter_test
+	@mkdir -p $(OUT)/otp_adapter-test-logs
+	cd $(OUT)/otp_adapter-test-logs && $(abspath $(OUT))/eg2_otp_adapter_test
+check: otp_adapter_test

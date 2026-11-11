@@ -1,5 +1,9 @@
 # Follow-up review — 10 November 2026
 
+The later [fidelity pass from 5985a2a326](fidelity-review.md) addresses the four
+remaining gaps below and records its complete 535-image verdict comparisons.
+The findings and results here describe the earlier pass.
+
 This pass starts from EG2 commit `da6c4d0e4d`, after the earlier cleanup and CMS
 review fixes were checked in. It fixes shared transport, image-loading and OTP
 digest defects, and removes one undocumented power-reset prediction. It does

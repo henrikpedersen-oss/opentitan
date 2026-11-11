@@ -69,6 +69,7 @@
 
 #include "eg2_model_irqs.h"
 #include "eg2_targets.h"
+#include "eg2_rom_image.h"
 
 class Eg2IpModel;
 
@@ -523,6 +524,7 @@ class Eg2System {
 
   // ---- Memories (the windows without a register block), by window name ----
   std::map<std::string, Eg2Memory *> memories;
+  eg2_model::Eg2RomImage rom_image;  // independent stored checker words and configuration
 
   // ---- Instruction fetch permission ----
   void add_exec_region(const std::string &window, std::function<bool()> allowed) {

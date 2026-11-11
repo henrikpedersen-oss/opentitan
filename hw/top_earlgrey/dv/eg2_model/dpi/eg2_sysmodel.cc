@@ -375,7 +375,6 @@ void *eg2_sysmodel_create(const char *rom_elf, const char *test_elf, const char 
     bitmap->mem->share_start_of(*meta->mem);
     bitmap->known_backing = meta;
   }
-  sc_core::sc_start(sc_core::SC_ZERO_TIME);  // elaboration: the sockets are bound
 
   // The interrupt check's view of every rv_plic source (eg2_irq_predict.h): the block that drives
   // it, whether the model raises its hardware event, and the block's INTR_ENABLE bit for it. And
@@ -418,6 +417,11 @@ void *eg2_sysmodel_create(const char *rom_elf, const char *test_elf, const char 
   if (!rom_elf || !*rom_elf || !load_elf(*m, rom_elf)) return nullptr;
   if (test_elf && *test_elf && !load_elf(*m, test_elf)) return nullptr;
   if (otp_vmem && *otp_vmem && !load_otp(*m, otp_vmem)) return nullptr;
+  if (auto rom = sys.memories.find("rom_ctrl.rom"); rom != sys.memories.end()) {
+    sys.rom_image.load(std::string(rom_elf) + ".romcheck", rom_elf, rom->second->size() / 4);
+  }
+  // Load independent inputs before start_of_simulation runs the ROM/OTP checks.
+  sc_core::sc_start(sc_core::SC_ZERO_TIME);
   m->dvlog.add_image(rom_elf);
   if (test_elf && *test_elf) m->dvlog.add_image(test_elf);
   m->dvlog.log_path = sys.log_dir + "/sw.model.log";

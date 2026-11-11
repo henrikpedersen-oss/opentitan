@@ -2,20 +2,25 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Plain C++ OTP controller core, exercised by dpi/eg2_otp_ctrl_core_test.cc.
-// It reaches external signals through Eg2OtpCtrlPort and uses the binding's
-// byte vector as the OTP array. The SystemC Eg2OtpCtrl remains a separate
-// controller implementation; both share the cipher and digest in eg2_otp_crypto.h.
-// Core-test coverage must not be attributed to the SystemC adapter automatically.
+// The single OTP controller implementation, used by the SystemC adapter and
+// the plain C++ core tests. Eg2OtpCtrlPort supplies lifecycle inputs, interrupts,
+// alerts and explicit model stops. The binding owns the raw OTP byte array;
+// hardware outputs are taken from this controller's checked buffers. The shared
+// partition map is in eg2_otp_partitions.h. Adapter tests exercise real bus access.
 //
-// From the documents only, never the RTL: hw/top_earlgrey/ip_autogen/otp_ctrl/doc
+// Documented behavior comes from: hw/top_earlgrey/ip_autogen/otp_ctrl/doc
 // (theory_of_operation.md "ToO", programmers_guide.md "PG", interfaces.md "IF", registers.md "REG",
 // otp_ctrl_partitions.md, otp_ctrl_mmap.md, otp_ctrl_digests.md) and hw/ip/lc_ctrl/doc.
 //
+// Provenance exception: a refused SW_CFG_WINDOW read answers a bus error. The documents
+// say a locked partition is unreadable but do not specify the refused read's bus response.
+// This response follows otp_ctrl_part_unbuf.sv, ReadSt: a locked or out-of-range read sets
+// tlul_rerror_o to 2'b11, causing the TL-UL adapter to return a bus error.
+//
 // Untimed (model decision 2026-11-08): initialisation, DAI commands, digests and checks complete at
 // once. STATUS.DAI_IDLE is 1 whenever the DAI is not in its terminal error state; CHECK_PENDING
-// stays 0; CHECK_TIMEOUT and the two check periods are stored and have no effect (no LFSR timer):
-// the integrity and consistency checks run when CHECK_TRIGGER asks for them.
+// stays 0. CHECK_TIMEOUT is stored, but enabling a periodic check stops as not
+// modelled: no LFSR timer is implemented. Explicit CHECK_TRIGGER checks are supported.
 //
 // Partitions (otp_ctrl_partitions.md). Buffered (HW_CFG0/1, SECRET0-2, LIFE_CYCLE): read into
 // buffer registers at initialisation, the secret ones descrambled (ToO "Buffered Partition"), and
@@ -39,14 +44,19 @@
 // through the WRITE command in a hardware partition") or to a zeroization marker (same paragraph:
 // only ZEROIZE covers "the entire address space of a partition"); DIGEST on a partition without a
 // hardware digest, a locked one or one whose digest is already programmed; ZEROIZE outside a
-// zeroizable partition. MacroWriteBlankError (4): WR that would clear a programmed bit (PG
-// "Programming Already Programmed Regions"); the model keeps the old bits and sets the new ones.
+// zeroizable partition. EG2 uses the RRAM OTP hardware plug, whose documented
+// OtpWrite read-set-write semantics allow another write that only adds set bits
+// (hw/ip/rram_ctrl/doc/theory_of_operation.md, "OTP Hardware Plug"). A write
+// attempting to clear a programmed bit returns MacroWriteBlankError (4). The
+// generic fuse guide's blanket prohibition on reprogramming does not describe
+// this backing store; do not reject a valid monotonic write just because the
+// word is nonzero.
 // Each command sets otp_operation_done; an error sets otp_error (PG "Error Handling"). The DAI's code
 // is ERR_CODE_11 and clears with the next command (REG ERR_CODE: "automatically recovers ... when
-// issuing a new command"). RDATA holds the read word; a refused RD leaves both words 0 (model
-// choice). ZEROIZE sets every bit of the word and returns the number of set bits in RDATA_0 (PG
-// "Zeroization Sequence" step 2, ToO "Zeroization Detection"; REG DIRECT_ACCESS_CMD instead says
-// "the zeroized data": status/rtl_tickets.md), bypassing descrambling; its first success in a
+// issuing a new command"). RDATA holds a successful read word. Observing RDATA after
+// a refused read stops as undocumented. ZEROIZE sets every bit of the word;
+// observing its result stops because PG says bit count whereas REG says zeroized
+// data (OTP-1). Its first success in a
 // partition stops that partition's consistency checks until reset (ToO "Checks on Zeroized
 // Partitions").
 //
@@ -70,7 +80,7 @@
 // Life-cycle interface (IF "State Transitions"): lc_ctrl programs the 24 count and 20 state words;
 // a word that would clear a programmed bit fails the whole request with MacroWriteBlankError in
 // ERR_CODE_12, unrecoverable in the LCI (PG table): STATUS.LCI_ERROR, otp_error, fatal_check_error,
-// and lc_ctrl is told. The model writes nothing of a failed request (model choice). A successful
+// and lc_ctrl is told. Unspecified partial-programming effects stop as undocumented. A successful
 // request updates the OTP and the LIFE_CYCLE buffer.
 //
 // Not modelled: ECC (no MacroEcc* errors), the macro's own errors, the vendor test interface, the
@@ -86,53 +96,9 @@
 #include <string>
 #include <vector>
 
-// ---- The OTP partitions (otp_ctrl_partitions.md, otp_ctrl_mmap.md) ----
-struct Eg2OtpPart {
-  const char *name;
-  uint32_t off, size;     // byte offset and size of the whole partition, digest and marker included
-  bool secret;            // scrambled, 64-bit granule, read-locked by its digest
-  bool hw_digest;         // the digest is computed by the DAI DIGEST command, never written
-  bool has_digest;        // LIFE_CYCLE has none
-  const char *read_lock;  // the READ_LOCK CSR, or nullptr
-  bool zer;               // zeroizable: a zeroization marker (8 bytes) after the digest
-  bool buffered;
-};
+#include "eg2_otp_partitions.h"
 
-// Offsets and sizes: otp_ctrl_mmap.md (the generated otp_ctrl_reg_pkg.sv has the same numbers).
-inline constexpr Eg2OtpPart kEg2OtpParts[] = {
-    {"VENDOR_TEST", 0x000, 64, false, false, true, "VENDOR_TEST_READ_LOCK", false, false},
-    {"CREATOR_SW_CFG", 0x040, 400, false, false, true, "CREATOR_SW_CFG_READ_LOCK", false, false},
-    {"OWNER_SW_CFG", 0x1D0, 672, false, false, true, "OWNER_SW_CFG_READ_LOCK", false, false},
-    {"ROT_CREATOR_AUTH_CODESIGN", 0x470, 472, false, false, true,
-     "ROT_CREATOR_AUTH_CODESIGN_READ_LOCK", false, false},
-    {"ROT_CREATOR_AUTH_STATE", 0x648, 40, false, false, true, "ROT_CREATOR_AUTH_STATE_READ_LOCK",
-     false, false},
-    {"HW_CFG0", 0x670, 72, false, true, true, nullptr, false, true},
-    {"HW_CFG1", 0x6B8, 16, false, true, true, nullptr, false, true},
-    {"SECRET0", 0x6C8, 48, true, true, true, nullptr, true, true},
-    {"SECRET1", 0x6F8, 96, true, true, true, nullptr, true, true},
-    {"SECRET2", 0x758, 96, true, true, true, nullptr, true, true},
-    {"LIFE_CYCLE", 0x7B8, 88, false, false, false, nullptr, false, true},
-};
-inline constexpr int kEg2OtpNumParts = 11;
-inline constexpr int kEg2OtpHwCfg0 = 5, kEg2OtpHwCfg1 = 6;
-inline constexpr int kEg2OtpSecret0 = 7, kEg2OtpSecret1 = 8, kEg2OtpSecret2 = 9;
-inline constexpr int kEg2OtpLifeCycle = 10;
-inline constexpr uint32_t kEg2OtpSize = 0x810;
-// Items (otp_ctrl_mmap.md).
-inline constexpr uint32_t kEg2OtpDeviceId = 0x670, kEg2OtpManufState = 0x690;
-inline constexpr uint32_t kEg2OtpEnSramIfetch = 0x6B8, kEg2OtpDisRvDmLateDebug = 0x6B9;
-inline constexpr uint32_t kEg2OtpTestUnlockToken = 0x6C8, kEg2OtpTestExitToken = 0x6D8;
-inline constexpr uint32_t kEg2OtpNvmAddrKeySeed = 0x6F8, kEg2OtpNvmDataKeySeed = 0x718;
-inline constexpr uint32_t kEg2OtpSramDataKeySeed = 0x738;
-inline constexpr uint32_t kEg2OtpRmaToken = 0x758;
-inline constexpr uint32_t kEg2OtpCreatorRootKeyShare0 = 0x768, kEg2OtpCreatorRootKeyShare1 = 0x788;
-inline constexpr uint32_t kEg2OtpLcTransitionCnt = 0x7B8, kEg2OtpLcState = 0x7E8;
-// The digest of a partition: its last 8 bytes, or the 8 before its zeroization marker.
-inline constexpr uint32_t eg2_otp_digest_off(const Eg2OtpPart &pt) {
-  return pt.off + pt.size - (pt.zer ? 16 : 8);
-}
-inline constexpr uint32_t eg2_otp_zer_off(const Eg2OtpPart &pt) { return pt.off + pt.size - 8; }
+namespace eg2_model {
 
 // The life-cycle signals otp_ctrl receives (IF "Inter-Module Signals").
 enum class Eg2OtpLc : unsigned { kCreatorSeedSwRwEn, kSeedHwRdEn, kRmaState, kCheckBypEn };
@@ -144,6 +110,7 @@ class Eg2OtpCtrlPort {
   virtual void fatal_alert(const char *name) = 0;    // held until reset by the binding
   virtual bool lc(Eg2OtpLc sig) = 0;                 // On?
   virtual void note(const std::string &) {}
+  virtual void unmodelled(const std::string &reason) = 0;
 };
 
 class Eg2OtpCtrlCore {
@@ -162,9 +129,8 @@ class Eg2OtpCtrlCore {
     kFsmStateError = 7,
   };
   static constexpr unsigned kDaiErr = 11, kLciErr = 12;
-  // ZeroizationValidBound (ToO "Zeroization Detection") is "macro-specific" and no document gives
-  // it: the model takes 56 of the marker's 64 bits.
-  static constexpr unsigned kZeroizeValidBound = 56;
+  // ZeroizationValidBound is macro-specific and undocumented. Only all-zero
+  // and all-one markers are unambiguous; a partial marker stops (OTP-1).
   static constexpr uint32_t kMuBi8True = 0x96;
 
   static std::string reg_name(unsigned r) {
@@ -195,11 +161,15 @@ class Eg2OtpCtrlCore {
     r_[kDaiRegwen] = r_[kCheckTriggerRegwen] = r_[kCheckRegwen] = 1;
     for (int p = 0; p < 5; ++p) r_[kReadLock0 + p] = 1;
     terminal_ = false;
+    rdata_undefined_.clear();
     for (int p = 0; p < kEg2OtpNumParts; ++p) {
       const Eg2OtpPart &pt = kEg2OtpParts[p];
       part_err_[p] = kNoError;
       zer_started_[p] = false;
-      zeroized_[p] = pt.zer && popcount(dword(eg2_otp_zer_off(pt))) >= kZeroizeValidBound;
+      uint64_t marker = pt.zer ? dword(eg2_otp_zer_off(pt)) : 0;
+      if (marker != 0 && marker != UINT64_MAX)
+        port_->unmodelled("undocumented: OTP ZeroizationValidBound for partial marker (OTP-1)");
+      zeroized_[p] = marker == UINT64_MAX;
       uint64_t dg = pt.has_digest ? dword(eg2_otp_digest_off(pt)) : 0;
       locked_[p] = dg != 0;
       if (pt.has_digest) {
@@ -221,7 +191,13 @@ class Eg2OtpCtrlCore {
   }
 
   // ---- CSRs ----
-  uint32_t csr_read(unsigned r) const { return r < kNumRegs ? r_[r] : 0; }
+  uint32_t csr_read(unsigned r) const {
+    if ((r == kDaiRdata0 || r == kDaiRdata1) && !rdata_undefined_.empty())
+      port_->unmodelled(rdata_undefined_);
+    return r < kNumRegs ? r_[r] : 0;
+  }
+  // Binding mirror: copying stored CSR state is not a software observation.
+  uint32_t csr_stored(unsigned r) const { return r < kNumRegs ? r_[r] : 0; }
   void csr_write(unsigned r, uint32_t wdata, uint32_t wmask = 0xffffffffu) {
     uint32_t w = wdata & wmask;
     switch (r) {
@@ -241,7 +217,11 @@ class Eg2OtpCtrlCore {
         if (r_[kCheckTriggerRegwen] & 1) check_trigger(w & 3);
         return;
       case kCheckTimeout: case kIntegrityCheckPeriod: case kConsistencyCheckPeriod:
-        if (r_[kCheckRegwen] & 1) r_[r] = (r_[r] & ~wmask) | w;
+        if (r_[kCheckRegwen] & 1) {
+          r_[r] = (r_[r] & ~wmask) | w;
+          if (r != kCheckTimeout && r_[r])
+            port_->unmodelled("not modelled: OTP randomized periodic checks (OTP-1)");
+        }
         return;
       default:
         if (r >= kReadLock0 && r < kDigest0) {  // rw0c, enabled by DIRECT_ACCESS_REGWEN
@@ -260,7 +240,7 @@ class Eg2OtpCtrlCore {
     if (uint64_t(off) + len > kEg2OtpSize) return false;
     for (unsigned i = 0; i < len; ++i) {
       int p = part_of(off + i);
-      if (p < 0) return false;
+      if (p < 0 || !part_ok(p)) return false;
       if (read_locked_csr(p)) return false;
       bool meta = in_meta(p, off + i);
       if (kEg2OtpParts[p].secret && locked_[p] && !meta) return false;
@@ -307,6 +287,7 @@ class Eg2OtpCtrlCore {
       fail = (old & ~words[i]) != 0;
     }
     if (fail) {
+      port_->unmodelled("undocumented: OTP contents after a failed multiword LCI programming request (OTP-1)");
       r_[kErrCode0 + kLciErr] = kWriteBlankError;
       update_status();
       port_->intr(1);
@@ -470,8 +451,12 @@ class Eg2OtpCtrlCore {
   // ---- DAI ----
   void dai_command(uint32_t c) {
     if (!c || terminal_) return;
+    if (c & (c - 1)) {
+      port_->unmodelled("undocumented: simultaneous OTP DAI command bits (OTP-1)");
+      return;
+    }
     uint32_t err = c == 1 ? dai_read() : c == 2 ? dai_write() : c == 4 ? dai_digest()
-                 : c == 8 ? dai_zeroize() : uint32_t(kAccessError);  // several bits: model choice
+                 : c == 8 ? dai_zeroize() : uint32_t(kAccessError);
     r_[kErrCode0 + kDaiErr] = err;
     update_status();
     port_->intr(0);
@@ -487,12 +472,14 @@ class Eg2OtpCtrlCore {
     return p == kEg2OtpSecret2 && !in_meta(p, a) && !port_->lc(Eg2OtpLc::kCreatorSeedSwRwEn);
   }
   uint32_t dai_read() {
+    rdata_undefined_ = "undocumented: OTP RDATA after a refused read (OTP-1)";
     r_[kDaiRdata0] = r_[kDaiRdata1] = 0;
     uint32_t a;
     int p = dai_part(&a);
     if (p < 0 || read_locked_csr(p) || seed_refused(p, a)) return kAccessError;
     bool meta = in_meta(p, a);
     if (kEg2OtpParts[p].secret && locked_[p] && !meta) return kAccessError;
+    rdata_undefined_.clear();
     if (wide(p, a)) {
       a &= ~7u;
       uint64_t d = dword(a);
@@ -514,13 +501,13 @@ class Eg2OtpCtrlCore {
     a &= ~(n - 1);
     uint64_t w = uint64_t(r_[kDaiWdata0]) | (n == 8 ? uint64_t(r_[kDaiWdata1]) << 32 : 0);
     if (kEg2OtpParts[p].secret && !in_meta(p, a)) w = scramble(w, p);
-    uint32_t err = kNoError;
+    // The RRAM OTP plug checks the requested value against the existing word.
+    // Reprogramming a word is legal when it does not clear any stored bit.
     for (unsigned i = 0; i < n; ++i) {
-      uint8_t nb = uint8_t(w >> (8 * i)), &ob = (*mem_)[a + i];
-      if (ob & ~nb) err = kWriteBlankError;
-      ob = uint8_t(ob | nb);
+      if ((*mem_)[a + i] & ~uint8_t(w >> (8 * i))) return kWriteBlankError;
     }
-    return err;
+    for (unsigned i = 0; i < n; ++i) (*mem_)[a + i] = uint8_t(w >> (8 * i));
+    return kNoError;
   }
   uint32_t dai_digest() {
     uint32_t a;
@@ -537,6 +524,7 @@ class Eg2OtpCtrlCore {
     if (p < 0 || !kEg2OtpParts[p].zer) return kAccessError;
     a &= ~7u;  // only hardware (secret) partitions are zeroizable here: 64-bit words
     for (unsigned i = 0; i < 8; ++i) (*mem_)[a + i] = 0xff;
+    rdata_undefined_ = "undocumented: OTP ZEROIZE RDATA conflicts between registers and programmer guide (OTP-1)";
     r_[kDaiRdata0] = popcount(dword(a));
     r_[kDaiRdata1] = 0;
     zer_started_[p] = true;
@@ -603,6 +591,9 @@ class Eg2OtpCtrlCore {
   uint64_t expected_digest_[kEg2OtpNumParts] = {};
   bool terminal_ = false;
   unsigned lci_inject_ = 0;
+  std::string rdata_undefined_;
 };
+
+}  // namespace eg2_model
 
 #endif  // EG2_MODEL_IP_EG2_OTP_CTRL_CORE_H_

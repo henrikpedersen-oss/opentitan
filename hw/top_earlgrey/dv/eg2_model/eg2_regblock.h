@@ -11,6 +11,10 @@
 // The rules of a software access, as reggen's register top applies them:
 // - REGWEN: a write to a register its REGWEN locks changes nothing and reaches no hook, so a
 //   locked command has no side effect either (util/reggen/README.md, "regwen").
+// - Opt-in shadow registers: the first write stages raw bus data; the second compares
+//   each field and commits only matching fields. Reads and reset cancel staging.
+//   The device receives one completion hook and its documented update-error response
+//   (util/reggen/README.md, "Shadow registers"). Storage fault injection is separate.
 // - Byte enables: a write that leaves out a byte up to the register's highest field bit
 //   (REG_PERMIT) answers d_error and changes nothing.
 // - An offset with no register and no window answers TLM_ADDRESS_ERROR_RESPONSE, as the block
@@ -68,6 +72,7 @@ class Eg2RegBlock : public sc_core::sc_module {
   virtual ~Eg2RegBlock() = default;
 
   void reset() {
+    shadow_pending_.clear();
     for (uint16_t i = 0; i < desc_.nregs; ++i) val_[i] = desc_.regs[i].resval;
   }
 
@@ -140,6 +145,12 @@ class Eg2RegBlock : public sc_core::sc_module {
   virtual void load_event(uint32_t /*off*/, uint32_t /*data*/) {}
 
  protected:
+  // Opt in only for IPs that use this implementation. Alert handler and clock
+  // manager already implement shadowing in their standalone cores.
+  void enable_shadowed_registers() { shadow_enabled_ = true; }
+  virtual void shadow_update(uint16_t, bool error) {
+    if (error) Eg2ModelStop::request("not modelled: shadow update-error response");
+  }
   // Device hooks. before_read: a register is about to be read (bring it up to date). after_read: it
   // has been read. on_write: it has been written; wdata is the data written, shifted to its byte
   // lanes, and wmask the lanes written (the register's new value is value(reg)).
@@ -213,6 +224,7 @@ class Eg2RegBlock : public sc_core::sc_module {
     if (trans.is_read()) {
       before_read(r);
       if (fail_) return;
+      if (shadow_enabled_ && (desc_.regs[r].flags & 2)) shadow_pending_.erase(r);
       uint32_t v = read_reg(r);
       v >>= shift;
       std::memcpy(data, &v, len);
@@ -238,8 +250,30 @@ class Eg2RegBlock : public sc_core::sc_module {
         return;
       }
       if (!before_write(r, w << shift, bytes_mask) || fail_) return;
-      write_reg(r, w << shift, bytes_mask);
-      on_write(r, old, w << shift, bytes_mask);
+      uint32_t commit_mask = bytes_mask;
+      bool shadow = shadow_enabled_ && (reg.flags & 2), update_error = false;
+      if (shadow) {
+        auto staged = shadow_pending_.find(r);
+        if (staged == shadow_pending_.end()) {
+          shadow_pending_[r] = w << shift;
+          return;  // neither committed storage nor device side effects change
+        }
+        commit_mask = 0;
+        for (uint16_t k = 0; k < reg.nfields; ++k) {
+          const auto &field = desc_.fields[reg.field0 + k];
+          if (field.sw == eg2_regs::kAccRo || field.sw == eg2_regs::kAccRc ||
+              field.sw == eg2_regs::kAccNone) continue;
+          uint32_t mask = field_mask(field) & bytes_mask;
+          if (((staged->second ^ (w << shift)) & mask) == 0) commit_mask |= mask;
+          else update_error = true;
+        }
+        shadow_pending_.erase(staged);
+      }
+      if (commit_mask) {
+        write_reg(r, w << shift, commit_mask);
+        on_write(r, old, w << shift, commit_mask);
+      }
+      if (shadow) shadow_update(r, update_error);
     }
   }
 
@@ -328,6 +362,8 @@ class Eg2RegBlock : public sc_core::sc_module {
   std::vector<bool> modelled_;
   std::string first_error_;
   bool fail_ = false;
+  bool shadow_enabled_ = false;
+  std::map<uint16_t, uint32_t> shadow_pending_;
 };
 
 #endif  // EG2_MODEL_EG2_REGBLOCK_H_

@@ -195,7 +195,7 @@ int sc_main(int argc, char **argv) {
     );
     return 1;
   }
-  std::string rom, test, otp, otp_out, spike_log, rram_image;
+  std::string rom, test, otp, otp_out, spike_log, rram_image, rom_checker;
   std::vector<std::string> sets, params, syms_set, faults;
   std::vector<TrigStim> trig_stims;
   std::string seed, cheriot_iss = "mpact", rng = "model";
@@ -204,6 +204,7 @@ int sc_main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; i += 2) {
     std::string a = argv[i];
     if (a == "--rom") rom = argv[i + 1];
+    else if (a == "--rom-checker") rom_checker = argv[i + 1];
     else if (a == "--test") test = argv[i + 1];
     else if (a == "--rram-image") rram_image = argv[i + 1];
     else if (a == "--otp") otp = argv[i + 1];
@@ -247,7 +248,7 @@ int sc_main(int argc, char **argv) {
   }
   if (rom.empty()) {
     std::fprintf(stderr, "usage: eg2sim --rom <rom.elf> [--test <test.elf> | --rram-image <img>] [--otp <vmem>] "
-                         "[--otp-out <vmem>] [--seed N] [--param name=value] [--log-dir <dir>] "
+                         "[--rom-checker <input>] [--otp-out <vmem>] [--seed N] [--param name=value] [--log-dir <dir>] "
                          "[--max-insns N] [--spike-log <file>] [--set win.REG=value] "
                          "[--stim key=value] [--sym name=value[:bytes]] "
                          "[--cheriot-iss mpact|none] [--fault name[@count|@0xpc|@symbol]] "
@@ -348,6 +349,10 @@ int sc_main(int argc, char **argv) {
     if (!load_rram_image(rram_image, r == sys.memories.end() ? nullptr : r->second)) return 1;
   }
   if (!otp.empty() && !load_otp(otp, blocks)) return 1;
+  if (auto rom_memory = sys.memories.find("rom_ctrl.rom"); rom_memory != sys.memories.end()) {
+    sys.rom_image.load(rom_checker.empty() ? rom + ".romcheck" : rom_checker,
+                       rom, rom_memory->second->size() / 4);
+  }
   // Some chip sequences end a software test after their own checks. This only accepts "pass";
   // model-side bench checks registered in verdict_checks still run before the verdict is accepted.
   sys.stim_handlers["bench.finish"] = [&sys](const std::string &v) {

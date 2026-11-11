@@ -64,7 +64,24 @@ needs a C++17 compiler; the other targets also need SystemC. The pinned developm
 shell supplies the compatible toolchain and library paths.
 
 For a firmware run, use a test ROM, a test ELF and an OTP image from the same
-Earl Grey checkout:
+Earl Grey checkout. ROM verification also needs the existing scrambled VMEM,
+including its independently stored expected digest. Prepare its checker input once:
+
+```sh
+python3 tools/prepare_rom_check.py --elf path/to/test_rom.elf \
+    --vmem path/to/test_rom.39.scr.vmem --function-name "" --customization ROM_CTRL
+```
+
+The converter uses the checkout's ROM image-format utilities; its Python environment
+needs `pycryptodome`, `pyelftools`, `hjson` and `mako`. It verifies the decoded
+VMEM body against the ELF and writes `test_rom.elf.romcheck`; it does not calculate
+or replace the stored expected digest. The explicit N/S configuration above is
+for the current public test-image producer. The ROM specification names the prefix
+but leaves its N/S split unspecified. A different image configuration must supply
+its own documented settings. Missing checker input stops as **not modelled**.
+
+Both standalone and DPI loaders look for `<rom ELF>.romcheck`. The standalone
+`--rom-checker` option can select a different path. Then run:
 
 ```sh
 mkdir -p build/run
@@ -82,6 +99,7 @@ hardware check. Read the reason in the run output before interpreting a result.
 |---|---|
 | `eg2sim.cc` | Standalone board setup, command-line options, the run and its report |
 | `eg2_image.{h,cc}` | ELF loading and symbols, RRAM images, OTP loading and persistence |
+| `eg2_rom_image.h`, `tools/prepare_rom_check.py` | Independent stored ROM checker input, including integrity bits and expected digest |
 | `eg2_elf.h` | Validated ELF32 reader shared by the standalone and DPI loaders |
 | `eg2_transaction.h` | Contiguous TLM payload validation and overflow-safe range checks |
 | `eg2_stimulus.{h,cc}` | Triggered stimulus descriptions, parsing and image-symbol expansion |
@@ -157,7 +175,7 @@ compatibility alias for bank 0. The same names work for standalone stimuli and
 ## Adding an IP model
 
 1. Write the class in `ip/`, derived from `Eg2IpModel` (`eg2_ip_model.h`), from the IP's
-   documentation. Identify any RTL-derived exception explicitly in a comment.
+   documentation. Do not use RTL or observed chip values to fill missing rules.
    Stop on an unspecified required outcome and record the documentation question.
 2. In its constructor, take its registers by name (`reg("CTRL")`) and mark those it keeps up to
    date with `set_modelled`.
@@ -260,3 +278,8 @@ delay a memory access). Earl Grey 2 stays the default board (`--board earlgrey`)
 
 `eg2sim --otp-out <file>` writes the OTP at the end of the run as a `.24.vmem` image (16 data
 bits and 6 ECC bits per word), which a later run can load with `--otp`.
+
+The [fidelity review](docs/fidelity-review.md) records the independent ROM input,
+shared shadow protocol, keymgr documentation stops and unified OTP controller,
+including every changed verdict in the 535-image comparisons. A build or unit
+test pass is not a claim that the firmware suite or all hardware behavior passes.

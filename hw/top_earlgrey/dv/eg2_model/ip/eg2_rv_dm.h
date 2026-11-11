@@ -264,7 +264,7 @@ class Eg2RvDm : public Eg2IpModel {
     // otp_ctrl_mmap.hjson HW_CFG1 has variant "Buffered" and contains DIS_RV_DM_LATE_DEBUG;
     // rv_dm theory_of_operation.md "Late Debug Enable Mechanism" samples that value at reset.
     auto *o = dynamic_cast<Eg2OtpCtrl *>(sys_.model("otp_ctrl.core"));
-    dis_late_debug_ = o && o->byte(kDisRvDmLateDebug) == 0x96;  // kMuBi8True
+    dis_late_debug_ = o && (o->hw_cfg_word(kDisRvDmLateDebug) & 0xff) == 0x96;  // kMuBi8True
   }
   static std::string word_name(bool pb, unsigned i) {
     return (pb ? "PROGRAM_BUFFER_" : "DATAADDR_") + std::to_string(i);

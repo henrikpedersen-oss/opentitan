@@ -10,6 +10,12 @@
 //        is readable in the STATE window while squeezing (share 1 reads zero: masking is not
 //        modelled); RUN permutes again; DONE clears. STOP / STATE_WRITE / CONTINUE switch
 //        contexts as the programmer's guide describes (the full state is exposed and restored).
+//        CFG and ENTROPY_REFRESH_THRESHOLD use per-field two-write shadowing;
+//        reads/reset cancel staging (util/reggen/README.md). A mismatch raises
+//        recov_operation_err and STATUS.ALERT_RECOV_CTRL_UPDATE_ERR. A successful
+//        CFG update restarts configuration and clears this indication (kmac.hjson,
+//        STATUS); this is separate from CMD.err_processed and ERR_CODE command
+//        errors. Storage fault injection and shadow timing are not modelled.
 //        Entropy (EDN, ENTROPY_SEED) only feeds
 //        masking and is not used. The application interface for keymgr and rom_ctrl is
 //        Eg2Kmac::app_kmac / app_cshake.
@@ -107,6 +113,7 @@ class Eg2Kmac : public Eg2IpModel {
 
   Eg2Kmac(sc_core::sc_module_name n, const eg2_regs::Block &d, uint32_t base)
       : Eg2IpModel(n, d, base) {
+    enable_shadowed_registers();
     cfg_regwen_ = reg("CFG_REGWEN");
     cfg_ = reg("CFG_SHADOWED");
     cmd_ = reg("CMD");
@@ -182,11 +189,21 @@ class Eg2Kmac : public Eg2IpModel {
     Eg2IpModel::on_reset(c);
     phase_ = kIdle;
     error_pending_ = false;
+    shadow_error_ = false;
     clear_state_window();
     update();
   }
 
  protected:
+  void shadow_update(uint16_t r, bool error) override {
+    if (error) {
+      shadow_error_ = true;
+      raise_alert("recov_operation_err");
+    } else if (r == cfg_) {
+      shadow_error_ = false;
+    }
+    update();
+  }
   void reg_write(uint16_t r, uint32_t, uint32_t wdata, uint32_t wmask) override {
     if (r == cmd_) {
       // CMD.err_processed acts while an error-handling state machine is waiting for software
@@ -269,7 +286,7 @@ class Eg2Kmac : public Eg2IpModel {
   bool kmac_en() const { return value(cfg_) & 1; }
 
   void start() {
-    if (phase_ != kIdle) return;
+    if (phase_ != kIdle || shadow_error_) return;
     sponge_.reset(rate());
     bool side = (value(cfg_) >> 12) & 1;
     // KMAC theory of operation "Key invalid error": using an invalid sideloaded key raises
@@ -385,6 +402,7 @@ class Eg2Kmac : public Eg2IpModel {
       case kStopped: st |= 8u; break;
       case kStateWriting: st |= 16u; break;
     }
+    if (shadow_error_) st |= 1u << 29;
     set_value(status_, st);
     set_value(cfg_regwen_, phase_ == kIdle ? 1u : 0u);
     set_intr_level("fifo_empty", false);
@@ -400,7 +418,7 @@ class Eg2Kmac : public Eg2IpModel {
 
  private:
   bool side_valid_ = false;
-  bool error_pending_ = false;
+  bool error_pending_ = false, shadow_error_ = false;
   uint32_t side_key_[8] = {};
 };
 

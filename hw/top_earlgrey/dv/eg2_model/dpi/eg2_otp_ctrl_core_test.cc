@@ -17,6 +17,7 @@
 #include "../ip/eg2_otp_ctrl_core.h"
 
 namespace {
+using namespace eg2_model;
 
 using C = Eg2OtpCtrlCore;
 int fails = 0, checks = 0;
@@ -32,6 +33,8 @@ void check(bool ok, const std::string &what) {
 
 struct Port : Eg2OtpCtrlPort {
   int done = 0, errors = 0;
+  std::string stop_reason;
+  void unmodelled(const std::string &s) override { stop_reason = s; }
   std::map<std::string, int> alerts;
   bool seed_rw = true, seed_hw = true, rma = false, byp = false;
   void intr(unsigned bit) override { (bit ? errors : done)++; }
@@ -89,7 +92,7 @@ void test_init_and_rw() {
   check((d.status() & kDaiError) && d.port.errors == 1, "WriteBlank: DAI_ERROR and otp_error");
   check(d.rd(kCreatorSwCfg) == C::kNoError && !(d.status() & kDaiError),
         "the next command clears the DAI error");
-  check(d.rdata() == 0x12345679, "WriteBlank keeps the old bits and sets the new ones");
+  check(d.rdata() == 0x12345678, "a request that clears programmed bits is rejected");
   // Access errors.
   check(d.rd(kEg2OtpLcState) == C::kAccessError, "RD LIFE_CYCLE: AccessError");
   check(d.wr(kEg2OtpLcState, 1) == C::kAccessError, "WR LIFE_CYCLE: AccessError");
@@ -118,8 +121,22 @@ void test_init_and_rw() {
   d.port.seed_rw = true;
   check(d.wr(kEg2OtpRmaToken, 1, 0) == C::kNoError, "WR RMA_TOKEN, seed on: allowed");
   // Window.
-  check(d.core.window_read(kCreatorSwCfg, 4, b) && b[0] == 0x79, "window read of a SW partition");
+  check(d.core.window_read(kCreatorSwCfg, 4, b) && b[0] == 0x78, "window read of a SW partition");
   check(!d.core.window_read(kEg2OtpSize, 4, b), "window read beyond the array: error");
+}
+
+// Independent regression for EG2's documented RRAM-backed OTP semantics.
+// The second value matches the low-power test's formerly rejected write.
+void test_monotonic_reprogramming() {
+  Dut d;
+  check(d.wr(kCreatorSwCfg, 0x00010000) == C::kNoError, "RSW first write");
+  check(d.wr(kCreatorSwCfg, 0x04010000) == C::kNoError,
+        "RSW accepts a second write that only sets more bits");
+  check(d.rd(kCreatorSwCfg) == C::kNoError && d.rdata() == 0x04010000,
+        "RSW readback contains both writes' set bits");
+  check(d.wr(kCreatorSwCfg, 0x04010000) == C::kNoError, "RSW same-value write is legal");
+  check(d.wr(kCreatorSwCfg, 0x00010000) == C::kWriteBlankError,
+        "RSW still rejects an attempt to clear an existing bit");
 }
 
 void test_read_lock() {
@@ -230,7 +247,9 @@ void test_zeroize() {
   const Eg2OtpPart &s1 = kEg2OtpParts[kEg2OtpSecret1];
   check(d.cmd(8, kEg2OtpDeviceId) == C::kAccessError, "ZEROIZE a non-zeroizable partition");
   check(d.cmd(8, kEg2OtpNvmAddrKeySeed + 3) == C::kNoError && d.rdata() == 64,
-        "ZEROIZE returns the number of set bits of the 64-bit word");
+        "ZEROIZE stores a diagnostic bit count internally");
+  check(d.port.stop_reason.find("undocumented: OTP ZEROIZE RDATA") == 0,
+        "conflicting ZEROIZE result documentation stops observation");
   check(d.cmd(8, kEg2OtpNvmAddrKeySeed) == C::kNoError && d.rdata() == 64, "ZEROIZE idempotent");
   check(d.cmd(8, eg2_otp_zer_off(s1)) == C::kNoError, "ZEROIZE the marker");
   d.core.power_up();
@@ -322,6 +341,7 @@ void test_lci_and_escalation() {
 
 int main() {
   test_init_and_rw();
+  test_monotonic_reprogramming();
   test_read_lock();
   test_digest_and_lock();
   test_outputs();

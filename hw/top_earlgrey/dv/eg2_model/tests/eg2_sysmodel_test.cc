@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "dpi/eg2_sysmodel.h"
+#include "rom_fixture.h"
 #include "eg2_model_regs.h"
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
@@ -59,8 +60,10 @@ int main() {
     unlink(path);
     return 1;
   }
+  if (!write_rom_fixture(path)) return 1;
   void *model = eg2_sysmodel_create(path, "", "", ".");
   unlink(path);
+  unlink((std::string(path) + ".romcheck").c_str());
   if (!model) {
     std::fprintf(stderr, "create: %s\n", eg2_sysmodel_create_error());
     return 1;

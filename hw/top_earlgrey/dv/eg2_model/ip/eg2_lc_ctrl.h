@@ -275,7 +275,7 @@ class Eg2LcCtrl : public Eg2IpModel {
   bool rma_state() const { return state() == kLcRma; }
   bool escalate_en() const {
     uint32_t s = state();
-    return s == kLcScrap || s == kLcInvalid || s == kLcEscalate;
+    return initialized_ && (s == kLcScrap || s == kLcInvalid || s == kLcEscalate);
   }
 
   void start_of_simulation() override { power_up(); }
@@ -320,18 +320,21 @@ class Eg2LcCtrl : public Eg2IpModel {
   }
 
   void power_up() {
+    // OTP must release its checked lifecycle buffer before LC decodes the state.
+    // Do not feed the temporary pre-decode Invalid value back as an escalation.
+    initialized_ = false;
     post_transition_ = false;
     escalated_ = false;
     Eg2OtpCtrl *o = otp();
     state_dec_ = kLcInvalid;
     count_ = 31;
     if (o) {
-      decode(o);
+      if (o->lc_data().valid) decode(o);
       bool personalized = o->partition_locked(kEg2OtpSecret2);
       set_value(id_, personalized ? 0x55555555u : 0u);
       for (uint16_t i = 0; i < 8; ++i) {
-        set_value(uint16_t(dev_id_ + i), o->word(kEg2OtpDeviceId + 4 * i));
-        set_value(uint16_t(manuf_ + i), o->word(kEg2OtpManufState + 4 * i));
+        set_value(uint16_t(dev_id_ + i), o->hw_cfg_word(kEg2OtpDeviceId + 4 * i));
+        set_value(uint16_t(manuf_ + i), o->hw_cfg_word(kEg2OtpManufState + 4 * i));
       }
     }
     set_value(rev0_, 0x40010010u);
@@ -340,6 +343,7 @@ class Eg2LcCtrl : public Eg2IpModel {
     if (state_dec_ != kLcInvalid) st |= 0x2;  // READY
     else st |= 1u << 9;                       // STATE_ERROR
     set_value(status_, st);
+    initialized_ = true;
     publish();
     if (!cpu_en()) {
       sys_.halt_core("lc_ctrl", "lc_cpu_en off in life cycle state " + std::to_string(state()));
@@ -358,14 +362,14 @@ class Eg2LcCtrl : public Eg2IpModel {
     // The transition count.
     int k = -1;
     bool zero = true;
-    for (int j = 0; j < 24; ++j) zero = zero && o->half(kEg2OtpLcTransitionCnt + 2 * j) == 0;
+    for (int j = 0; j < 24; ++j) zero = zero && o->lc_data().count[j] == 0;
     if (zero) {
       k = 0;
     } else {
       for (int n = 1; n <= 24 && k < 0; ++n) {
         bool ok = true;
         for (int j = 0; j < 24 && ok; ++j) {
-          ok = o->half(kEg2OtpLcTransitionCnt + 2 * j) == (j < n ? kLcD[j] : kLcC[j]);
+          ok = o->lc_data().count[j] == (j < n ? kLcD[j] : kLcC[j]);
         }
         if (ok) k = n;
       }
@@ -375,7 +379,7 @@ class Eg2LcCtrl : public Eg2IpModel {
     for (int t = 0; t < 21 && s < 0; ++t) {
       bool ok = true;
       for (int i = 0; i < 20 && ok; ++i) {
-        uint16_t w = o->half(kEg2OtpLcState + 2 * i);
+        uint16_t w = o->lc_data().state[i];
         char c = kLcStateWords[t][i];
         ok = w == (c == '0' ? 0 : c == 'A' ? kLcA[i] : kLcB[i]);
       }
@@ -446,24 +450,31 @@ class Eg2LcCtrl : public Eg2IpModel {
     return true;
   }
 
-  bool write_otp_state(uint32_t s) {
+  bool write_otp_state(uint32_t s, bool program = false) {
     Eg2OtpCtrl *o = otp();
     if (!o || s > kLcScrap) return false;
-    for (int i = 0; i < 20; ++i) {
+    uint16_t words[44];
+    auto previous = o->lc_data();
+    for (unsigned j = 0; j < 24; ++j) words[j] = previous.count[j];
+    for (unsigned i = 0; i < 20; ++i) {
       char t = kLcStateWords[s][i];
-      o->set_half(kEg2OtpLcState + 2 * i, t == '0' ? 0 : t == 'A' ? kLcA[i] : kLcB[i]);
+      words[24 + i] = t == '0' ? 0 : t == 'A' ? kLcA[i] : kLcB[i];
+      if (!program) o->set_half(kEg2OtpLcState + 2 * i, words[24 + i]);
     }
-    return true;
+    return !program || o->lci_program(words);
   }
 
-  bool write_otp_count(uint32_t count) {
+  bool write_otp_count(uint32_t count, bool program = false) {
     Eg2OtpCtrl *o = otp();
     if (!o || count > 24) return false;
-    for (int j = 0; j < 24; ++j) {
-      o->set_half(kEg2OtpLcTransitionCnt + 2 * j,
-                  count == 0 ? 0 : j < int(count) ? kLcD[j] : kLcC[j]);
+    uint16_t words[44];
+    auto previous = o->lc_data();
+    for (unsigned i = 0; i < 20; ++i) words[24 + i] = previous.state[i];
+    for (unsigned j = 0; j < 24; ++j) {
+      words[j] = count == 0 ? 0 : j < count ? kLcD[j] : kLcC[j];
+      if (!program) o->set_half(kEg2OtpLcTransitionCnt + 2 * j, words[j]);
     }
-    return true;
+    return !program || o->lci_program(words);
   }
 
   void transition(uint32_t tgt_raw, const std::vector<uint8_t> &token, bool volatile_unlock) {
@@ -494,10 +505,7 @@ class Eg2LcCtrl : public Eg2IpModel {
       // theory_of_operation.md, "Life Cycle Transition Count": "Upon each life cycle transition
       // attempt, the life cycle controller FIRST increments the transition counter before
       // initiating any token hashing and comparison operations."
-      ++count_;
-      for (int j = 0; j < 24; ++j) {
-        o->set_half(kEg2OtpLcTransitionCnt + 2 * j, j < int(count_) ? kLcD[j] : kLcC[j]);
-      }
+      bool count_ok = write_otp_count(++count_, true);
       int tok = (rep5(to) == tgt_raw && to <= kLcScrap) ? rule(state_dec_, to) : int(kIllegal);
       bool otp_ok = true;
       // device_life_cycle/README.md, "Life Cycle Encoding": "when OTP states are transitioned
@@ -506,7 +514,10 @@ class Eg2LcCtrl : public Eg2IpModel {
         char f = kLcStateWords[state_dec_][i], t = kLcStateWords[to][i];
         otp_ok = otp_ok && (f == t || f == '0' || (f == 'A' && t == 'B'));
       }
-      if (tok == kIllegal || !otp_ok) {
+      if (!count_ok) {
+        st |= 1u << 8;
+        raise_alert("fatal_prog_error");
+      } else if (tok == kIllegal || !otp_ok) {
         st |= 1u << 5;
         sys_.note("lc_ctrl: rejected illegal transition " + std::to_string(state_dec_) + " -> " +
                   std::to_string(to));
@@ -540,9 +551,13 @@ class Eg2LcCtrl : public Eg2IpModel {
           st |= 1u << 7;
           sys_.note("lc_ctrl: RMA transition failed because the NVM wipe failed");
         } else {
-          write_otp_state(to);
-          st |= 1u << 3;
-          sys_.note("lc_ctrl: programmed OTP life-cycle state " + std::to_string(to));
+          if (write_otp_state(to, true)) {
+            st |= 1u << 3;
+            sys_.note("lc_ctrl: programmed OTP life-cycle state " + std::to_string(to));
+          } else {
+            st |= 1u << 8;
+            raise_alert("fatal_prog_error");
+          }
         }
       }
     }
@@ -563,6 +578,7 @@ class Eg2LcCtrl : public Eg2IpModel {
       id_, rev0_, rev1_, dev_id_, manuf_;
   uint32_t state_dec_ = kLcInvalid, count_ = 31;
   bool post_transition_ = false, escalated_ = false, program_error_ = false;
+  bool initialized_ = false;
   std::vector<uint8_t> raw_unlock_hash_, auto_test_unlock_token_;
 };
 
