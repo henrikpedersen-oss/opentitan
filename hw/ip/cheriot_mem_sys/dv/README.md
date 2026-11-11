@@ -15,6 +15,8 @@
 
 ## Design features
 For detailed information on the CHERIoT memory subsystem design features, please see the [CHERIoT memory subsystem design specification](../README.md).
+The combined subsystem and revocation verification plan is in the `eg2_top_verification`
+harness repository at `test-specifications/cheriot_mem_sys_revocation_verification_spec.md`.
 
 ## Testbench architecture
 This is a UVM testbench built on OpenTitan's [CIP testbench architecture](../../../dv/sv/cip_lib/README.md).
@@ -129,6 +131,27 @@ The former `cms` bench supplied no SVA beyond the small core-interface checks no
 
 The CIP covergroups (CSR, interrupt and alert) are collected as well.
 
+#### Code and assertion coverage measurement
+
+The block-local `cov/cheriot_mem_sys.ccf` enables Xcelium's
+`set_parameterized_module_coverage -type_parameters_only`. Without it, `COVUTP` warns that
+the seven RTL modules with `parameter type addr_t` lack code coverage. Both ordinary and
+`cover_reg_top` builds select this CCF; shared OpenTitan CCFs remain unchanged. Type-only
+specialization retains compatible type names across the default and `cms_map` address maps.
+Every merge must still be checked for conflicts, dropped items and dropped runs.
+
+The same block configuration selects internal-net toggles for those seven modules and FSM
+arcs. Report block, branch, statement, expression, toggle and FSM coverage separately, with
+explicit state/transition/arc counts. N/A means no scored items, not 100%. Report the CMS RTL
+types separately from the cumulative hierarchy containing shared primitives. Older percentages
+collected without parameterized-module coverage are not subsystem code-coverage measurements.
+
+`core_access_cg.cp_mode` samples an integral four-bit value with 16 individual encoding bins;
+operation crosses use the separate CHERIoT/ePMP/invalid classification. Successful partial NVM
+writes and TBRE's locally generated write-response integrity fault are explicitly ignored,
+with source comments explaining why they are unreachable through the external interfaces.
+Assertion reports distinguish original macro-name presence from recorded finishes and failures.
+
 ### Self-checking strategy
 #### Scoreboard
 `cheriot_mem_sys_scoreboard` maintains the RAL and compares observed responses with predictions
@@ -230,20 +253,27 @@ list consumed across the tests and does not repeat one seed for the whole regres
 
 The former standalone `dv/cms` flow is retired after consolidation; use the UVM testplan above.
 
-The frozen consolidation snapshot on RTL `cde6b0a7e0` was validated at seeds 1110 and 1111 on 2026-11-11:
-28 of 30 feature tests pass at each seed; the intentional checker twin fails as intended and
-`err_cmd_intg` reproduces CMS-NVM-CMD-INTG. All 11 corruption twins at each seed hit their
-intended comparisons. The latency/backpressure gaps and seven TRVK fault probes remain
-classified gaps/failures, including four busy-watchdog outcomes. The 10 common tests pass.
-The harness evidence is in `evidence/cms-restructure-1111/results.md`. These measurements predate
-the separate NVM command-integrity fix `269afde566` and do not validate that newer RTL commit.
+The corrected measurement on `4687cbfed2`, containing the WTRC command-integrity fix
+`269afde566`, was run on 2026-11-11: all 29 functional feature tests pass at each of seeds 1110
+and 1111, the intentional checker twin fails as intended, and all ten common tests pass.
+`err_cmd_intg` changes from failing to passing at both seeds. Historical runs on `cde6b0a7e0`
+remain in the harness's `evidence/cms-restructure-1111`; the corrected evidence is in
+`evidence/cms-coverage-1111` and `test-reports/cheriot_mem_sys_verification_report.md`.
 
-The merged passing-feature coverage samples all 18 CMS groups (452/495 graded bins hit).
-It is not sign-off: two residual bins are unreachable from the current external ports,
-Xcelium prunes invalid-mode bins from the enum-valued coverpoint, and only 13 of the 88 RTL
-assertion macro names appear in coverage records. All four core-interface assertions and
-three cover properties are covered. See the harness `coverage-analysis.md` for measurement
-fixes and proposed directed tests; these proposals are not part of the frozen simulation sources.
+The 68 passing databases merge with no conflicts or dropped items/runs. All 18 CMS groups
+sample: 485/532 graded bins hit, 47 unhit; all 16 raw mode encodings hit. The two documented
+impossible functional bins are explicitly ignored. All seven type-parameterized modules now
+have code coverage: their combined block/branch/statement/expression/toggle/FSM percentages
+are 98.71/97.36/98.29/94.12/74.67/92.31. Detailed counts, scope and tool limits are in the report.
+Of 88 original RTL assertion macro names, 87 are present and 86 record finishes, with no
+failures. `UnknownArbImpl_A` is unelaborated; the register write-enable fault property lacks a
+fault campaign. All four interface assertions and three witnesses record finishes.
+
+This is not sign-off. The shared CIP interrupt groups lack sampling hooks despite passing
+interrupt tests; their 31 unhit bins are reported separately. Shared outstanding-depth bins,
+fixed/bounded toggles and event expressions need reachability review. The seven proposed test
+families target the 47 CMS functional holes and have not been started. REQ_CMS_01 and
+REQ_CMS_02 remain known RTL gaps, not passes.
 
 For the gap and negative campaigns (their nonzero exits require classification, not a green pass):
 

@@ -4,7 +4,8 @@ A C++ model of OpenTitan's CHERIoT memory subsystem (`cheriot_mem_sys`) for its 
 written from the documents, never from the RTL: the theory of operation, the programmer's guide, the
 registers, the CHERIoT ISA, and the Requirements Review's detailed requirements (REQ_TF, REQ_WTRC,
 REQ_TAG, REQ_TBRE, REQ_META, REQ_ALT). Unresolved behavior must stay explicitly unjudged or stop as undocumented; a DV interpretation
-is not an independent specification. Q43 is one such open case. The plan is in eg2_top_verification's `cheriot_mem_sys_verification_spec.md`.
+is not an independent specification. Q43 is one such open case. The combined plan is in
+eg2_top_verification's `test-specifications/cheriot_mem_sys_revocation_verification_spec.md`.
 
 | File | What |
 |---|---|

@@ -239,7 +239,10 @@ interface cheriot_tbre_mover_fcov_if (
       wildcard bins read_err      = {4'b1???};
       wildcard bins read_tl_intg  = {4'b?1??};
       wildcard bins write_tl      = {4'b??1?};
-      wildcard bins write_tl_intg = {4'b???1};
+      // cheriot_tbre's TagOnlyWrites filter locally constructs the write
+      // response and regenerates both integrity fields (gen_local_rsp).
+      // External meta faults cannot corrupt this local-link integrity.
+      wildcard ignore_bins write_tl_intg = {4'b???1};
     }
   endgroup
 

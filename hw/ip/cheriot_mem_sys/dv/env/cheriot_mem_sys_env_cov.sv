@@ -5,6 +5,7 @@
 // Functional coverage of the accesses the scoreboard sees.
 class cheriot_mem_sys_env_cov extends cip_base_env_cov #(.CFG_T(cheriot_mem_sys_env_cfg));
   `uvm_component_utils(cheriot_mem_sys_env_cov)
+  typedef bit [3:0] mode_bits_t;
 
   // Every kind of core access, in every mode, to every region, with its outcome.
   covergroup core_access_cg with function sample(cheriot_mem_sys_core_item it, region_e region);
@@ -20,10 +21,20 @@ class cheriot_mem_sys_env_cov extends cip_base_env_cov #(.CFG_T(cheriot_mem_sys_
     }
     cp_aligned: coverpoint (it.addr[2:0] == 0);
     cp_tag: coverpoint it.tag;
-    cp_mode: coverpoint it.ena {
+    // Cast away the enum type: Xcelium otherwise prunes all non-enumerator
+    // values (OBINVE), even though mode_gating drives all 16 bit encodings.
+    cp_mode: coverpoint mode_bits_t'(it.ena) {
       bins cheriot = {prim_mubi_pkg::MuBi4True};
       bins epmp    = {prim_mubi_pkg::MuBi4False};
-      bins invalid = {0, 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15};
+      bins invalid[] = {0, 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15};
+    }
+    // Operation crosses distinguish the three documented mode classes; the
+    // encoding point above separately proves every invalid encoding was used.
+    cp_mode_class: coverpoint (it.ena == prim_mubi_pkg::MuBi4True ? 0 :
+                              it.ena == prim_mubi_pkg::MuBi4False ? 1 : 2) {
+      bins cheriot = {0};
+      bins epmp = {1};
+      bins invalid = {2};
     }
     cp_region: coverpoint region {
       bins sram     = {RegionSram};
@@ -35,7 +46,7 @@ class cheriot_mem_sys_env_cov extends cip_base_env_cov #(.CFG_T(cheriot_mem_sys_
     cp_rtag: coverpoint it.rtag iff (it.opcode == tlul_pkg::Get);
 
     // A store with each tag, and a load with and without the hint, everywhere, in each mode.
-    cx_op_tag_region_mode: cross cp_opcode, cp_tag, cp_region, cp_mode {
+    cx_op_tag_region_mode: cross cp_opcode, cp_tag, cp_region, cp_mode_class {
       // The core cannot produce a tagged partial write (WTRC fault tests are separate).
       ignore_bins tagged_partial = binsof(cp_opcode.put_partial) && binsof(cp_tag) intersect {1};
     }
@@ -43,15 +54,20 @@ class cheriot_mem_sys_env_cov extends cip_base_env_cov #(.CFG_T(cheriot_mem_sys_
       ignore_bins reads = binsof(cp_opcode.get);
     }
     // A capability load (hinted word) returning each tag in each tagged region.
-    cx_load_rtag_region: cross cp_rtag, cp_region, cp_mode {
+    cx_load_rtag_region: cross cp_rtag, cp_region, cp_mode_class {
       // Tag-1 responses require strict CHERIoT mode.
       ignore_bins tag_off = binsof(cp_rtag) intersect {1} &&
-                            (binsof(cp_mode.epmp) || binsof(cp_mode.invalid));
+                            (binsof(cp_mode_class.epmp) || binsof(cp_mode_class.invalid));
       ignore_bins untagged = binsof(cp_region) intersect {RegionUntagged, RegionError};
     }
     cx_op_err_region: cross cp_opcode, cp_err, cp_region {
       // RegionError is the bench memory's documented always-error region.
       ignore_bins error_region_success = binsof(cp_region.error) && binsof(cp_err) intersect {0};
+      // A successful partial NVM store cannot happen: the NVM is read-only on the interconnect
+      // (partial capability stores are refused by the WTRC; plain ones by the read-only NVM, the
+      // bench's start_mem_side ro range).
+      ignore_bins nvm_partial_success = binsof(cp_opcode.put_partial) &&
+          binsof(cp_region.nvm) && binsof(cp_err) intersect {0};
     }
   endgroup
 

@@ -48,6 +48,11 @@
   overrides: [{
     name: default_xcelium_cov_cfg_file
     value: "{proj_root}/hw/ip/cheriot_mem_sys/dv/cov/cheriot_mem_sys.ccf"
+  }, {
+    // Common CSR tests otherwise use the shared register-only CCF, omitting
+    // type-parameterized coverage and making their type names incompatible.
+    name: cover_reg_top_xcelium_cov_cfg_file
+    value: "{proj_root}/hw/ip/cheriot_mem_sys/dv/cov/cheriot_mem_sys.ccf"
   }]
 
   // List of test specifications.
