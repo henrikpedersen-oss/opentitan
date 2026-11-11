@@ -17,7 +17,24 @@
 For detailed information on the CHERIoT memory subsystem design features, please see the [CHERIoT memory subsystem design specification](../README.md).
 
 ## Testbench architecture
-The CHERIoT memory subsystem testbench has been constructed based on the [CIP testbench architecture](../../../dv/sv/cip_lib/README.md).
+This is a UVM testbench built on OpenTitan's [CIP testbench architecture](../../../dv/sv/cip_lib/README.md).
+Sequences generate stimulus, agents drive and monitor the interfaces, a reference-model component
+predicts responses, and a scoreboard compares them. The shared C++ model is reached through DPI;
+it does not replace the UVM agents or scoreboard. The separate `cms` bench described below does
+not use UVM.
+
+```mermaid
+flowchart LR
+  S[Sequences] --> A[Agent drivers]
+  A --> D[DUT]
+  D --> M[Passive monitors]
+  A --> I[Device inputs]
+  I --> M
+  M --> R[Reference model via DPI]
+  M --> C[Scoreboard: observed responses]
+  R --> E[Expected responses and alerts]
+  E --> C
+```
 
 ### Block diagram
 ![Block diagram](./doc/tb.svg)
@@ -30,6 +47,7 @@ In addition, it instantiates the following interfaces, connects them to the DUT 
 * `cheriot_mem_sys_core_if` on the core data port: TL-UL, the tag sideband (`cored_tag_h2d_i`, `cored_tag_d2h_o`) and `cheriot_ena_i`
 * TileLink host interfaces on the revocation bitmap ports (`corerevbm_tl`, `revbm_tl_d`)
 * TileLink device interfaces on the host ports towards the main crossbar (`cored_tl_h`, `tbre_tl_h`) and the meta SRAM (`meta_sram_tl`)
+* Optional `cheriot_mem_sys_meta_if` debugging taps (`+cms_meta_trace`): `uvm_info` prints only
 * Interrupts ([`pins_if`](../../../dv/sv/common_ifs/README.md))
 * [Alerts interface](../../../dv/sv/alert_agent/README.md)
 
@@ -64,7 +82,7 @@ The sequences reside in `hw/ip/cheriot_mem_sys/dv/env/seq_lib`, one per test, ea
 They extend `cheriot_mem_sys_base_vseq`, which brings the environment up (reset, the memories preloaded, the memory devices started) and provides the operations the sequences are written in:
 * core accesses (`core_store`, `core_load`, `core_store_cap`, `core_load_cap`, `core_issue`), each a `cheriot_mem_sys_core_access_seq` on the core agent
 * bitmap accesses on the two bitmap agents, register accesses through the RAL, and malformed register accesses on the `regs` agent
-* sweeps (`tbre_sweep`, `tbre_wait_idle`, `tbre_wait_intr`), resets, fault injection, and the checks (`check_tags`, `expect_alert`, `csr_expect`)
+* sweeps (`tbre_sweep`, `tbre_wait_idle`, `tbre_wait_intr`), resets and fault injection
 
 `cheriot_mem_sys_common_vseq` runs the common CSR, alert, interrupt and TL-UL tests.
 
@@ -77,12 +95,40 @@ The CIP covergroups (CSR, interrupt and alert) are collected as well.
 
 ### Self-checking strategy
 #### Scoreboard
-`cheriot_mem_sys_scoreboard` keeps the RAL up to date from the `regs` port.
-In the feature tests the C reference model of the subsystem (`dv/cms/cmodel`, written from the design specification, through DPI) is the checker.
-Every completed access on the core data port, both bitmap ports and the `regs` port goes to the model, which says whether the response (data, tag, error) is allowed; the crossbar's error answers come from the `cored_tl_h` device agent.
-At the end of the test the meta SRAM is compared with the model's image, word by word.
-In the common tests the RAL checks the register reads; the registers the revocation engine changes (`intr_state`, `tbre_regwen`, `tbre_status`, `tbre_epoch`) are not compared there.
-The tests judge `fatal_fault` themselves (`expect_alert`, `expect_no_alert`) from the alerts the scoreboard counts.
+`cheriot_mem_sys_scoreboard` maintains the RAL and compares observed responses with predictions
+from `cheriot_mem_sys_ref_model`. The latter uses the specification-based C++ model in
+[`cms/cmodel`](cms/cmodel/README.md). The feature tests enable this model; common CIP tests use
+the RAL checks. Registers changed autonomously by the revocation engine are excluded from the
+common RAL comparison.
+
+The core and bitmap comparisons check errors, data and response integrity. Incoming memory faults
+are inputs to the subsystem, so a forwarded integrity fault must retain its syndrome rather than
+be repaired or changed. Predictions, requester ownership and every check depend only on external
+ports and independent model state. Outstanding external core/bitmap requests and the programmed
+sweep determine the possible recipients of an injected meta-memory fault. If two requests overlap
+and the external ports cannot identify the recipient, each retains all documented alternatives:
+core error/tag and sweep error/tag may each be either outcome. Unhinted and unaligned loads do
+not look up a tag and cannot acquire a sweep's tag fault. Counter alternatives and ambiguous writes
+are retained in model state, without learning which outcome the DUT chose.
+
+The internal `cheriot_mem_sys_meta_monitor` has no analysis port and performs no checks. With
+`+cms_meta_trace` it only prints what the DUT routed with `uvm_info`; with the option absent it is
+not created. Nothing expected, owned or checked may depend on these taps.
+
+A START write takes
+effect in the model when accepted, including a byte-enabled write; a delayed acknowledgement must
+not erase a fault that the running sweep has already encountered.
+
+Open tags retain both values in the independent model state. A separate relational check requires
+stable repeated reads between possible mutations and equal tags across an aligned read and its
+following unaligned response. Observations never resolve the independently predicted memory.
+A device error aborts a tag update and preserves the old tag. **Q43 remains open:** after an
+integrity-only RMW fault, the write-back and resulting tag are not judged as either abort or commit.
+
+The reference model predicts alerts and the scoreboard matches them, including across reset.
+At quiet points and test end the meta SRAM is compared word by word. Quiet means no monitored
+transaction remains outstanding, rather than a fixed delay since the last request. An unexplained
+response, alert or unfinished transaction is a failure.
 
 #### Assertions
 * TLUL assertions: The `sva/cheriot_mem_sys_bind.sv` binds the `tlul_assert` [assertions](../../tlul/doc/TlulProtocolChecker.md) to the IP to ensure TileLink interface protocol compliance on every port: the `regs`, `cored_tl_d`, `corerevbm_tl` and `revbm_tl_d` device ports and the `cored`, `tbre` and `meta_sram` host ports
@@ -102,8 +148,14 @@ Please take a look at the link for detailed information on the usage, capabiliti
 Here's how to run the smoke test, and all the feature tests:
 ```console
 $ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i cheriot_mem_sys_tag_smoke
-$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i feature
+$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i feature --fixed-seed 1110
+$ dvsim $REPO_TOP/hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson -i feature --fixed-seed 1111
 ```
+
+The feature regression includes `cheriot_mem_sys_cmodel_random_inject_fail`, which deliberately
+corrupts a compared data bit and must fail at that comparison. Do not count a build error or an
+unrelated failure as detection. `--fixed-seed` applies a seed to every test; `--seeds` supplies a
+list consumed across the tests and does not repeat one seed for the whole regression.
 
 ## Testplan
 [Testplan](../data/cheriot_mem_sys_testplan.hjson)

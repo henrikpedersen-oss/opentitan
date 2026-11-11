@@ -110,6 +110,9 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
     it       = in_flight[d2h.d_source].pop_front();
     it.rdata = d2h.d_data;
     it.err   = d2h.d_error;
+    it.d_opcode = d2h.d_opcode;
+    it.d_size   = d2h.d_size;
+    it.d_user   = d2h.d_user;
     it.rtag  = cfg.vif.mon_cb.tag_d2h;
     it.done  = 1'b1;
     `uvm_info(`gfn, it.convert2string(), UVM_HIGH)

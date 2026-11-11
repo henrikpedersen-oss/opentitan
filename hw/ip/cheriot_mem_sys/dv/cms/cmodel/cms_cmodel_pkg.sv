@@ -19,6 +19,12 @@ package cms_cmodel_pkg;
   import "DPI-C" function chandle cms_new(int map);  // 0 Earl Grey, 1 the cms bench's small map
   import "DPI-C" function void cms_free(chandle h);
   import "DPI-C" function void cms_reset(chandle h);
+  // Ambiguous ownership is derived from external requests, never DUT-internal taps.
+  import "DPI-C" function void cms_open_core_fault(chandle h, int unsigned addr, int write);
+  import "DPI-C" function void cms_open_bitmap_write(chandle h, int unsigned off, int unsigned data);
+  import "DPI-C" function int cms_sweep_may_access_meta(chandle h, int unsigned off);
+  import "DPI-C" function void cms_sweep_meta_fault(chandle h, int unsigned off, int optional);
+  import "DPI-C" function int cms_csr_read_allowed(chandle h, int unsigned off, int unsigned data);
   import "DPI-C" function void cms_set_mode(chandle h, int ena);
   import "DPI-C" function void cms_dut_reset(chandle h);   // registers back, memories kept
   import "DPI-C" function void cms_open_tag(chandle h, int unsigned addr);
@@ -46,6 +52,12 @@ package cms_cmodel_pkg;
                                                 output int unsigned rdata,
                                                 output int unsigned rdata_care,
                                                 output int rtag_set);
+  // Checks only cross-response tag relations; it does not update predicted memory.
+  import "DPI-C" function int cms_check_core_tag(chandle h, int op, int unsigned addr, int size,
+      int mask, int unsigned wdata, int tag, int ena, int host_err, int meta_err,
+      int actual_err, int actual_tag);
+
+  // update_core meta_err: 0 success, 1 definite fault, 2 either (external overlap).
   import "DPI-C" function void cms_update_core(chandle h, int op, int unsigned addr, int size,
                                                int mask, int unsigned wdata, int tag, int ena,
                                                int host_err, int meta_err);

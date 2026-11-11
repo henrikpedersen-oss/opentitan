@@ -13,12 +13,14 @@ filesets:
       - lowrisc:dv:cheriot_mem_sys_cmodel
       - lowrisc:dv:cheriot_mem_sys_core_agent
     files:
+      - cheriot_mem_sys_meta_if.sv
       - cheriot_mem_sys_env_pkg.sv
       - cheriot_mem_sys_env_cfg.sv: {is_include_file: true}
       - cheriot_mem_sys_env_cov.sv: {is_include_file: true}
       - cheriot_mem_sys_exp_items.sv: {is_include_file: true}
       - cheriot_mem_sys_mem_backdoor.sv: {is_include_file: true}
       - cheriot_mem_sys_virtual_sequencer.sv: {is_include_file: true}
+      - cheriot_mem_sys_meta_monitor.sv: {is_include_file: true}
       - cheriot_mem_sys_ref_model.sv: {is_include_file: true}
       - cheriot_mem_sys_scoreboard.sv: {is_include_file: true}
       - cheriot_mem_sys_env.sv: {is_include_file: true}

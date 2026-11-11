@@ -142,6 +142,9 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
         pending.delete(i);
         it.rdata = d2h.d_data;
         it.err   = d2h.d_error;
+    it.d_opcode = d2h.d_opcode;
+    it.d_size   = d2h.d_size;
+    it.d_user   = d2h.d_user;
         it.rtag  = cfg.vif.host_cb.tag_d2h;
         it.done  = 1'b1;
         seq_item_port.put_response(it);

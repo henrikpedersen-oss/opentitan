@@ -163,6 +163,7 @@ package cheriot_mem_sys_env_pkg;
   `include "cheriot_mem_sys_exp_items.sv"
   `include "cheriot_mem_sys_mem_backdoor.sv"
   `include "cheriot_mem_sys_virtual_sequencer.sv"
+  `include "cheriot_mem_sys_meta_monitor.sv"
   `include "cheriot_mem_sys_ref_model.sv"
   `include "cheriot_mem_sys_scoreboard.sv"
   `include "cheriot_mem_sys_env.sv"

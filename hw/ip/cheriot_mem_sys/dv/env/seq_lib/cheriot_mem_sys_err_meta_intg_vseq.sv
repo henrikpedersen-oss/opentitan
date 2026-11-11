@@ -27,8 +27,17 @@ class cheriot_mem_sys_err_meta_intg_vseq extends cheriot_mem_sys_base_vseq;
     // An integrity fault on a response to the software bitmap window: the subsystem passes it to
     // the requester; whether it also raises fatal_fault, the documents do not say (the reference
     // model allows it).
-    m_meta_seq.inject(InjRspIntg, MetaRevbmBase, MetaNvmTagBase, InjReads);
-    bitmap_access(0, tlul_pkg::Get, MetaRevbmBase, 2, 0, 0, rsp);
+    bitmap_access(0, tlul_pkg::PutFullData, MetaRevbmBase, 2, 32'h12345678, '1, rsp);
+    for (int unsigned c = 0; c < 3; c++) begin
+      inj_kind_e kind = c == 0 ? InjErr : c == 1 ? InjRspIntg : InjDataIntg;
+      m_meta_seq.inject(kind, MetaRevbmBase, MetaRevbmBase + 4, InjReads);
+      bitmap_access(0, tlul_pkg::Get, MetaRevbmBase, 2, 0, '1, rsp);
+      // Failed writes must leave the old word intact; a corrupted acknowledgement's integrity
+      // does not refuse a write. The following read checks the reference model's state too.
+      m_meta_seq.inject(kind, MetaRevbmBase, MetaRevbmBase + 4, InjWrites);
+      bitmap_access(0, tlul_pkg::PutFullData, MetaRevbmBase, 2, 32'habcd0000 + c, '1, rsp);
+      bitmap_access(0, tlul_pkg::Get, MetaRevbmBase, 2, 0, '1, rsp);
+    end
     do_reset();
   endtask
 

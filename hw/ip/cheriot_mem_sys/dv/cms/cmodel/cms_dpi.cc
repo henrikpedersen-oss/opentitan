@@ -30,6 +30,11 @@ void cms_free(void *h) { delete M(h); }
 void cms_reset(void *h) { M(h)->reset(); }
 void cms_dut_reset(void *h) { M(h)->dut_reset(); }
 void cms_open_tag(void *h, unsigned addr) { M(h)->open_tag(addr); }
+void cms_open_core_fault(void *h, unsigned addr, int write) { M(h)->open_core_fault(addr, write); }
+void cms_open_bitmap_write(void *h, unsigned off, unsigned data) { M(h)->open_bitmap_write(off, data); }
+int cms_sweep_may_access_meta(void *h, unsigned off) { return M(h)->sweep_may_access_meta(off); }
+void cms_sweep_meta_fault(void *h, unsigned off, int optional) { M(h)->sweep_meta_fault(off, optional); }
+int cms_csr_read_allowed(void *h, unsigned off, unsigned data) { return M(h)->csr_read_allowed(off, data); }
 void cms_set_mode(void *h, int ena) { M(h)->set_mode(uint8_t(ena)); }
 
 void cms_backdoor_data(void *h, unsigned addr, unsigned word) { M(h)->backdoor_data(addr, word); }
@@ -61,9 +66,20 @@ void cms_predict_core(void *h, int op, unsigned addr, int size, int mask, unsign
   *err = e.err; *rdata = e.rdata; *rdata_care = e.rdata_care; *rtag_set = e.rtag;
 }
 
+// Compare relations between responses without feeding observed tags into predicted memory.
+int cms_check_core_tag(void *h, int op, unsigned addr, int size, int mask, unsigned wdata, int tag,
+                        int ena, int host_err, int meta_err, int actual_err, int actual_tag) {
+  return done(h, M(h)->check_core_tag(core_req(op, addr, size, mask, wdata, tag, ena, host_err,
+                                              meta_err), actual_err, actual_tag));
+}
+
 void cms_update_core(void *h, int op, unsigned addr, int size, int mask, unsigned wdata, int tag,
                      int ena, int host_err, int meta_err) {
-  M(h)->update_core(core_req(op, addr, size, mask, wdata, tag, ena, host_err, meta_err));
+  if (meta_err == 2) {
+    M(h)->update_core_possible_fault(core_req(op, addr, size, mask, wdata, tag, ena, host_err, 0));
+  } else {
+    M(h)->update_core(core_req(op, addr, size, mask, wdata, tag, ena, host_err, meta_err));
+  }
 }
 
 void cms_predict_bitmap(void *h, int op, unsigned off, int size, int mask, int ena, int *err,

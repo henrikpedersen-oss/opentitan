@@ -21,6 +21,7 @@ class cheriot_mem_sys_env extends cip_base_env #(
   tl_agent                     m_meta_agent;       // device on meta_sram_tl
   cheriot_mem_sys_mem_backdoor m_mem_backdoor;     // the backdoor of the crossbar's memory
   cheriot_mem_sys_ref_model    m_ref_model;
+  cheriot_mem_sys_meta_monitor m_meta_monitor;
 
   `uvm_component_new
 
@@ -43,6 +44,13 @@ class cheriot_mem_sys_env extends cip_base_env #(
     if (cfg.en_cmodel) begin
       m_ref_model = cheriot_mem_sys_ref_model::type_id::create("m_ref_model", this);
       m_ref_model.cfg = cfg;
+    end
+    // Internal taps are optional diagnostics, never inputs to the model or scoreboard.
+    if ($test$plusargs("cms_meta_trace")) begin
+      m_meta_monitor = cheriot_mem_sys_meta_monitor::type_id::create("m_meta_monitor", this);
+      if (!uvm_config_db#(virtual cheriot_mem_sys_meta_if)::get(this, "", "meta_vif",
+                                                               m_meta_monitor.vif))
+        `uvm_info(`gfn, "meta trace interface absent; diagnostic logger disabled", UVM_LOW)
     end
   endfunction
 
@@ -95,14 +103,15 @@ class cheriot_mem_sys_env extends cip_base_env #(
     m_core_agent.monitor.analysis_port.connect(m_ref_model.core_rsp_imp);
     m_core_agent.monitor.analysis_port.connect(m_ref_model.core_fifo.analysis_export);
     m_core_agent.monitor.mode_port.connect(m_ref_model.mode_imp);
-    m_revbm_agent.monitor.a_chan_port.connect(m_ref_model.window_req_imp);
-    m_corerevbm_agent.monitor.a_chan_port.connect(m_ref_model.window_req_imp);
     m_revbm_agent.monitor.d_chan_port.connect(m_ref_model.revbm_fifo.analysis_export);
     m_corerevbm_agent.monitor.d_chan_port.connect(m_ref_model.corerevbm_fifo.analysis_export);
+    regs_monitor.a_chan_port.connect(m_ref_model.csr_req_imp);
     regs_monitor.d_chan_port.connect(m_ref_model.regs_fifo.analysis_export);
     m_cored_h_agent.monitor.d_chan_port.connect(m_ref_model.cored_h_rsp_imp);
     m_tbre_h_agent.monitor.d_chan_port.connect(m_ref_model.tbre_h_rsp_imp);
     m_meta_agent.monitor.d_chan_port.connect(m_ref_model.meta_rsp_imp);
+    m_revbm_agent.monitor.a_chan_port.connect(m_ref_model.window_req_imp);
+    m_corerevbm_agent.monitor.a_chan_port.connect(m_ref_model.core_window_req_imp);
     m_mem_backdoor.analysis_port.connect(m_ref_model.backdoor_imp);
 
     // The scoreboard: what the reference model expects

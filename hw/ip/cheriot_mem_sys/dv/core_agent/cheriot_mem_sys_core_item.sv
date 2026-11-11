@@ -19,6 +19,9 @@ class cheriot_mem_sys_core_item extends uvm_sequence_item;
   bit [31:0]               rdata;
   bit                      rtag;
   bit                      err;
+  tlul_pkg::tl_d_op_e       d_opcode;
+  bit [top_pkg::TL_SZW-1:0] d_size;
+  tlul_pkg::tl_d_user_t     d_user;
 
   // Seen by the monitor at the request's handshake
   bit [top_pkg::TL_AIW-1:0] source;
@@ -49,6 +52,9 @@ class cheriot_mem_sys_core_item extends uvm_sequence_item;
     `uvm_field_int (rdata,   UVM_DEFAULT)
     `uvm_field_int (rtag,    UVM_DEFAULT)
     `uvm_field_int (err,     UVM_DEFAULT)
+    `uvm_field_enum(tlul_pkg::tl_d_op_e, d_opcode, UVM_DEFAULT)
+    `uvm_field_int (d_size,  UVM_DEFAULT)
+    `uvm_field_int (d_user,  UVM_DEFAULT)
     `uvm_field_int (source,  UVM_DEFAULT)
     `uvm_field_enum(prim_mubi_pkg::mubi4_t, ena, UVM_DEFAULT)
     `uvm_field_int (aborted, UVM_DEFAULT)

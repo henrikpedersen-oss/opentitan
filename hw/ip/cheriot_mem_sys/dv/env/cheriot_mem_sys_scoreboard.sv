@@ -6,6 +6,7 @@
 // (cheriot_mem_sys_ref_model, when cfg.en_cmodel is set):
 // - every response on the core data port, the two bitmap ports and the `regs` port (register
 //   reads): the error, the data in the bits the model is sure of, and the tag;
+// - the core response opcode/size and integrity, preserving incoming faults;
 // - fatal_fault: each alert the model expects must come, and no other;
 // - the interrupt pin, at each register read;
 // - the meta SRAM, word by word, whenever the bench is quiet after it changed, and at the end.
@@ -164,8 +165,20 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   protected task compare_core(cheriot_mem_sys_core_item act);
     cheriot_mem_sys_rsp_exp exp;
     bit [31:0]              rdata = act.rdata;
+    tlul_pkg::tl_d2h_t fields = '0;
     core_exp_fifo.get(exp);
     n_core++;
+    fields.d_opcode = act.d_opcode;
+    fields.d_size = act.d_size;
+    fields.d_error = act.err;
+    if (act.d_opcode != (act.is_write() ? tlul_pkg::AccessAck : tlul_pkg::AccessAckData) ||
+        act.d_size != act.size) mismatch("core response opcode or size does not match its request");
+    if ((act.d_user.rsp_intg ^ tlul_pkg::get_rsp_intg(fields)) != exp.rsp_intg_syndrome) begin
+      mismatch($sformatf("%s: response integrity syndrome changed", exp.what));
+    end
+    if ((act.d_user.data_intg ^ tlul_pkg::get_data_intg(act.rdata)) != exp.data_intg_syndrome) begin
+      mismatch($sformatf("%s: data integrity syndrome changed", exp.what));
+    end
     // The _inject_fail test: from the n-th read response on, the first one whose data the model
     // compares is compared with one of the compared bits flipped, so the comparison must fail. (A
     // bit outside rdata_care, such as bit 0 of a byte read in lane 1, would change nothing.)
@@ -191,8 +204,23 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   protected task compare_bitmap(tl_seq_item act,
                                 uvm_tlm_analysis_fifo #(cheriot_mem_sys_rsp_exp) exp_fifo);
     cheriot_mem_sys_rsp_exp exp;
+    tlul_pkg::tl_d2h_t fields = '0;
+    tlul_pkg::tl_d_user_t user_bits = act.d_user;
     exp_fifo.get(exp);
     n_bitmap++;
+    fields.d_opcode = tlul_pkg::tl_d_op_e'(act.d_opcode);
+    fields.d_size = act.d_size;
+    fields.d_error = act.d_error;
+    if (act.d_opcode != (act.is_write() ? tlul_pkg::AccessAck : tlul_pkg::AccessAckData) ||
+        act.d_size != act.a_size) mismatch("bitmap response opcode or size does not match request");
+    if ((user_bits.rsp_intg ^ tlul_pkg::get_rsp_intg(fields)) != exp.rsp_intg_syndrome &&
+        !(exp.intg_optional && (user_bits.rsp_intg ^ tlul_pkg::get_rsp_intg(fields)) == 0)) begin
+      mismatch($sformatf("%s: response integrity syndrome changed", exp.what));
+    end
+    if ((user_bits.data_intg ^ tlul_pkg::get_data_intg(act.d_data)) != exp.data_intg_syndrome &&
+        !(exp.intg_optional && (user_bits.data_intg ^ tlul_pkg::get_data_intg(act.d_data)) == 0)) begin
+      mismatch($sformatf("%s: data integrity syndrome changed", exp.what));
+    end
     compare(exp, act.d_error, act.d_data);
   endtask
 
@@ -210,6 +238,7 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   endtask
 
   protected function void compare(cheriot_mem_sys_rsp_exp exp, bit err, bit [31:0] rdata);
+    if (exp.tag_relation_error != "") mismatch({exp.what, ": ", exp.tag_relation_error});
     if (exp.err_care && err != exp.err) begin
       mismatch($sformatf("%s: d_error %0d, expected %0d", exp.what, err, exp.err));
     end else if (!err && (rdata & exp.rdata_care) != (exp.rdata & exp.rdata_care)) begin

@@ -33,6 +33,8 @@ module tb;
   tl_if tbre_h_tl_if(.clk(clk), .rst_n(rst_n));
   tl_if meta_tl_if(.clk(clk), .rst_n(rst_n));
 
+  cheriot_mem_sys_meta_if meta_route_if(.clk(clk), .rst_n(rst_n));
+
   // dut
   // The feature tests use a small address map (16 KiB SRAM, 8 KiB NVM; build mode cms_map), as
   // they fill and sweep whole regions; Earl Grey 2's otherwise.
@@ -90,6 +92,26 @@ module tb;
     .meta_sram_tl_i       (meta_tl_if.d2h)
   );
 
+  // Debugging taps only: +cms_meta_trace prints what the DUT routed with uvm_info.
+  // No prediction, requester ownership or check may depend on these DUT internals.
+  // The reference model and scoreboard consume only the external ports.
+  assign meta_route_if.tag_h2d[0] = dut.u_cheriot_tag_filter.tl_m_o;
+  assign meta_route_if.tag_d2h[0] = dut.u_cheriot_tag_filter.tl_m_i;
+  assign meta_route_if.tag_h2d[1] = dut.u_cheriot_tbre.tl_m_o;
+  assign meta_route_if.tag_d2h[1] = dut.u_cheriot_tbre.tl_m_i;
+  assign meta_route_if.rmw_h2d = dut.u_cheriot_socket_m1.tl_d_o;
+  assign meta_route_if.rmw_d2h = dut.u_cheriot_socket_m1.tl_d_i;
+  assign meta_route_if.branches_h2d[0] = dut.u_cheriot_access_check_trvk.tl_d_o;
+  assign meta_route_if.branches_d2h[0] = dut.u_cheriot_access_check_trvk.tl_d_i;
+  assign meta_route_if.branches_h2d[1] = dut.u_cheriot_access_check_tags.tl_d_o;
+  assign meta_route_if.branches_d2h[1] = dut.u_cheriot_access_check_tags.tl_d_i;
+  assign meta_route_if.branches_h2d[2] = dut.u_cheriot_access_check_sys.tl_d_o;
+  assign meta_route_if.branches_d2h[2] = dut.u_cheriot_access_check_sys.tl_d_i;
+  assign meta_route_if.branches_h2d[3] = dut.u_cheriot_access_check_tbre.tl_d_o;
+  assign meta_route_if.branches_d2h[3] = dut.u_cheriot_access_check_tbre.tl_d_i;
+  assign meta_route_if.meta_h2d = meta_tl_if.h2d;
+  assign meta_route_if.meta_d2h = meta_tl_if.d2h;
+
   // The WTRC's assertions describe what the core does; a test that drives something the core
   // cannot produce turns them off around it (cheriot_mem_sys_base_vseq::wtrc_assertions).
   always @(core_if.wtrc_assert_en) begin
@@ -110,6 +132,7 @@ module tb;
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_cored_h_agent*", "vif", cored_h_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_tbre_h_agent*", "vif", tbre_h_tl_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_meta_agent*", "vif", meta_tl_if);
+    uvm_config_db#(virtual cheriot_mem_sys_meta_if)::set(null, "*.env", "meta_vif", meta_route_if);
     $timeformat(-12, 0, " ps", 12);
     run_test();
   end

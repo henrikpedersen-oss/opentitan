@@ -195,8 +195,10 @@ static void test_reset_mid_sweep() {
   EXPECT(!m.sweep_active(), "no sweep after a reset");
   EXPECT(m.tag(slot) == kTagAny, "a tag the cut sweep may have cleared is open (REQ_CMS_15)");
   EXPECT(m.tag(sealed) == kTag1, "a sealing capability keeps its tag");
-  EXPECT(load_cap(m, slot, false) == 0 && load_cap(m, slot, true) == 0 && m.tag(slot) == kTagAny,
-         "either tag may be loaded, and the tag stays open: the model takes no value from the DUT");
+  EXPECT(load_cap(m, slot, false) == 0 && load_cap(m, slot, false) == 0 && m.tag(slot) == kTagAny,
+         "an open tag remains stable without resolving the independent prediction");
+  EXPECT(load_cap(m, slot, true) > 0,
+         "must fail: an open tag changed without any mutation between reads");
   EXPECT(load_cap(m, sealed, false) > 0, "must fail: tag 0 for the sealing capability");
 }
 
@@ -215,7 +217,111 @@ static void test_sticky_tag() {
   EXPECT(m.core(h) == 1, "must fail: the captured tag is cleared after one unaligned response");
 }
 
+// Open tags still obey the documented relations. Exercise both initial choices, mutations,
+// intervening writes, and the split predict/check/update interface used by the UVM bench.
+static void test_open_tag_relations() {
+  constexpr uint32_t a = 0x10000100;
+  for (bool initial : {false, true}) {
+    Model m(Map::cms_small());
+    m.open_tag(a);
+    CoreReq w0{kGet, a, 2, 0, 0, true, kMuBi4True, false, false};
+    CoreReq w1 = w0; w1.addr += 4;
+    EXPECT(m.predict_core(w0).rtag == kTagAny, "open W0 allows either value independently");
+    EXPECT(m.check_core_tag(w0, false, initial) == 0, "first observation permits either tag");
+    m.update_core(w0);
+    EXPECT(m.predict_core(w1).rtag == kTagAny, "observation does not resolve predicted capture");
+    EXPECT(m.check_core_tag(w1, false, !initial) > 0,
+           "must fail: W1 differs from W0 although each is individually allowed");
+    m.update_core(w1);
+    EXPECT(m.check_core_tag(w0, false, initial) == 0, "repeated open read stays stable");
+    m.update_core(w0);
+    EXPECT(m.check_core_tag(w0, false, !initial) > 0,
+           "must fail: repeated open read changes without a mutation");
+    // Starting a new uncertain interval permits a different memory value, but does not change
+    // the already captured response. An intervening write must not change that capture either.
+    m.open_tag(a);
+    CoreReq store{kPutFull, a + 8, 2, 15, 0, false, kMuBi4True, false, false};
+    m.check_core_tag(store, false, false); m.update_core(store);
+    EXPECT(m.check_core_tag(w1, false, !initial) == 0, "write preserves last captured response");
+    m.update_core(w1);
+    EXPECT(m.check_core_tag(w0, false, !initial) == 0, "possible mutation starts a new interval");
+    m.update_core(w0);
+    EXPECT(m.tag(a) == kTagAny, "comparison witnesses never change model memory");
+    m.dut_reset();
+    EXPECT(m.check_core_tag(w1, false, initial) == 0, "reset capture value is undocumented");
+  }
+}
+
+static void test_refused_tag_write() {
+  constexpr uint32_t a = 0x10000100;
+  for (bool old_tag : {false, true}) {
+    Model m(Map::cms_small());
+    m.backdoor_tag(a, old_tag);
+    CoreReq store{kPutFull, a, 2, 15, 0x12345678, !old_tag, kMuBi4True, false, true};
+    EXPECT(m.predict_core(store).err, "tag-path d_error is returned to the core");
+    m.update_core(store);
+    EXPECT(m.tag(a) == tag_exact(old_tag), "refused tag write preserves the old tag exactly");
+    CoreReq read{kGet, a, 2, 15, 0, true, kMuBi4True, false, false};
+    EXPECT(m.predict_core(read).rdata == 0x12345678, "independent successful data write still applies");
+  }
+  Model m(Map::cms_small());
+  m.open_tag(a);
+  CoreReq read{kGet, a, 2, 0, 0, true, kMuBi4True, false, false};
+  m.check_core_tag(read, false, false); m.update_core(read);
+  CoreReq refused{kPutFull, a, 2, 15, 0, true, kMuBi4True, false, true};
+  m.update_core(refused);
+  EXPECT(m.check_core_tag(read, false, true) > 0,
+         "must fail: a refused tag write cannot excuse a change in an open stored tag");
+}
+
+// External ports cannot tell whether the core or sweep received a shared-word fault.
+// Both outcomes remain valid; unrelated counter/tag values must still be rejected.
+static void test_blackbox_fault_alternatives() {
+  Model m(Map::cms_small());
+  const uint32_t a = Map::cms_small().sram_base + 0x400;
+  m.backdoor_tag(a, true);
+  m.set_mode(kMuBi4True);
+  m.update_csr_write(kTbreBase, a);
+  m.update_csr_write(kTbreNum, 1);
+  m.update_csr_write(kTbreStart, 1);
+  uint32_t off = Map::cms_small().tag_word_off(Map::cms_small().granule(a));
+  EXPECT(m.sweep_may_access_meta(off), "programmed sweep can access the shared tag word");
+  EXPECT(!m.sweep_may_access_meta(off + 4), "unrelated tag word is not a sweep candidate");
+  m.sweep_meta_fault(off, true);
+  m.update_csr_write(kTbreStatus, 1u << 9);
+  EXPECT(m.csr_read_allowed(kTbreStatus, 1) && m.csr_read_allowed(kTbreStatus, 1 | (1u << 9)),
+         "clear during ambiguous sweep retains both status outcomes");
+  m.sweep_end();
+  EXPECT(m.tag(a) == kTagAny, "ambiguous sweep tag outcome remains either");
+  EXPECT(m.csr_read_allowed(kTbreStatus, 0), "sweep fault may belong to core");
+  EXPECT(m.csr_read_allowed(kTbreStatus, 1u << 9), "sweep fault may belong to sweep");
+  EXPECT(!m.csr_read_allowed(kTbreStatus, 1u << 8), "unrelated start error still rejected");
+  EXPECT(m.csr_read_allowed(kTbreEpoch, 0), "failed sweep may keep epoch");
+  EXPECT(m.csr_read_allowed(kTbreEpoch, 2), "successful sweep may advance epoch");
+  EXPECT(!m.csr_read_allowed(kTbreEpoch, 4), "epoch cannot advance twice");
+  m.update_csr_write(kTbreStatus, 1u << 9);
+  EXPECT(!m.csr_read_allowed(kTbreStatus, 1u << 9), "explicit clear closes sweep_err alternatives");
+  CoreReq unchanged{kPutFull, a, 2, 15, 0, true, kMuBi4True, false, false};
+  m.backdoor_tag(a, true);
+  m.update_core_possible_fault(unchanged);
+  EXPECT(m.tag(a) == kTag1, "identical possible write outcomes remain exact");
+  unchanged.tag = false;
+  m.update_core_possible_fault(unchanged);
+  EXPECT(m.tag(a) == kTagAny, "possibly refused write joins old and new tags");
+  m.open_bitmap_write(0, 0x00010001);
+  BitmapExp b = m.predict_bitmap(kGet, 0, 2, 15, kMuBi4True);
+  EXPECT(b.rdata_care == ~0x00010001u, "ambiguous bitmap write opens only changed bits");
+  m.update_bitmap(kPutFull, 0, 2, 15, 0, kMuBi4True);
+  EXPECT(m.predict_bitmap(kGet, 0, 2, 15, kMuBi4True).rdata_care == 0xffffffffu,
+         "definite bitmap write closes uncertainty");
+  CoreReq load{kGet, a, 2, 15, 0, false, kMuBi4True, false, true};
+  EXPECT(!m.predict_core(load).err, "unhinted load does not access tags");
+  load.tag = true; load.addr += 4;
+  EXPECT(!m.predict_core(load).err, "unaligned hinted load does not access tags");
+}
+
 int main() {
+  test_blackbox_fault_alternatives();
   test_tag_store_load();
   test_data();
   test_epmp_mode();
@@ -225,6 +331,8 @@ int main() {
   test_sweep_watch();
   test_reset_mid_sweep();
   test_sticky_tag();
+  test_open_tag_relations();
+  test_refused_tag_write();
   std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
   return failures ? 1 : 0;
 }

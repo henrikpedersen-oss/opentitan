@@ -76,6 +76,9 @@ class cheriot_mem_sys_env_cfg extends cip_base_env_cfg #(.RAL_T(cheriot_mem_sys_
     c.if_mode = mode;
     c.is_active = 1'b1;
     c.max_outstanding_req = (mode == dv_utils_pkg::Host) ? 1 : 16;
+    // Memory sequences choose each response delay, including deliberate stalls in race tests.
+    // tl_device_driver otherwise substitutes its own random delay and ignores that stimulus.
+    if (mode == dv_utils_pkg::Device) c.use_seq_item_d_valid_delay = 1'b1;
     c.allow_a_valid_drop_wo_a_ready = 1'b0;
     // The subsystem's sockets take the top bits of the source ID (tlul_socket_m1 idInRange): the
     // bitmap window passes the 4:1 meta SRAM socket (2 bits). 5-bit sources fit every path.

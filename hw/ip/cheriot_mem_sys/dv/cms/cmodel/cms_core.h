@@ -20,7 +20,9 @@
 // scoreboard compares. Where a race leaves an outcome open (a sweep and a core store to the same
 // capability, the bitmap changed during a sweep), a tag is a set of allowed values (TagSet). The
 // model has no clock: it learns that a sweep has ended as software does, from a register read
-// (sync_sweep_end). The check-style calls (core(), bitmap(), csr()) predict, compare and update in
+// (sync_sweep_end). A separate relational checker remembers observed tags solely to check stable
+// repeated reads and sticky W0/W1 equality; it never resolves a tag in the predicted state.
+// The check-style calls (core(), bitmap(), csr()) predict, compare and update in
 // one call, for the cms bench.
 //
 // Not modelled (the RTL does not implement them; the bench's known gaps): the MUBI-encoded tag
@@ -157,13 +159,18 @@ class Model {
 
   void reset() {
     tags_.clear();
+    observed_tags_.clear();
+    observed_capture_known_ = false;
     data_.clear();
     revbm_.assign(m_.revbm_bytes() / 4, 0);
+    revbm_open_.assign(revbm_.size(), 0);
     intr_state_ = intr_enable_ = false;
     alert_test_regwen_ = true;
     base_ = num_ = 0;
     start_err_ = sweep_err_ = sweep_err_open_ = sweep_err_clr_ = false;
     epoch_ = 0;
+    epochs_ = {0};
+    optional_sweep_fault_ = false;
     active_ = false;
     wtrc_open_ = false;
     captured_known_ = true; captured_ = false;
@@ -184,25 +191,42 @@ class Model {
     base_ = num_ = 0;
     start_err_ = sweep_err_ = sweep_err_open_ = sweep_err_clr_ = false;
     epoch_ = 0;
+    epochs_ = {0};
+    optional_sweep_fault_ = false;
     active_ = false;
     wtrc_open_ = false;
     captured_known_ = false;  // the reset value of the captured tag is not documented
+    observed_capture_known_ = false;
+    observed_tags_.clear();
     watched_.clear(); skipped_.clear(); forced_revoke_.clear(); revbm_changed_.clear();
     dont_care_.clear();
   }
   // A tag the bench cannot know (a write in flight at a reset may or may not have reached the meta
-  // SRAM): either value, until a load resolves it.
+  // SRAM): either value. Observations constrain consistency across reads, not this state.
   void open_tag(uint32_t addr) {
-    if (m_.tagged(addr)) tags_[m_.granule(addr)] = kTagAny;
+    if (m_.tagged(addr)) set_tag(m_.granule(addr), kTagAny);
+  }
+
+  // The external ports cannot identify which overlapping request received a meta fault.
+  // Join its allowed tag/capture outcomes without choosing a branch from a DUT response.
+  void open_core_fault(uint32_t addr, bool write) {
+    if (write) open_tag(addr);
+    else captured_known_ = observed_capture_known_ = false;
+  }
+  void open_bitmap_write(uint32_t off, uint32_t wdata) {
+    if (off >= m_.revbm_bytes() || (off & 3)) return;
+    uint32_t w = off / 4;
+    revbm_open_[w] |= revbm_[w] ^ wdata;
+    if (active_) revbm_changed_[w] |= revbm_open_[w];
   }
 
   // ---- What the bench sets up by backdoor, or the model learns from writes it sees ----
   void backdoor_data(uint32_t addr, uint32_t word) { data_[addr & ~3u] = word; }
   void backdoor_tag(uint32_t addr, bool t) {
-    if (m_.tagged(addr)) tags_[m_.granule(addr)] = tag_exact(t);
+    if (m_.tagged(addr)) set_tag(m_.granule(addr), tag_exact(t));
   }
   void backdoor_revbm(uint32_t word_idx, uint32_t v) {
-    if (word_idx < revbm_.size()) revbm_[word_idx] = v;
+    if (word_idx < revbm_.size()) { revbm_[word_idx] = v; revbm_open_[word_idx] = 0; }
   }
 
   // ---- The core data port: the tag filter, the WTRC, the mode ([ToO] "Tag Filter", "WTRC") ----
@@ -214,7 +238,7 @@ class Model {
   CoreExp predict_core(const CoreReq &r) const {
     CoreExp e{};
     bool wr = r.op != kGet, cheriot = r.ena == kMuBi4True, tagged = m_.tagged(r.addr);
-    bool lookup = cheriot && tagged;                               // REQ_TF_02, 03, 04
+    bool lookup = cheriot && tagged && (wr || (r.tag && (r.addr & 7) == 0));  // REQ_TF_02-04
     bool nvm_cap = wr && cheriot && m_.in_nvm(r.addr) && r.tag;    // REQ_WTRC: to the NVM
     uint32_t g = tagged ? m_.granule(r.addr) : 0;
 
@@ -236,6 +260,7 @@ class Model {
       // While a sweep runs over the granule, a capability it may revoke reads either way: the
       // engine may or may not have cleared it yet (REQ_TBRE_19, 24).
       if (active_ && in_sweep(g) && (e.rtag & kTag1) && may_revoke(g)) e.rtag |= kTag0;
+      if (active_ && in_sweep(g) && dont_care_.count(g)) e.rtag = kTagAny;
     } else if (aligned) {
       e.rtag = kTag0;
     } else {
@@ -277,8 +302,9 @@ class Model {
         TagSet nset;
         if (nvm_cap) nset = tag_set ? kTag1 : tag_of(g);
         else nset = tag_exact(r.tag && r.op == kPutFull);
-        if (r.meta_err) nset = kTagAny;
-        set_tag(g, nset);
+        // A device error aborts the tag update ([ToO] Error Handling). Keep the old tag,
+        // including its comparison witness; neither a refused write nor NVM W0 mutates it.
+        if (!r.meta_err && (!nvm_cap || tag_set)) set_tag(g, nset);
         if (active_ && in_sweep(g)) watched_.insert(g);      // the core write watch (REQ_TBRE_24)
       }
       // A write leaves the captured tag of a capability load alone (REQ_TF_11b).
@@ -297,6 +323,58 @@ class Model {
       captured_known_ = e.rtag != kTagAny;
       captured_ = e.rtag == kTag1;
     }
+  }
+
+  // Join a store's before/after tag or a load's possible error/capture, without consulting
+  // the DUT's choice. Equal store outcomes stay exact rather than opening an unchanged tag.
+  void update_core_possible_fault(const CoreReq &r) {
+    TagSet before = tag(r.addr);
+    update_core(r);
+    if (r.op != kGet && m_.tagged(r.addr)) {
+      TagSet after = tag(r.addr);
+      if (before != after) set_tag(m_.granule(r.addr), before | after);
+    } else if (r.op == kGet) {
+      captured_known_ = observed_capture_known_ = false;
+    }
+  }
+
+  // Relational checks on observed tags, separate from the predicted state. An open tag is not
+  // a fresh random bit on every read: absent a possible mutation it must stay stable. The sticky
+  // tag must also repeat the aligned response's tag on the following unaligned response, even
+  // when both values were individually allowed (REQ_TF_09, 11b; [ToO] Tag Filter).
+  // Call before update_core. No observation changes tags_, captured_ or a predicted response.
+  // A possible sweep mutation invalidates only the memory witness, not the captured response.
+  int check_core_tag(const CoreReq &r, bool actual_error, bool actual_tag) {
+    int n0 = n_;
+    if (r.op != kGet) return 0;  // writes leave the captured response alone
+    CoreExp e = predict_core(r);
+    if (e.err || actual_error || !(e.rtag & tag_exact(actual_tag))) {
+      observed_capture_known_ = false;  // error-response capture is unspecified
+      return 0;  // the ordinary response comparison reports any independent mismatch
+    }
+    bool aligned = !(r.addr & 4);
+    if (!aligned) {
+      if (observed_capture_known_ && actual_tag != observed_capture_)
+        fail("sticky tag differs from the preceding aligned read response");
+      observed_capture_ = false;
+      observed_capture_known_ = true;
+    } else {
+      if (r.ena == kMuBi4True && m_.tagged(r.addr) && r.tag && r.size == 2) {
+        uint32_t g = m_.granule(r.addr);
+        if (active_ && in_sweep(g) && may_revoke(g)) {
+          observed_tags_.erase(g);
+        } else {
+          auto previous = observed_tags_.find(g);
+          if (previous != observed_tags_.end() && actual_tag != previous->second)
+            fail("stored tag changed between reads without a possible tag mutation");
+          else
+            observed_tags_[g] = actual_tag;
+        }
+      }
+      observed_capture_ = actual_tag;
+      observed_capture_known_ = true;
+    }
+    return n_ - n0;
   }
 
   // A complete transaction checked against the prediction (the cms bench's interface).
@@ -323,6 +401,7 @@ class Model {
              tagset_str(e.rtag) + ")");
       }
     }
+    check_core_tag(r, t.err, t.rtag);
     update_core(r);
     return n_ - n0;
   }
@@ -337,7 +416,7 @@ class Model {
     e.err = !bitmap_legal(op, off, size, mask, ena);
     if (!e.err && op == kGet) {
       e.rdata = revbm_[off / 4];
-      e.rdata_care = 0xffffffff;
+      e.rdata_care = ~revbm_open_[off / 4];
     }
     return e;
   }
@@ -348,6 +427,7 @@ class Model {
     uint32_t w = off / 4;
     if (active_) revbm_changed_[w] |= revbm_[w] ^ wdata;  // the sweep's lookups may see either value
     revbm_[w] = wdata;
+    revbm_open_[w] = 0;
   }
 
   int bitmap(bool core_port, uint8_t op, uint32_t off, uint8_t size, uint8_t mask, uint32_t wdata,
@@ -384,10 +464,18 @@ class Model {
     CsrExp e{csr_value(off), 0xffffffff};
     // sweep_err: a fault in the running sweep sets it when it hits, which the bench does not see;
     // one cleared during that sweep may or may not be set again at its end (until a read shows it).
-    if (off == kTbreStatus && ((active_ && sweep_err_now_) || sweep_err_open_)) {
+    if (off == kTbreStatus && ((active_ && (sweep_err_now_ || optional_sweep_fault_)) || sweep_err_open_)) {
       e.rdata_care &= ~(1u << 9);
     }
+    // Counter alternatives are checked as a set by csr_read_allowed, never learned from reads.
+    if (off == kTbreEpoch && epochs_.size() > 1) e.rdata_care = 1;
     return e;
+  }
+
+  bool csr_read_allowed(uint32_t off, uint32_t value) const {
+    if (off == kTbreEpoch) return (value & 1) == unsigned(active_) && epochs_.count(value >> 1);
+    CsrExp e = predict_csr_read(off);
+    return (value & e.rdata_care) == (e.rdata & e.rdata_care);
   }
 
   // A register write. Reads change nothing: a sweep_err left open by a race stays open until
@@ -398,7 +486,7 @@ class Model {
     int n0 = n_;
     if (!write) {
       CsrExp e = predict_csr_read(off);
-      if ((rdata & e.rdata_care) != (e.rdata & e.rdata_care)) {
+      if (!csr_read_allowed(off, rdata)) {
         char s[120];
         std::snprintf(s, sizeof s, "csr read 0x%02x: 0x%08x, expected 0x%08x", off, rdata, e.rdata);
         fail(s);
@@ -425,11 +513,45 @@ class Model {
     raise_fatal();
     if (on_bitmap_lookup) forced_revoke_.insert(m_.granule(addr));
   }
+  // Candidate membership comes only from independent model data, the programmed sweep and
+  // the external memory word address. Source IDs of DUT-internal sockets are never decoded.
+  bool sweep_may_access_meta(uint32_t word_off) const {
+    if (!active_) return false;
+    uint32_t first = m_.granule(base_), caps = sweep_caps();
+    for (uint32_t g = first; g < first + caps; ++g) {
+      if (word_off >= m_.nvm_tag_off()) {
+        if (m_.tag_word_off(g) == word_off) return true;
+      } else {
+        uint32_t a = m_.granule_addr(g), w0 = get_data(a), w1 = get_data(a + 4);
+        uint32_t base = cap_base(w0, w1);
+        if ((tag_of(g) & kTag1) && !cap_sealing(w1) && m_.in_sram(base) &&
+            ((base - m_.sram_base) >> 8) * 4 == word_off) return true;
+      }
+    }
+    return false;
+  }
+  void sweep_meta_fault(uint32_t word_off, bool optional) {
+    bool old_error = sweep_err_now_;
+    // These routines join affected tag outcomes. Alert policy is decided separately from
+    // external candidates (a bitmap window fault is allowed, not required, to alert).
+    bool old_fatal = fatal_;
+    unsigned old_alerts = alerts_;
+    if (word_off >= m_.nvm_tag_off()) sweep_tag_fault(word_off);
+    else sweep_lookup_fault(word_off, optional);
+    fatal_ = old_fatal;
+    alerts_ = old_alerts;
+    if (optional) {
+      sweep_err_now_ = old_error;
+      optional_sweep_fault_ = true;
+      sweep_err_open_ = true;
+    }
+  }
+
   // A fault on the engine's bitmap lookup, seen on the meta port at bitmap word `word_off`: the
   // capability whose lookup it was counts as revoked (REQ_TBRE_34). The bench cannot see which
   // capability that was: if only one capability of the sweep has its base in that word, it is
   // revoked; otherwise each of them may or may not be.
-  void sweep_lookup_fault(uint32_t word_off) {
+  void sweep_lookup_fault(uint32_t word_off, bool optional = false) {
     sweep_err_now_ = true;
     raise_fatal();
     std::vector<uint32_t> cand;
@@ -442,7 +564,7 @@ class Model {
       if (!m_.in_sram(base)) continue;
       if (((base - m_.sram_base) >> 8) * 4 == word_off) cand.push_back(g);
     }
-    if (cand.size() == 1) forced_revoke_.insert(cand[0]);
+    if (!optional && cand.size() == 1) forced_revoke_.insert(cand[0]);
     else for (uint32_t g : cand) dont_care_.insert(g);
   }
   // A fault on the engine's access to a tag word (`word_off` in the meta SRAM): each capability of
@@ -465,8 +587,18 @@ class Model {
       sweep_err_ = true;
       sweep_err_open_ = sweep_err_clr_;
     } else {
-      epoch_ = (epoch_ + 1) & 0x7fffffff;                  // counts only a sweep without error (Q47)
+      // With ambiguous ownership the sweep may have succeeded or failed. Keep both counter
+      // outcomes, including across later sweeps, independently of any observed CSR value.
+      std::set<uint32_t> next;
+      for (uint32_t epoch : epochs_) next.insert((epoch + 1) & 0x7fffffff);
+      if (optional_sweep_fault_) {
+        next.insert(epochs_.begin(), epochs_.end());
+        sweep_err_open_ = true;
+      }
+      epochs_ = next;
+      epoch_ = *epochs_.begin();
     }
+    optional_sweep_fault_ = false;
     sweep_err_clr_ = false;
     active_ = false;
     intr_state_ = true;
@@ -497,7 +629,8 @@ class Model {
       if (!m_.in_sram(base)) continue;                       // no lookup outside main SRAM (reading Q18)
       uint32_t bit = (base - m_.sram_base) >> 3;
       bool rev = revbm_[bit / 32] >> (bit % 32) & 1;
-      bool open = revbm_changed_.count(bit / 32) && (revbm_changed_[bit / 32] >> (bit % 32) & 1);
+      bool open = (revbm_open_[bit / 32] >> (bit % 32) & 1) ||
+                  (revbm_changed_.count(bit / 32) && (revbm_changed_[bit / 32] >> (bit % 32) & 1));
       if (open) set_tag(g, kTagAny);                         // the lookup may have seen either value
       else if (rev) set_tag(g, cleared);
     }
@@ -513,7 +646,7 @@ class Model {
     if (!m_.in_sram(base)) return false;
     uint32_t bit = (base - m_.sram_base) >> 3;
     auto ch = revbm_changed_.find(bit / 32);
-    return (revbm_[bit / 32] >> (bit % 32) & 1) ||
+    return ((revbm_[bit / 32] | revbm_open_[bit / 32]) >> (bit % 32) & 1) ||
            (ch != revbm_changed_.end() && (ch->second >> (bit % 32) & 1));
   }
 
@@ -531,7 +664,7 @@ class Model {
   // A whole meta SRAM word as the model expects it, and which bits it is sure of.
   void meta_word(uint32_t off, uint32_t &value, uint32_t &care) const {
     value = 0; care = 0xffffffff;
-    if (off < m_.revbm_bytes()) { value = revbm_[off / 4]; return; }
+    if (off < m_.revbm_bytes()) { value = revbm_[off / 4]; care = ~revbm_open_[off / 4]; return; }
     if (off >= m_.meta_top_off()) { care = 0; return; }
     bool sram = off >= m_.sram_tag_off();
     uint32_t first = sram ? (off - m_.sram_tag_off()) * 8 : m_.sram_caps() + (off - m_.nvm_tag_off()) * 8;
@@ -617,7 +750,7 @@ class Model {
         if (v >> 8 & 1) start_err_ = false;
         if (v >> 9 & 1) {
           sweep_err_ = sweep_err_open_ = false;
-          if (active_ && sweep_err_now_) sweep_err_clr_ = true;   // the fault may have hit before
+          if (active_ && (sweep_err_now_ || optional_sweep_fault_)) sweep_err_clr_ = true;   // the fault may have hit before
         }
         break;
       default: break;
@@ -642,7 +775,7 @@ class Model {
   void start() {
     if (mode_ != kMuBi4True || num_ == 0 || !m_.tagged(base_)) { start_err_ = true; return; }
     active_ = true;
-    sweep_err_now_ = sweep_err_clr_ = false;
+    sweep_err_now_ = sweep_err_clr_ = optional_sweep_fault_ = false;
   }
  public:
   void set_mode(uint8_t ena) { mode_ = ena; }
@@ -661,7 +794,10 @@ class Model {
     auto it = tags_.find(g);
     return it == tags_.end() ? kTag0 : it->second;               // the meta SRAM starts at 0
   }
-  void set_tag(uint32_t g, TagSet s) { tags_[g] = s; }
+  void set_tag(uint32_t g, TagSet s) {
+    tags_[g] = s;
+    observed_tags_.erase(g);  // an independently modelled mutation starts a new stable interval
+  }
   uint32_t get_data(uint32_t a) const {
     auto it = data_.find(a & ~3u);
     return it == data_.end() ? 0 : it->second;
@@ -676,10 +812,15 @@ class Model {
   Map m_;
   uint8_t mode_ = kMuBi4True;
   std::map<uint32_t, TagSet> tags_;
+  // Comparison witnesses only; never consulted by predict_core, update_core or tag_of.
+  std::map<uint32_t, bool> observed_tags_;
+  bool observed_capture_known_ = false, observed_capture_ = false;
   std::map<uint32_t, uint32_t> data_;
-  std::vector<uint32_t> revbm_;
+  std::vector<uint32_t> revbm_, revbm_open_;
   bool intr_state_, intr_enable_, alert_test_regwen_;
   uint32_t base_, num_, epoch_;
+  std::set<uint32_t> epochs_;
+  bool optional_sweep_fault_ = false;
   bool start_err_, sweep_err_, sweep_err_now_ = false, active_;
   bool sweep_err_open_ = false, sweep_err_clr_ = false;  // sweep_err not known; cleared mid-sweep
   std::set<uint32_t> watched_, skipped_, forced_revoke_;
