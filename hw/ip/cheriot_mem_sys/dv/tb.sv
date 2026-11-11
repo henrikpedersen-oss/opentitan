@@ -95,6 +95,7 @@ module tb;
   // Debugging taps only: +cms_meta_trace prints what the DUT routed with uvm_info.
   // No prediction, requester ownership or check may depend on these DUT internals.
   // The reference model and scoreboard consume only the external ports.
+  // Separately bound internal covergroups observe coverage only; they have no checking output.
   assign meta_route_if.tag_h2d[0] = dut.u_cheriot_tag_filter.tl_m_o;
   assign meta_route_if.tag_d2h[0] = dut.u_cheriot_tag_filter.tl_m_i;
   assign meta_route_if.tag_h2d[1] = dut.u_cheriot_tbre.tl_m_o;

@@ -12,6 +12,7 @@
 //   case 2, 3: a response or data integrity fault;
 //   case 4:    an error response to the engine's tag lookup;
 //   case 5:    a sweep over the top of the NVM, whose upper half denies every read.
+// Requirements: REQ_TBRE_32–36; REQ_ALT_04.
 class cheriot_mem_sys_err_tbre_read_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_tbre_read_vseq)
   `uvm_object_new

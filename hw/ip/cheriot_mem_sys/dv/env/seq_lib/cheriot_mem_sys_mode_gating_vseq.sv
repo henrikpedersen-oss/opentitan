@@ -6,6 +6,7 @@
 // value, MuBi4False and the 14 invalid encodings, makes the whole meta SRAM inaccessible from
 // every port, issues no tag lookup and ignores TBRE_START (theory_of_operation.md, "Access
 // Checkers" and "Revocation Engine").
+// Requirements: REQ_CMS_04, REQ_CMS_06; REQ_META_04, REQ_TAG_05–06.
 class cheriot_mem_sys_mode_gating_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_mode_gating_vseq)
   `uvm_object_new

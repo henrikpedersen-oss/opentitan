@@ -1,0 +1,109 @@
+// Copyright lowRISC contributors.
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+//
+// cms_cmodel_pkg: the CHERIoT memory subsystem's reference model (cms_core.h) for SystemVerilog
+// benches, through cms_dpi.cc. A scoreboard creates one model (cms_new), feeds it every transaction
+// its monitors observe, and reports a non-zero return with cms_last_messages().
+
+package cms_cmodel_pkg;
+
+  // Read-only independent model snapshots for functional coverage.
+  typedef enum int { CovData, CovTagSet, CovBase, CovNum, CovCaps, CovFailedSet, CovIntrEnable, CovWtrcOpen, CovWtrcAddr, CovWtrcW0Ok, CovBitmapSet } cms_cov_field_e;
+  import "DPI-C" function int unsigned cms_cov_get(chandle h, int field, int unsigned addr);
+
+  // TL-UL A opcodes as the model takes them.
+  localparam int unsigned CmsPutFull = 0, CmsPutPartial = 1, CmsGet = 4;
+  // Register offsets (registers.md).
+  localparam int unsigned CmsIntrState = 'h00, CmsIntrEnable = 'h04, CmsIntrTest = 'h08,
+                          CmsAlertTest = 'h0c, CmsTbreRegwen = 'h10, CmsTbreBase = 'h14,
+                          CmsTbreNum = 'h18, CmsTbreStart = 'h1c, CmsTbreStatus = 'h20,
+                          CmsTbreEpoch = 'h24;
+
+  import "DPI-C" function chandle cms_new(int map);  // 0 Earl Grey, 1 the cms bench's small map
+  import "DPI-C" function void cms_free(chandle h);
+  import "DPI-C" function void cms_reset(chandle h);
+  // Ambiguous ownership is derived from external requests, never DUT-internal taps.
+  import "DPI-C" function void cms_open_core_fault(chandle h, int unsigned addr, int write);
+  import "DPI-C" function void cms_open_bitmap_write(chandle h, int unsigned off, int unsigned data);
+  import "DPI-C" function int cms_sweep_may_access_meta(chandle h, int unsigned off);
+  import "DPI-C" function void cms_sweep_meta_fault(chandle h, int unsigned off, int optional);
+  import "DPI-C" function int cms_csr_read_allowed(chandle h, int unsigned off, int unsigned data);
+  import "DPI-C" function void cms_set_mode(chandle h, int ena);
+  import "DPI-C" function void cms_dut_reset(chandle h);   // registers back, memories kept
+  import "DPI-C" function void cms_open_tag(chandle h, int unsigned addr);
+
+  import "DPI-C" function void cms_backdoor_data(chandle h, int unsigned addr, int unsigned word);
+  import "DPI-C" function void cms_backdoor_tag(chandle h, int unsigned addr, int tag);
+  import "DPI-C" function void cms_backdoor_revbm(chandle h, int unsigned word_idx, int unsigned v);
+
+  // One core data transaction: request, what the host and the meta path answered, the response.
+  import "DPI-C" function int cms_core(chandle h, int op, int unsigned addr, int size, int mask,
+                                       int unsigned wdata, int tag, int ena, int host_err,
+                                       int meta_err, int err, int unsigned rdata, int rtag);
+  // One bitmap window transaction: core_port 1 for corerevbm_tl, 0 for revbm_tl_d.
+  import "DPI-C" function int cms_bitmap(chandle h, int core_port, int op, int unsigned off,
+                                         int size, int mask, int unsigned wdata, int ena, int err,
+                                         int unsigned rdata);
+  import "DPI-C" function int cms_csr(chandle h, int write, int unsigned off, int unsigned wdata,
+                                      int unsigned rdata);
+
+  // The reference model's interface: the response the documents allow for a request (the data in
+  // the bits of rdata_care; rtag_set: 1 only 0, 2 only 1, 3 either), then the state after it.
+  import "DPI-C" function void cms_predict_core(chandle h, int op, int unsigned addr, int size,
+                                                int mask, int unsigned wdata, int tag, int ena,
+                                                int host_err, int meta_err, int bad_integrity, output int err,
+                                                output int unsigned rdata,
+                                                output int unsigned rdata_care,
+                                                output int rtag_set);
+  // Checks only cross-response tag relations; it does not update predicted memory.
+  import "DPI-C" function int cms_check_core_tag(chandle h, int op, int unsigned addr, int size,
+      int mask, int unsigned wdata, int tag, int ena, int host_err, int meta_err, int bad_integrity,
+      int actual_err, int actual_tag);
+
+  // update_core meta_err: 0 success, 1 definite fault, 2 either (external overlap).
+  import "DPI-C" function void cms_update_core(chandle h, int op, int unsigned addr, int size,
+                                               int mask, int unsigned wdata, int tag, int ena,
+                                               int host_err, int meta_err, int bad_integrity);
+  import "DPI-C" function void cms_predict_bitmap(chandle h, int op, int unsigned off, int size,
+                                                  int mask, int ena, output int err,
+                                                  output int unsigned rdata,
+                                                  output int unsigned rdata_care);
+  import "DPI-C" function void cms_update_bitmap(chandle h, int op, int unsigned off, int size,
+                                                 int mask, int unsigned wdata, int ena);
+  // The end of a sweep, learnt from a register read as software learns it.
+  import "DPI-C" function void cms_sync_sweep_end(chandle h, int unsigned off, int unsigned rdata);
+  import "DPI-C" function void cms_predict_csr_read(chandle h, int unsigned off,
+                                                    output int unsigned rdata,
+                                                    output int unsigned rdata_care);
+  import "DPI-C" function void cms_update_csr_write(chandle h, int unsigned off,
+                                                    int unsigned wdata);
+  // Alerts: fatal_fault latched until reset; ALERT_TEST writes that raise one alert each.
+  import "DPI-C" function int cms_fatal_expected(chandle h);
+  import "DPI-C" function int cms_alert_tests(chandle h);
+  import "DPI-C" function void cms_raise_fatal(chandle h);
+  // A meta SRAM word as the model expects it, and the bits it is sure of.
+  import "DPI-C" function void cms_meta_word(chandle h, int unsigned off, output int unsigned value,
+                                             output int unsigned care);
+
+  import "DPI-C" function void cms_sweep_read_error(chandle h, int unsigned addr);
+  import "DPI-C" function void cms_sweep_fault(chandle h, int on_bitmap_lookup, int unsigned addr);
+  // Faults the bench saw on the meta port during a sweep: a bitmap lookup, a tag word access.
+  import "DPI-C" function void cms_sweep_lookup_fault(chandle h, int unsigned word_off);
+  import "DPI-C" function void cms_sweep_tag_fault(chandle h, int unsigned word_off);
+  import "DPI-C" function void cms_sweep_end(chandle h);
+  // Faults a test injects into a running sweep, as it declares them to its scoreboard.
+  import "DPI-C" function void cms_sweep_keep(chandle h, int unsigned addr);
+  import "DPI-C" function void cms_sweep_revoke(chandle h, int unsigned addr);
+  import "DPI-C" function void cms_sweep_dont_care(chandle h, int unsigned addr);
+  import "DPI-C" function void cms_sweep_error(chandle h, int alert);
+  import "DPI-C" function int cms_sweep_active(chandle h);
+
+  import "DPI-C" function int cms_intr_expected(chandle h);
+  import "DPI-C" function int cms_alerts_expected(chandle h);
+  import "DPI-C" function int cms_tag(chandle h, int unsigned addr);
+  import "DPI-C" function int cms_check_meta_word(chandle h, int unsigned off, int unsigned actual);
+  import "DPI-C" function int unsigned cms_meta_top(chandle h);
+  import "DPI-C" function string cms_last_messages();
+
+endpackage

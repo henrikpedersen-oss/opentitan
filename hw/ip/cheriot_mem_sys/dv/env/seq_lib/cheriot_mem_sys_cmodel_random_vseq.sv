@@ -11,6 +11,7 @@
 // - other: bitmap writes and reads on the software window, reads on the core's TRVK port, sweeps
 //   (started only when the engine is idle), register reads.
 // Capabilities point into the SRAM window, so that the bitmap revokes some of them.
+// Requirements: REQ_TAG_01–06, REQ_CMS_04, REQ_CMS_06; REQ_WTRC_01–09; REQ_TBRE_01–21.
 class cheriot_mem_sys_cmodel_random_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_cmodel_random_vseq)
 

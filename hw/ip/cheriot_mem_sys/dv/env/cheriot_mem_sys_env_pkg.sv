@@ -159,6 +159,7 @@ package cheriot_mem_sys_env_pkg;
 
   // package sources
   `include "cheriot_mem_sys_env_cfg.sv"
+  `include "cheriot_mem_sys_cov_item.sv"
   `include "cheriot_mem_sys_env_cov.sv"
   `include "cheriot_mem_sys_exp_items.sv"
   `include "cheriot_mem_sys_mem_backdoor.sv"

@@ -6,6 +6,7 @@
 // word of a capability carries the first word's tag, and only read responses take part, so a write
 // answered in between is untagged and leaves the captured tag alone; two outstanding accesses work
 // under back-pressure (theory_of_operation.md, "Tag Filter").
+// Requirements: REQ_TF_02, REQ_TF_08–11; REQ_TAG_01.
 class cheriot_mem_sys_cap_load_hint_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_cap_load_hint_vseq)
   `uvm_object_new

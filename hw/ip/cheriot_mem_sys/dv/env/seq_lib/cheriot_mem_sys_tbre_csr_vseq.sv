@@ -11,6 +11,7 @@
 // - a sweep past the top of its region ends there, and TBRE_NUM_CAPS keeps the value written;
 // - writes that leave out a byte holding a field, and unmapped offsets, are answered with
 //   d_error; writes to the read-only registers are ignored.
+// Requirements: REQ_TBRE_01–12; REQ_REG_01–02.
 class cheriot_mem_sys_tbre_csr_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_csr_vseq)
   `uvm_object_new

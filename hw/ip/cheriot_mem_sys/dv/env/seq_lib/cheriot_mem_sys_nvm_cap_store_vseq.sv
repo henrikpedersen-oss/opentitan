@@ -9,6 +9,7 @@
 // programmers_guide.md, "Storing Capabilities in the NVM"). A plain store to the NVM is refused
 // by the NVM and clears the tag. Programming the NVM (not a core write) leaves the tag. Outside
 // CHERIoT mode a tagged store is a plain one. Stores the core cannot produce raise fatal_fault.
+// Requirements: REQ_WTRC_01–13; REQ_CMS_17 (block part).
 class cheriot_mem_sys_nvm_cap_store_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_nvm_cap_store_vseq)
   `uvm_object_new

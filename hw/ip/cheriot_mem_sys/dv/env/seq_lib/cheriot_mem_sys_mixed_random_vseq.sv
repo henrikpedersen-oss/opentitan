@@ -8,6 +8,7 @@
 // random ranges (some of them ignored starts), waited for by polling or by the interrupt. Most
 // accesses go to five "hot" meta words, so that the core, the engine and the bitmap meet.
 // +num_ops=<n> sets the number of core operations (4000).
+// Requirements: REQ_TAG_01–09; REQ_TBRE_13–27, REQ_TBRE_39; REQ_META_01–16.
 class cheriot_mem_sys_mixed_random_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_mixed_random_vseq)
   `uvm_object_new

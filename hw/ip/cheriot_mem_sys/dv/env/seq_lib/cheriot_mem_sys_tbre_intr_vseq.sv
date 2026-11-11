@@ -7,6 +7,7 @@
 // sets INTR_STATE; an ignored start raises none (theory_of_operation.md, "Revocation Engine";
 // registers.md, INTR_STATE, INTR_ENABLE and INTR_TEST; interfaces.md, "Interrupts";
 // programmers_guide.md, "Revoking Capabilities" and "Tracking Completed Sweeps").
+// Requirements: REQ_TBRE_28–31; REQ_CMS_12 (block part).
 class cheriot_mem_sys_tbre_intr_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_intr_vseq)
   `uvm_object_new

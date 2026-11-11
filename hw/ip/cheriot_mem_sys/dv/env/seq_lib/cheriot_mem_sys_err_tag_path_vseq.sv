@@ -6,6 +6,7 @@
 // raises fatal_fault: on the fill read of a store (no write-back, the tag unchanged), on a
 // capability load's lookup (tag 0), and on the write-back (theory_of_operation.md, "RMW Filter"
 // and "Error Handling").
+// Requirements: REQ_TF_02, REQ_TF_12–13, REQ_TAG_07–08; REQ_TBRE_32–36.
 class cheriot_mem_sys_err_tag_path_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_tag_path_vseq)
   `uvm_object_new

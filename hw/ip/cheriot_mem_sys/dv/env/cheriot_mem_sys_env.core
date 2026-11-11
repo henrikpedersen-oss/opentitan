@@ -10,12 +10,14 @@ filesets:
       - lowrisc:dv:ralgen
       - lowrisc:dv:cip_lib
       - lowrisc:dv:mem_model
+      # Shared source in ../cmodel (also included by eg2sim).
       - lowrisc:dv:cheriot_mem_sys_cmodel
       - lowrisc:dv:cheriot_mem_sys_core_agent
     files:
       - cheriot_mem_sys_meta_if.sv
       - cheriot_mem_sys_env_pkg.sv
       - cheriot_mem_sys_env_cfg.sv: {is_include_file: true}
+      - cheriot_mem_sys_cov_item.sv: {is_include_file: true}
       - cheriot_mem_sys_env_cov.sv: {is_include_file: true}
       - cheriot_mem_sys_exp_items.sv: {is_include_file: true}
       - cheriot_mem_sys_mem_backdoor.sv: {is_include_file: true}
@@ -54,6 +56,12 @@ filesets:
       - seq_lib/cheriot_mem_sys_err_tbre_revbm_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_mixed_random_vseq.sv: {is_include_file: true}
       - seq_lib/cheriot_mem_sys_cmodel_random_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_reset_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_tbre_store_race_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_latency_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_trvk_backpressure_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_trvk_fault_vseq.sv: {is_include_file: true}
+      - seq_lib/cheriot_mem_sys_err_cmd_intg_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 generate:

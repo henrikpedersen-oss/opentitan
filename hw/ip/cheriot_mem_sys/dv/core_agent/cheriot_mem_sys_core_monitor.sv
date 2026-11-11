@@ -83,6 +83,8 @@ class cheriot_mem_sys_core_monitor extends dv_base_monitor #(
     it.size   = h2d.a_size;
     it.mask   = h2d.a_mask;
     it.data   = h2d.a_data;
+    it.bad_cmd_intg = h2d.a_user.cmd_intg != tlul_pkg::get_cmd_intg(h2d);
+    it.bad_data_intg = h2d.a_user.data_intg != tlul_pkg::get_data_intg(h2d.a_data);
     it.source = h2d.a_source;
     it.tag    = cfg.vif.mon_cb.tag_h2d;
     it.ena    = cfg.vif.mon_cb.cheriot_ena;

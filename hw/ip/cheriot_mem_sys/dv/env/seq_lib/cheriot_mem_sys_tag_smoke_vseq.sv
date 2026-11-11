@@ -5,6 +5,7 @@
 // The subsystem comes out of reset with its reset values and quiet in ePMP mode (no meta SRAM
 // access, no tag); in CHERIoT mode a capability store sets a tag, a capability load returns it, and
 // a data store clears it.
+// Requirements: REQ_REG_01, REQ_CMS_06; REQ_TAG_01–02.
 class cheriot_mem_sys_tag_smoke_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tag_smoke_vseq)
   `uvm_object_new

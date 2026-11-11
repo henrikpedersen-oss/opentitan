@@ -8,6 +8,7 @@
 // it; TBRE_STATUS.sweep_err is set by an error during a sweep and, like start_err, stays set until
 // written 1 (registers.md, TBRE_EPOCH and TBRE_STATUS; theory_of_operation.md, "Revocation
 // Engine"; programmers_guide.md, "Tracking Completed Sweeps" and "Errors").
+// Requirements: REQ_TBRE_05–12, REQ_TBRE_32–36.
 class cheriot_mem_sys_tbre_epoch_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_epoch_vseq)
   `uvm_object_new

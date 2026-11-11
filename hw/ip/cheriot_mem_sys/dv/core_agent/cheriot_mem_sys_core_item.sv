@@ -15,6 +15,9 @@ class cheriot_mem_sys_core_item extends uvm_sequence_item;
   // A store: the tag to write. A load: the capability-load hint.
   rand bit                 tag;
 
+  // Driven fault stimulus, reconstructed from A-channel integrity by the monitor.
+  bit bad_cmd_intg, bad_data_intg;
+
   // Response
   bit [31:0]               rdata;
   bit                      rtag;
@@ -49,6 +52,8 @@ class cheriot_mem_sys_core_item extends uvm_sequence_item;
     `uvm_field_int (mask,    UVM_DEFAULT)
     `uvm_field_int (data,    UVM_DEFAULT)
     `uvm_field_int (tag,     UVM_DEFAULT)
+    `uvm_field_int (bad_cmd_intg, UVM_DEFAULT)
+    `uvm_field_int (bad_data_intg, UVM_DEFAULT)
     `uvm_field_int (rdata,   UVM_DEFAULT)
     `uvm_field_int (rtag,    UVM_DEFAULT)
     `uvm_field_int (err,     UVM_DEFAULT)

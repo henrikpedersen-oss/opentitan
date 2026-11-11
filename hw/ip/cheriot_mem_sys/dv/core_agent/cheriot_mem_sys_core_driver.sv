@@ -75,6 +75,8 @@ class cheriot_mem_sys_core_driver extends dv_base_driver #(
     h2d.a_user           = tlul_pkg::TL_A_USER_DEFAULT;
     h2d.a_user.cmd_intg  = tlul_pkg::get_cmd_intg(h2d);
     h2d.a_user.data_intg = tlul_pkg::get_data_intg(it.data);
+    if (it.bad_cmd_intg) h2d.a_user.cmd_intg[0] ^= 1'b1;
+    if (it.bad_data_intg) h2d.a_user.data_intg[0] ^= 1'b1;
     cfg.vif.host_cb.h2d.a_opcode  <= h2d.a_opcode;
     cfg.vif.host_cb.h2d.a_param   <= '0;
     cfg.vif.host_cb.h2d.a_size    <= h2d.a_size;

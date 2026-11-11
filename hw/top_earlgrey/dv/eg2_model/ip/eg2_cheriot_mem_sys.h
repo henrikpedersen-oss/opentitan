@@ -14,7 +14,7 @@
 
 #include "../eg2_ip_model.h"
 #include "eg2_core_system.h"
-#include "hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h"
+#include "hw/ip/cheriot_mem_sys/dv/cmodel/cms_core.h"
 
 namespace eg2_model {
 
@@ -40,7 +40,7 @@ struct Eg2TbreLayout {
 // cheriot_mem_sys.regs (hw/ip/cheriot_mem_sys/data/cheriot_mem_sys.hjson): the revocation engine.
 //
 // What the engine decides comes from the subsystem's reference model, cms::Model
-// (hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h), the one its block benches check the RTL
+// (hw/ip/cheriot_mem_sys/dv/cmodel/cms_core.h), the one its block benches check the RTL
 // against. The model has no clock and no memories of its own that eg2sim could use, so the work is
 // split:
 //   cms::Model  the TBRE registers (TBRE_REGWEN, _BASE_ADDR, _NUM_CAPS, _STATUS, _EPOCH: every

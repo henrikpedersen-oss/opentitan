@@ -5,6 +5,7 @@
 // Errors on the data path (cored_tl_h) reach the core as d_error, raise no alert, and do not stop
 // the tag update: a failed data write still updates the tag (theory_of_operation.md, "Tag
 // Filter").
+// Requirements: REQ_TF_12–13, REQ_ALT_04; REQ_CMS_18 (block part).
 class cheriot_mem_sys_err_data_path_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_data_path_vseq)
   `uvm_object_new

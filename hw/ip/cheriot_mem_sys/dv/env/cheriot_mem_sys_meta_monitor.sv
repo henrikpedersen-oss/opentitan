@@ -1,6 +1,7 @@
 // Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
+// Bound RTL coverage lives separately in sva/; this logger remains print-only.
 //
 // Optional diagnostic logger (+cms_meta_trace). Internal taps only print what the DUT routed.
 // No analysis port, ownership state, prediction, assertion or check uses these signals.

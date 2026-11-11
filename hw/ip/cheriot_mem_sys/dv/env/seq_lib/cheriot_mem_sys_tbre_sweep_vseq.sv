@@ -7,6 +7,7 @@
 // and nothing else; it never writes memory (theory_of_operation.md, "Revocation Engine";
 // programmers_guide.md, "Revoking Capabilities"). Whole regions, random sub-ranges and single
 // capabilities at both ends.
+// Requirements: REQ_TBRE_13–21, REQ_TBRE_37–38.
 class cheriot_mem_sys_tbre_sweep_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_sweep_vseq)
   `uvm_object_new

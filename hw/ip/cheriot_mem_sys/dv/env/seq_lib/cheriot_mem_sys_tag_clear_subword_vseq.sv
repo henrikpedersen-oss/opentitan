@@ -7,6 +7,7 @@
 // (theory_of_operation.md, "Tag Filter": writes always look up; cheriot_mem_sys.hjson
 // CHERIOT.TAG_CLEAR_ON_DATA_WRITE). A store with tag 1 on one word only is trusted: the granule
 // keeps tag 1, or gets it.
+// Requirements: REQ_TAG_02–04; REQ_CMS_16 (block part).
 class cheriot_mem_sys_tag_clear_subword_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tag_clear_subword_vseq)
   `uvm_object_new

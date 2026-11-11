@@ -22,7 +22,7 @@ SRCS := eg2sim.cc eg2_image.cc eg2_stimulus.cc eg2_spike_cpu.cc eg2_spike_debug.
         eg2_ip_models.cc $(IP_SRCS)
 HDRS := $(wildcard *.h ip/*.h rtos_soc/*.h) $(EG2_ROOT)/sw/device/lib/testing/eg2/eg2_tables.h
 # Shared reference model used by ip/eg2_cheriot_mem_sys.h.
-HDRS += $(EG2_ROOT)/hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h
+HDRS += $(EG2_ROOT)/hw/ip/cheriot_mem_sys/dv/cmodel/cms_core.h
 
 # Crypto group (ip/eg2_crypto.h): the block DVs' reference code, compiled as C++.
 SRCS += $(EG2_ROOT)/hw/ip/aes/model/aes.c \

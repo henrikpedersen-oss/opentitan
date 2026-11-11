@@ -137,7 +137,7 @@ Several IPs separate a plain C++ behavioral core from their environment:
 | `dpi/*_test.cc` | Small scenarios and deliberately failing checks |
 
 The TBRE adapter in [`ip/eg2_cheriot_mem_sys.h`](../ip/eg2_cheriot_mem_sys.h) reuses `cms::Model` from
-`hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h`. That header is a shared C++
+`hw/ip/cheriot_mem_sys/dv/cmodel/cms_core.h`. That header is a shared C++
 reference model; using it does not require the UVM simulator. The adapter supplies
 memory contents and fault inputs and owns scheduling and actual tag updates.
 Changes to the shared core need coordination with the memory-subsystem bench.

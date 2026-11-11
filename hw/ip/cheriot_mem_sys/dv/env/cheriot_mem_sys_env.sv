@@ -96,6 +96,7 @@ class cheriot_mem_sys_env extends cip_base_env #(
 
     if (m_ref_model == null) return;
     scoreboard.ref_model = m_ref_model;
+    m_ref_model.coverage_port.connect(scoreboard.model_cov_imp);
 
     // The reference model: what the monitors observe, and the memory backdoor
     m_core_agent.monitor.present_port.connect(m_ref_model.core_present_imp);

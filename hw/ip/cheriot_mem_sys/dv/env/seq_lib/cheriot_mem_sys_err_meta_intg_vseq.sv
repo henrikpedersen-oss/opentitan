@@ -5,6 +5,7 @@
 // A response integrity or data integrity fault on a meta SRAM response to the RMW filter raises
 // fatal_fault, on a tag lookup and on a tag fill (theory_of_operation.md, "RMW Filter" and "Error
 // Handling").
+// Requirements: REQ_TAG_07–08, REQ_ALT_04; REQ_CMS_13, REQ_CMS_18 (block parts).
 class cheriot_mem_sys_err_meta_intg_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_meta_intg_vseq)
   `uvm_object_new

@@ -6,6 +6,7 @@
 // base corrections (the address in the base's 2^(E+9) block or the next), for bits 0 and 31 of a
 // bitmap word, for the last heap granule, and for the first base past the bitmap (out of range:
 // never revoked) (theory_of_operation.md, "Revocation Engine"; the CHERIoT ISA's bounds encoding).
+// Requirements: REQ_TBRE_13–21, REQ_TBRE_41; REQ_CMS_08 (block part).
 class cheriot_mem_sys_tbre_base_decode_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_base_decode_vseq)
   `uvm_object_new

@@ -5,6 +5,7 @@
 // A command integrity fault on the register port is answered with d_error, does not write the
 // register, and raises fatal_fault, latched until reset (theory_of_operation.md, "Error
 // Handling").
+// Requirements: REQ_ALT_01; REQ_CMS_18 (block part).
 class cheriot_mem_sys_err_csr_intg_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_csr_intg_vseq)
   `uvm_object_new

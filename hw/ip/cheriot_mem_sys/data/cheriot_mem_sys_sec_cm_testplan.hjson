@@ -25,31 +25,31 @@
   testpoints: [
     {
       name: sec_cm_bus_integrity
-      desc: "Verify the countermeasure(s) BUS.INTEGRITY."
+      desc: "Verify BUS.INTEGRITY using CSR, meta response, TBRE read and bitmap-lookup faults, and the documented NVM capability-store command/data integrity response. Ordinary core requests and bitmap-port command-integrity responses await specification clarification (CMS-CMD-INTG). The full end-to-end countermeasure also relies on LOGIC.SHADOW, which is not implemented."
       stage: V2S
-      tests: []
+      tests: ["cheriot_mem_sys_tl_intg_err", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_err_cmd_intg"]
     }
     {
       name: sec_cm_logic_shadow
-      desc: "Verify the countermeasure(s) LOGIC.SHADOW."
+      desc: "KNOWN GAP — REQ_CMS_02: LOGIC.SHADOW is not implemented in this RTL (no lockstep copy, upstream TODO #30572). No passing countermeasure claim; the TRVK fault campaign reports this gap separately."
       stage: V2S
       tests: []
     }
     {
       name: sec_cm_mem_sw_noaccess
-      desc: "Verify the countermeasure(s) MEM.SW_NOACCESS."
+      desc: "Verify MEM.SW_NOACCESS: both bitmap windows refuse tag-region accesses; unmapped register-port offsets refuse them too. Pre-existing tags and complete meta SRAM are compared against the independent model."
       stage: V2S
-      tests: []
+      tests: ["cheriot_mem_sys_access_check"]
     }
     {
       name: sec_cm_intersig_mubi
-      desc: "Verify the countermeasure(s) INTERSIG.MUBI."
+      desc: "Verify INTERSIG.MUBI: mode_gating tries all 15 non-True cheriot_ena_i encodings and checks refusal with no tag lookup or metadata access."
       stage: V2S
-      tests: []
+      tests: ["cheriot_mem_sys_mode_gating"]
     }
     {
       name: sec_cm_cored_tag_intersig_mubi
-      desc: "Verify the countermeasure(s) CORED_TAG.INTERSIG.MUBI."
+      desc: "KNOWN GAP — REQ_CMS_01: CORED_TAG.INTERSIG.MUBI is not implemented; the current core tag sidebands are one bit, not MuBi4 (upstream TODO #31066). Not tested and never counted as a pass."
       stage: V2S
       tests: []
     }

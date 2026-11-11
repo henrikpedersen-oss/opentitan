@@ -20,8 +20,7 @@ For detailed information on the CHERIoT memory subsystem design features, please
 This is a UVM testbench built on OpenTitan's [CIP testbench architecture](../../../dv/sv/cip_lib/README.md).
 Sequences generate stimulus, agents drive and monitor the interfaces, a reference-model component
 predicts responses, and a scoreboard compares them. The shared C++ model is reached through DPI;
-it does not replace the UVM agents or scoreboard. The separate `cms` bench described below does
-not use UVM.
+it does not replace the UVM agents or scoreboard. This is the maintained subsystem bench.
 
 ```mermaid
 flowchart LR
@@ -77,8 +76,12 @@ It can be created manually by invoking [`regtool`](../../../../util/reggen/doc/s
 
 ### Stimulus strategy
 #### Tests and test sequences
-Every test is in its own file in `hw/ip/cheriot_mem_sys/dv/tests` (package `cheriot_mem_sys_test_pkg`) and names the virtual sequence it runs.
-The sequences reside in `hw/ip/cheriot_mem_sys/dv/env/seq_lib`, one per test, each describing what it checks.
+Every feature test is one virtual-sequence file in `hw/ip/cheriot_mem_sys/dv/env/seq_lib`,
+whose header describes its checks and requirements, plus its testlist entry. All entries use
+`cheriot_mem_sys_base_test`; `uvm_test_seq` selects the sequence and
+`+cheriot_mem_sys_cmodel=1` enables the model through the base test configuration.
+Only the base test and package remain in `dv/tests`. The `_inject_fail` entry reuses the random
+sequence with a corruption plusarg. Common CIP entries and checking are unchanged.
 They extend `cheriot_mem_sys_base_vseq`, which brings the environment up (reset, the memories preloaded, the memory devices started) and provides the operations the sequences are written in:
 * core accesses (`core_store`, `core_load`, `core_store_cap`, `core_load_cap`, `core_issue`), each a `cheriot_mem_sys_core_access_seq` on the core agent
 * bitmap accesses on the two bitmap agents, register accesses through the RAL, and malformed register accesses on the `regs` agent
@@ -90,6 +93,39 @@ They extend `cheriot_mem_sys_base_vseq`, which brings the environment up (reset,
 `cheriot_mem_sys_env_cov` samples, from the scoreboard:
 * `core_access_cg`: every core access by opcode, size, tag, mode, region, error and response tag, crossed
 * `bitmap_access_cg`: the bitmap ports by opcode and error
+* `cms_sweep_cap_cg`, `cms_tbre_start_cg`, `cms_tbre_end_cg`: independent sweep candidates, starts and completion
+* `cms_sweep_snoop_cg`, `cms_sweep_race_cg`: core stores relative to external sweep reads and model candidates
+* `cms_nvm_cap_cg`: NVM capability-store word, match/sequence outcome and old tag
+* `cms_meta_access_cg`: bitmap-window legality, port and direction
+
+The scoreboard samples these from monitor items and read-only model snapshots. Set-valued tag,
+bitmap and fault states retain false/true/either; uncertainty is not counted as a definite outcome.
+Snoop timing uses external read handshakes; before a lower-word handshake the presentation boundary
+is uncertain, so it samples `around`, never a claimed internal `early` boundary.
+
+`sva/cheriot_mem_subsys_fcov.sv` and the existing bind file add the RTL tag-filter request/response,
+RMW, TBRE mover, access-checker, top and WTRC covergroups with `+en_cov=1`. They observe internals
+**for coverage only**: no assertions, expected values, ownership or checking depend on them.
+Sources are the current source repositories, not the retired EG2 copies: `cheriot-mem-ss`
+`af1dbb2` (descends from `90f7c7c`), `cheriot-rtos-test-suite` `ae3b0bb`, and Ibex `7220d4f2`.
+The RTOS file has eight covergroups, including the excluded SoC shim `rev_ctl_tbre_cg`.
+`sva/cheriot_trvk_fcov.sv` adapts Ibex's decision, base bit, sealing, window and lookup-error
+coverage to `cheriot_trvk_core`. The non-power-of-two window group exists only for maps with
+that boundary band. Core instruction/LSU coverage remains in Ibex.
+
+The latest Ibex `core_ibex_fcov_if.sv` lists the old TBRE points in a BLOCKED comment, without
+implementations. Their applicable meanings are mapped to the mover: FSM to `cp_running` and
+`cp_drain`, outstanding count to `cp_inflight`, memory faults to `cp_errs`, concurrent requests
+to `cp_concur_mem_reqs`. `cp_tbre_fifo_hazard` and `cp_tbrewrp_blk1_cancel` are dropped: they
+describe the old core's FIFO hazard and wrapper block cancellation, neither a documented
+operation of `cheriot_tbre_mover`. Its current stale-store handling is covered by `cp_snoop`,
+`cp_outcome`, the top's race/clear-squash points and the external race tests.
+
+Crosses omit impossible tagged partial stores, tag-1 returns with CHERIoT off, bitmap outcomes
+outside the bitmap window, and tag-1 upper-word lookup responses (upper loads use the sticky tag).
+The unobservable pre-presentation snoop bin is explicitly ignored; external timing records
+`around` instead. Unhit reachable bins remain coverage gaps, not exclusions.
+The former `cms` bench supplied no SVA beyond the small core-interface checks now maintained here.
 
 The CIP covergroups (CSR, interrupt and alert) are collected as well.
 
@@ -97,7 +133,7 @@ The CIP covergroups (CSR, interrupt and alert) are collected as well.
 #### Scoreboard
 `cheriot_mem_sys_scoreboard` maintains the RAL and compares observed responses with predictions
 from `cheriot_mem_sys_ref_model`. The latter uses the specification-based C++ model in
-[`cms/cmodel`](cms/cmodel/README.md). The feature tests enable this model; common CIP tests use
+[`cmodel`](cmodel/README.md). The feature tests enable this model; common CIP tests use
 the RAL checks. Registers changed autonomously by the revocation engine are excluded from the
 common RAL comparison.
 
@@ -133,14 +169,46 @@ response, alert or unfinished transaction is a failure.
 #### Assertions
 * TLUL assertions: The `sva/cheriot_mem_sys_bind.sv` binds the `tlul_assert` [assertions](../../tlul/doc/TlulProtocolChecker.md) to the IP to ensure TileLink interface protocol compliance on every port: the `regs`, `cored_tl_d`, `corerevbm_tl` and `revbm_tl_d` device ports and the `cored`, `tbre` and `meta_sram` host ports
 * CSR assertions: The `sva/cheriot_mem_sys_bind.sv` binds the generated `cheriot_mem_sys_regs_csr_assert_fpv` checks
+* Core interface: request-tag stability during backpressure, known response tags when valid,
+  and a known execution mode. `CoreModeStable_BenchAssumption_A` enforces **bench assumption A6**:
+  no mode change from request presentation through the last outstanding response. Q8/Q48 are
+  still open; this does not claim RTL support for mid-access mode switching. Three cover properties
+  witness stalls, responses and outstanding accesses. Xcelium's CMS coverage configuration selects
+  these assertions explicitly. Add `--build-opts="-covdut tb"` to coverage runs so that Xcelium
+  instruments the sibling interface as well as the DUT; the common DUT-only scope excludes it.
+* Assertion control: only `tb.sv` disables assertions, only in the core WTRC instance, around
+  malformed stores that a real core cannot issue. The RTL assertions are unchanged.
 * Unknown checks on DUT outputs: The RTL has assertions to ensure all outputs are initialized to known values after coming out of reset
 
-## Second testbench: EG2 `cms`
-The CHERIoT memory subsystem has a second testbench, built for Earl Grey 2: `cms`, in [`dv/cms`](cms/README.md). It is a class-based SystemVerilog testbench (its own TL-UL drivers, monitors and scoreboard; no UVM library, no RAL), so it also runs on Verilator.
-The feature tests of this testbench were ported from it.
-Its scoreboard predicts tags, data, the WTRC, the revocation sweep (including its races with core stores), the registers and the meta SRAM from the design specification.
-The C reference model of the subsystem (`dv/cms/cmodel`) is shared by both testbenches.
-Its testplan is [`cheriot_mem_sys_cms_testplan.hjson`](../data/cheriot_mem_sys_cms_testplan.hjson) (39 testpoints, 14 covergroups).
+## Consolidated tests and declared gaps
+
+The maintained sequences also cover reset during an active sweep, external-request/response-timed
+store races, and the 40,000-operation `random_long` entry (the `mixed_random` sequence).
+The `known_gaps` regression contains external latency/backpressure checks and seven TRVK fault
+sites. A TRVK pulse is a write-only fault actuator; its timing comes from external ports and its
+effectiveness from a later external tag read. No internal value qualifies an injection or verdict.
+The declared injected granule alone may retain either tag; other comparisons remain active.
+
+| Requirement/countermeasure | Status |
+|---|---|
+| REQ_CMS_01 / CORED_TAG.INTERSIG.MUBI | Known gap: one-bit sidebands, no MuBi4 encoding (TODO #31066); `tests: []` |
+| REQ_CMS_02 / LOGIC.SHADOW | Known gap: no lockstep copy (TODO #30572); `tests: []`; TRVK fault probes are separate evidence |
+| REQ_CMS_07 | Existing extra-cycle latency gap; measured at external core/crossbar ports, never counted as a pass |
+| Internal TRVK verdict latency / per-owner bitmap outstanding count | Unobservable from this IP's external ports under overlap; not checked using internal taps |
+| NVM capability-store command integrity | New failure CMS-NVM-CMD-INTG: bad command integrity returns success and can set a previously clear tag; prediction remains the documented error/no-change/alert contract |
+| Ordinary core and bitmap command integrity | CMS-CMD-INTG question: no documented response/alert contract; no invented check |
+
+`sec_cm_intersig_mubi`, `sec_cm_mem_sw_noaccess` and `sec_cm_bus_integrity` map to their actual
+feature/common tests in the countermeasure testplan. BUS.INTEGRITY's end-to-end guarantee also
+relies on the missing LOGIC.SHADOW. The NVM capability-store command/data-integrity contract is
+checked by `err_cmd_intg`. The register-port isolation cases use reserved local offsets; rejection
+of every absolute high-address alias is not claimed (the register port decodes local CSR offsets).
+
+`checker_negative` contains the ported data, tag/sticky-tag, sweep, bitmap, error, race, epoch,
+latency, TRVK and backpressure corruption twins. Every twin must hit its named corruption and
+fail at the intended comparison. Build failure, an inactive injection or an unrelated failure
+is not detection. The old MUBI/lockstep tests and their corruption twins are replaced by the two
+explicit missing-RTL gaps above; they cannot prove implemented countermeasures.
 
 ## Building and running tests
 The [dvsim](https://github.com/lowRISC/dvsim) tool is used for building and running our tests and regressions.
@@ -160,4 +228,27 @@ list consumed across the tests and does not repeat one seed for the whole regres
 ## Testplan
 [Testplan](../data/cheriot_mem_sys_testplan.hjson)
 
-The `cms` testbench: [testplan](../data/cheriot_mem_sys_cms_testplan.hjson)
+The former standalone `dv/cms` flow is retired after consolidation; use the UVM testplan above.
+
+The frozen consolidation snapshot on RTL `cde6b0a7e0` was validated at seeds 1110 and 1111 on 2026-11-11:
+28 of 30 feature tests pass at each seed; the intentional checker twin fails as intended and
+`err_cmd_intg` reproduces CMS-NVM-CMD-INTG. All 11 corruption twins at each seed hit their
+intended comparisons. The latency/backpressure gaps and seven TRVK fault probes remain
+classified gaps/failures, including four busy-watchdog outcomes. The 10 common tests pass.
+The harness evidence is in `evidence/cms-restructure-1111/results.md`. These measurements predate
+the separate NVM command-integrity fix `269afde566` and do not validate that newer RTL commit.
+
+The merged passing-feature coverage samples all 18 CMS groups (452/495 graded bins hit).
+It is not sign-off: two residual bins are unreachable from the current external ports,
+Xcelium prunes invalid-mode bins from the enum-valued coverpoint, and only 13 of the 88 RTL
+assertion macro names appear in coverage records. All four core-interface assertions and
+three cover properties are covered. See the harness `coverage-analysis.md` for measurement
+fixes and proposed directed tests; these proposals are not part of the frozen simulation sources.
+
+For the gap and negative campaigns (their nonzero exits require classification, not a green pass):
+
+```console
+dvsim hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson --tool xcelium -i known_gaps --fixed-seed 1110 --reseed 1
+dvsim hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson --tool xcelium -i checker_negative --fixed-seed 1110 --reseed 1
+dvsim hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson --tool xcelium -i feature --fixed-seed 1110 --reseed 1 --cov --build-opts="-covdut tb" --map-full-testplan
+```

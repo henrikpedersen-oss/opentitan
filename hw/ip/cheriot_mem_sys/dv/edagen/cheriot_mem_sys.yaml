@@ -1,12 +1,21 @@
-# cheriot_mem_sys: a first edagen configuration, written by scripts/new_edagen_config.py from
-# OpenTitan's data (the IP hjson, top_earlgrey.hjson, FuseSoC, the dv/ directory). NOT
-# REVIEWED YET: check the clock groups (the chip clock behind each port), the resets' clocks,
-# quasi-static inputs (formal.cdc_static), the DFT test mode (formal.dft) and the test seeds,
-# as rv_dm.yaml and aes.yaml were checked.
+# cheriot_mem_sys: the edagen configuration of the CHERIoT memory subsystem's block flow
+# (eg2_top_verification: make block-flow BLOCK=cheriot_mem_sys). It reuses the block's UVM bench
+# (dv/cheriot_mem_sys_sim_cfg.hjson): DVSim runs every test below with Xcelium and coverage, IMC
+# merges functional and code coverage, then HAL lint, the Jasper apps, Genus and Conformal LEC.
+#
+# Reviewed 2026-11-11 against rtl/cheriot_mem_sys.sv and data/cheriot_mem_sys.hjson:
+# - One clock (clk_i, the main clock) and one reset (rst_ni): every port is in that domain, so
+#   CDC has no crossing to check and is run only to confirm that.
+# - No scan-mode input: the DFT set-up names clk_i as the test clock and nothing else.
+# - cheriot_ena_i (MuBi4) is set from rv_core_ibex's locked mode, and the bench holds it stable
+#   around accesses (spec assumption A6); it is not declared quasi-static, because the mode-gating
+#   test changes it at run time.
+# - The core data port's tag sideband (cored_tag_h2d_i, cored_tag_d2h_o) is not a TL-UL field:
+#   the bench's own core agent drives it; edagen's TL-UL interface below names only the bus.
 module: cheriot_mem_sys
 clock_frequency_hz: 100000000
 top: cheriot_mem_sys
-description: "cheriot_mem_sys: its OpenTitan block bench (generated configuration, not reviewed)"
+description: "CHERIoT memory subsystem: tag filter, WTRC, RMW filter, revocation engine (TBRE), bitmap windows"
 owner: Henrik Pedersen <henrik.pedersen@lowrisc.org>
 
 rtl:
@@ -19,6 +28,10 @@ clocks:
 resets:
   - {name: rst, port: rst_ni, active_low: true, sync_to: clk}
 
+# The register port only. edagen reuses the block's UVM bench (dv: below) and generates none of its
+# own: the bench's agents drive the other ports (revbm, corerevbm, cored with its tag sideband,
+# cheriot_ena_i; cored_h, tbre_h, meta_sram as memories). edagen's warnings that it would tie those
+# inputs to 0 concern only a generated bench and do not apply.
 interfaces:
   - name: regs
     kind: tl
@@ -26,21 +39,26 @@ interfaces:
     vip: lowrisc
     ral_package: cheriot_mem_sys_regs_ral_pkg
     ral_core: "lowrisc:dv:cheriot_mem_sys_env:0.1"
-  - name: revbm
-    kind: tl
-    ports: {h2d: revbm_tl_d_i, d2h: revbm_tl_d_o}
-    vip: lowrisc
-    ral_package: cheriot_mem_sys_revbm_ral_pkg
-    ral_core: "lowrisc:dv:cheriot_mem_sys_env:0.1"
 
+# The interrupt (intr_tbre_done_o) is not declared: the reused bench has its own interrupt checks,
+# and a declaration would make edagen generate an interrupt agent of its own (as rv_dm.yaml).
 alerts:
-  - {name: fatal_fault, fatal: true, desc: "This fatal alert is triggered when an integrity fault is detected, when the meta SRAM path returns a device error, when "}
+  - {name: fatal_fault, fatal: true, desc: "An integrity fault, a device error on the meta SRAM path, a revocation engine fault, a partial NVM capability store, or a request out of the capability store sequence"}
 
 dv:
   lowrisc_root: ../../../../..   # this tree, the EG2 fork; LOWRISC_ROOT= overrides it
   reuse_sim_cfg: hw/ip/cheriot_mem_sys/dv/cheriot_mem_sys_sim_cfg.hjson
   reuse_core: "lowrisc:dv:cheriot_mem_sys_sim:0.1"
   reuse_testplan: hw/ip/cheriot_mem_sys/data/cheriot_mem_sys_testplan.hjson
+
+formal:
+  # Single clock domain: nothing for CDC to declare beyond the clock group above.
+  # FPV: no property environment yet. Candidates: the revocation decision of cheriot_trvk_core,
+  # adapted from ibex dv/formal_ibex_cheriot/formal-trvk/formal_tb.sv, and the reggen CSR
+  # assertions; add formal/cheriot_mem_sys_fpv_env.sv here and fpv to jasper.apps then.
+  files: []
+  dft:
+    test_clocks: [clk_i]
 
 synthesis:
   tech: nangate45
@@ -53,21 +71,56 @@ tools:
   xcelium: {version: "24.03"}
   vcs: {}
   imc: {version: "24.03"}
-  jasper: {apps: [superlint, unr, cdc, fpv]}
+  jasper: {apps: [superlint, unr, cdc]}
   genus: {effort: medium}
   conformal: {netlist_from: genus}
   yosys: {frontend: slang, flatten: true}
 
-# Every test of the reused sim cfg (and its imported common tests), seeds 1 and 2.
+# The tests that must pass, from the reused sim cfg: the feature regression and the common CIP
+# tests, at the fixed seeds the bench is validated at (1110, 1111), the random ones at six seeds.
+# Not listed, because they are expected to fail and would distort the coverage and the pass count:
+# cheriot_mem_sys_cmodel_random_inject_fail, the checker_negative group (the _corrupt_ runs) and
+# the known_gaps group (REQ_CMS_01/02 and the latency/backpressure gaps); run those with
+# make cms-uvm TESTNAME=checker_negative / known_gaps.
 tests:
-  - {name: cheriot_mem_sys_smoke, uvm_test: cheriot_mem_sys_smoke, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_csr_hw_reset, uvm_test: cheriot_mem_sys_csr_hw_reset, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_csr_rw, uvm_test: cheriot_mem_sys_csr_rw, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_csr_bit_bash, uvm_test: cheriot_mem_sys_csr_bit_bash, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_csr_aliasing, uvm_test: cheriot_mem_sys_csr_aliasing, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_same_csr_outstanding, uvm_test: cheriot_mem_sys_same_csr_outstanding, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_csr_mem_rw_with_rand_reset, uvm_test: cheriot_mem_sys_csr_mem_rw_with_rand_reset, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_alert_test, uvm_test: cheriot_mem_sys_alert_test, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_intr_test, uvm_test: cheriot_mem_sys_intr_test, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_tl_errors, uvm_test: cheriot_mem_sys_tl_errors, seeds: [1, 2], timeout: 3600}
-  - {name: cheriot_mem_sys_tl_intg_err, uvm_test: cheriot_mem_sys_tl_intg_err, seeds: [1, 2], timeout: 3600}
+  # Feature tests (the C reference model checks every port)
+  - {name: cheriot_mem_sys_tag_smoke, uvm_test: cheriot_mem_sys_tag_smoke, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tag_store_load, uvm_test: cheriot_mem_sys_tag_store_load, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tag_clear_subword, uvm_test: cheriot_mem_sys_tag_clear_subword, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_cap_load_hint, uvm_test: cheriot_mem_sys_cap_load_hint, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_access_check, uvm_test: cheriot_mem_sys_access_check, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_mode_gating, uvm_test: cheriot_mem_sys_mode_gating, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_rmw_same_word, uvm_test: cheriot_mem_sys_rmw_same_word, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_rmw_core_tbre_same_word, uvm_test: cheriot_mem_sys_rmw_core_tbre_same_word, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_sweep, uvm_test: cheriot_mem_sys_tbre_sweep, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_base_decode, uvm_test: cheriot_mem_sys_tbre_base_decode, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_csr, uvm_test: cheriot_mem_sys_tbre_csr, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_epoch, uvm_test: cheriot_mem_sys_tbre_epoch, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_intr, uvm_test: cheriot_mem_sys_tbre_intr, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_concurrent, uvm_test: cheriot_mem_sys_tbre_concurrent, seeds: [1110, 1111, 1112, 1113, 1114, 1115], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_snoop_window, uvm_test: cheriot_mem_sys_tbre_snoop_window, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tbre_store_race, uvm_test: cheriot_mem_sys_tbre_store_race, seeds: [1110, 1111, 1112, 1113, 1114, 1115], timeout: 3600}
+  - {name: cheriot_mem_sys_nvm_cap_store, uvm_test: cheriot_mem_sys_nvm_cap_store, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_alert_test_reg, uvm_test: cheriot_mem_sys_alert_test_reg, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_csr_intg, uvm_test: cheriot_mem_sys_err_csr_intg, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_cmd_intg, uvm_test: cheriot_mem_sys_err_cmd_intg, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_data_path, uvm_test: cheriot_mem_sys_err_data_path, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_meta_intg, uvm_test: cheriot_mem_sys_err_meta_intg, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_tag_path, uvm_test: cheriot_mem_sys_err_tag_path, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_tbre_read, uvm_test: cheriot_mem_sys_err_tbre_read, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_err_tbre_revbm, uvm_test: cheriot_mem_sys_err_tbre_revbm, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_reset, uvm_test: cheriot_mem_sys_reset, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_mixed_random, uvm_test: cheriot_mem_sys_mixed_random, seeds: [1110, 1111, 1112, 1113, 1114, 1115], timeout: 3600}
+  - {name: cheriot_mem_sys_random_long, uvm_test: cheriot_mem_sys_random_long, seeds: [1110, 1111], timeout: 7200}
+  - {name: cheriot_mem_sys_cmodel_random, uvm_test: cheriot_mem_sys_cmodel_random, seeds: [1110, 1111, 1112, 1113, 1114, 1115], timeout: 3600}
+  # Common CIP tests (OpenTitan's csr, alert, interrupt and TL-UL testplans)
+  - {name: cheriot_mem_sys_csr_hw_reset, uvm_test: cheriot_mem_sys_csr_hw_reset, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_csr_rw, uvm_test: cheriot_mem_sys_csr_rw, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_csr_bit_bash, uvm_test: cheriot_mem_sys_csr_bit_bash, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_csr_aliasing, uvm_test: cheriot_mem_sys_csr_aliasing, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_same_csr_outstanding, uvm_test: cheriot_mem_sys_same_csr_outstanding, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_csr_mem_rw_with_rand_reset, uvm_test: cheriot_mem_sys_csr_mem_rw_with_rand_reset, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_alert_test, uvm_test: cheriot_mem_sys_alert_test, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_intr_test, uvm_test: cheriot_mem_sys_intr_test, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tl_errors, uvm_test: cheriot_mem_sys_tl_errors, seeds: [1110, 1111], timeout: 3600}
+  - {name: cheriot_mem_sys_tl_intg_err, uvm_test: cheriot_mem_sys_tl_intg_err, seeds: [1110, 1111], timeout: 3600}

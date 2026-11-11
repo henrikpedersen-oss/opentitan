@@ -7,6 +7,7 @@
 // has no tag and never reaches the meta SRAM (theory_of_operation.md, "Tag Filter"). In the NVM a
 // tagged store sets the tag only when the NVM holds the capability: half of the stores are
 // programmed there first, the others are answered with d_error.
+// Requirements: REQ_TAG_01–04; REQ_CMS_10 (block part).
 class cheriot_mem_sys_tag_store_load_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tag_store_load_vseq)
   `uvm_object_new

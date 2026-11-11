@@ -13,7 +13,7 @@ matter when using this model as a verification reference.
 The control was a snapshot taken after the CMS adapter handoff, including the
 existing uncommitted changes. The control and revised model used the same
 SystemC, Spike, MPACT and firmware artifacts. Generated headers and the shared
-`hw/ip/cheriot_mem_sys/dv/cms/cmodel/cms_core.h` were not edited.
+`hw/ip/cheriot_mem_sys/dv/cmodel/cms_core.h` were not edited.
 
 ## Fixed findings
 

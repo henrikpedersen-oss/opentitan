@@ -5,6 +5,7 @@
 // A tag write changes exactly the addressed bit of its 32-bit meta word, under heavy traffic to
 // the 32 granules of one word; when the bit already has the value it is a read with no write-back
 // (theory_of_operation.md, "RMW Filter").
+// Requirements: REQ_RMW_01–11, REQ_RMW_18; REQ_TAG_04.
 class cheriot_mem_sys_rmw_same_word_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_rmw_same_word_vseq)
   `uvm_object_new

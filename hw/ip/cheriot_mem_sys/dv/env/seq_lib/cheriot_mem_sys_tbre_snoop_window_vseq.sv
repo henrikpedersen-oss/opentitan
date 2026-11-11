@@ -8,6 +8,7 @@
 // the read of a capability's lower word. A capability written from then on is not cleared,
 // including a write to its upper word only and a write of a capability that is itself revoked; a
 // write answered before is resolved by the engine like any capability.
+// Requirements: REQ_TBRE_24–27, REQ_TBRE_39; REQ_TAG_09.
 class cheriot_mem_sys_tbre_snoop_window_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_snoop_window_vseq)
   `uvm_object_new

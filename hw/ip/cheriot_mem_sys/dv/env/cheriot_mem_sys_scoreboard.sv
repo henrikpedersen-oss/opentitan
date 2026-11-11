@@ -23,6 +23,7 @@
 `uvm_analysis_imp_decl(_meta_req)
 `uvm_analysis_imp_decl(_meta_rsp_sb)
 `uvm_analysis_imp_decl(_activity)
+`uvm_analysis_imp_decl(_model_cov)
 
 class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     .CFG_T(cheriot_mem_sys_env_cfg),
@@ -50,6 +51,35 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   // The TL-UL monitors (set by the environment), for the requests still waiting for an answer.
   tl_monitor regs_monitor;
   tl_monitor tl_monitors[$];
+
+  // Coverage has no path back into expected responses or comparison state.
+  uvm_analysis_imp_model_cov #(cheriot_mem_sys_cov_item, cheriot_mem_sys_scoreboard) model_cov_imp;
+  protected bit cov_lower_seen[bit [31:0]], cov_upper_seen[bit [31:0]];
+  protected bit [31:0] cov_last_tbre;
+  protected bit cov_have_tbre;
+
+  function void write_model_cov(cheriot_mem_sys_cov_item c);
+    if (!cfg.en_cov) return;
+    if (c.kind == cheriot_mem_sys_cov_item::TbreStart && c.st_outcome == 0) begin
+      cov_lower_seen.delete();
+      cov_upper_seen.delete();
+      cov_have_tbre = 0;
+    end
+    if (c.kind == cheriot_mem_sys_cov_item::SweepRace) begin
+      if (c.r_kind != 0) begin
+        if (cov_have_tbre && tag_word_addr(c.addr) == tag_word_addr(cov_last_tbre)) c.r_kind = 2;
+        if (c.w_rev == 2'b10) c.r_kind = 3;
+        // Before an external lower-word handshake, its presentation may already be pending:
+        // classify that interval as around, never claim a known early snoop boundary.
+        c.w_window = cov_upper_seen.exists(c.addr & ~32'h7) ? 3 :
+                       cov_lower_seen.exists(c.addr & ~32'h7) ? 2 : 1;
+        c.kind = cheriot_mem_sys_cov_item::SweepSnoop;
+        cov.sample_model(c);
+        c.kind = cheriot_mem_sys_cov_item::SweepRace;
+      end
+    end
+    cov.sample_model(c);
+  endfunction
 
   // ---- Expected, from the reference model ----
   uvm_tlm_analysis_fifo #(cheriot_mem_sys_rsp_exp)   core_exp_fifo;
@@ -103,6 +133,7 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     meta_req_imp       = new("meta_req_imp", this);
     meta_rsp_imp       = new("meta_rsp_imp", this);
     activity_imp       = new("activity_imp", this);
+    model_cov_imp = new("model_cov_imp", this);
     core_exp_fifo      = new("core_exp_fifo", this);
     revbm_exp_fifo     = new("revbm_exp_fifo", this);
     corerevbm_exp_fifo = new("corerevbm_exp_fifo", this);
@@ -165,6 +196,7 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   protected task compare_core(cheriot_mem_sys_core_item act);
     cheriot_mem_sys_rsp_exp exp;
     bit [31:0]              rdata = act.rdata;
+    bit rtag = act.rtag;
     tlul_pkg::tl_d2h_t fields = '0;
     core_exp_fifo.get(exp);
     n_core++;
@@ -194,9 +226,14 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
                                   act.addr, b), UVM_LOW)
       end
     end
+    if (!act.is_write() && !act.err && exp.rdata_care != 0 && cfg.corrupt_check("data"))
+      rdata ^= exp.rdata_care & (~exp.rdata_care + 1);
+    if (!act.is_write() && !act.err && exp.rtag_set != 2'b11 &&
+        (cfg.corrupt_check("load_tag") ||
+         (act.addr[2] && cfg.corrupt_check("sticky_tag")))) rtag = !rtag;
     compare(exp, act.err, rdata);
-    if (!act.err && !exp.rtag_set[act.rtag]) begin
-      mismatch($sformatf("%s: tag %0d, expected %s", exp.what, act.rtag,
+    if (!act.err && !exp.rtag_set[rtag]) begin
+      mismatch($sformatf("%s: tag %0d, expected %s", exp.what, rtag,
                          exp.rtag_set == 2'b01 ? "0" : exp.rtag_set == 2'b10 ? "1" : "0 or 1"));
     end
   endtask
@@ -221,14 +258,25 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
         !(exp.intg_optional && (user_bits.data_intg ^ tlul_pkg::get_data_intg(act.d_data)) == 0)) begin
       mismatch($sformatf("%s: data integrity syndrome changed", exp.what));
     end
-    compare(exp, act.d_error, act.d_data);
+    begin
+      bit err = act.d_error;
+      bit [31:0] data = act.d_data;
+      if (cfg.corrupt_check("err")) err = !err;
+      if (!act.is_write() && !err && exp.rdata_care != 0 && cfg.corrupt_check("revbm"))
+        data ^= exp.rdata_care & (~exp.rdata_care + 1);
+      compare(exp, err, data);
+    end
   endtask
 
   protected task compare_csr(tl_seq_item act);
     cheriot_mem_sys_rsp_exp exp;
     csr_exp_fifo.get(exp);
     n_csr++;
-    compare(exp, 1'b0, act.d_data);
+    begin
+      bit [31:0] data = act.d_data;
+      if ((act.a_addr & 32'h3f) == 32'h24 && cfg.corrupt_check("epoch")) data ^= 2;
+      compare(exp, 1'b0, data);
+    end
     // The interrupt pin is INTR_STATE & INTR_ENABLE. The model learns that a sweep has ended
     // later than the pin rises, so while it still counts a sweep the pin is not judged.
     if (!ref_model.sweep_active() && cfg.intr_vif.pins[0] != ref_model.intr_expected()) begin
@@ -263,7 +311,8 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
         if (unmatched_alerts_q.size() > 0) begin
           unmatched_alerts_q.delete();
           fatal_seen = 1'b1;
-          last_alert = cycle;
+          cfg.observed_fatal_alerts++;
+    last_alert = cycle;
         end
       end
       AlertExpTest: begin
@@ -345,6 +394,12 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   // grace also covers a read seen in the same cycle as the start write's acceptance.
   function void write_tbre_h_req(tl_seq_item it);
     last_activity = cycle;
+    if (cfg.en_cov) begin
+      cov_have_tbre = 1;
+      cov_last_tbre = it.a_addr;
+      if (it.a_addr[2]) cov_upper_seen[it.a_addr & ~32'h7] = 1;
+      else cov_lower_seen[it.a_addr & ~32'h7] = 1;
+    end
     if (ref_model == null || ref_model.sweep_active()) return;
     fork
       begin
@@ -422,6 +477,10 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
     for (int unsigned off = 0; off < ref_model.meta_bytes(); off += 4) begin
       ref_model.meta_word(off, value, care);
       actual = cfg.meta_mem.read(MetaBase + off);
+      if (care != 0 && MetaBase + off >= MetaNvmTagBase &&
+          ((ref_model.completed_sweeps != 0 && cfg.corrupt_check("sweep")) ||
+           (cfg.race_complete && cfg.corrupt_check("race"))))
+        actual ^= care & (~care + 1);
       n_meta_words++;
       if ((actual & care) != (value & care) && n++ < 8) begin
         mismatch($sformatf("meta SRAM %s: word 0x%04x is 0x%08x, expected 0x%08x (bits 0x%08x)",
@@ -455,6 +514,9 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
   // A reset of the subsystem: the alerts it latched and the accesses in flight are gone.
   virtual function void reset(string kind = "HARD");
     super.reset(kind);
+    cov_lower_seen.delete();
+    cov_upper_seen.delete();
+    cov_have_tbre = 0;
     core_fifo.flush();
     revbm_fifo.flush();
     corerevbm_fifo.flush();
@@ -470,8 +532,8 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
       if (unmatched_alerts_q.size() > 0) begin
         mismatch("fatal_fault alert that nothing raised (before the reset)");
       end
-      // The tests reset at quiet points (a reset in the middle of an access, cms_reset, is not
-      // ported): every response taken must have been compared by now.
+      // Completed external responses must be compared before reset. Pending TBRE reads
+      // are cancelled by the agent reset; an interrupted sweep retains either tag outcome.
       check_counts("before the reset");
       n_core_seen   = n_core;
       n_bitmap_seen = n_bitmap;
@@ -489,6 +551,9 @@ class cheriot_mem_sys_scoreboard extends cip_base_scoreboard #(
 
   function void check_phase(uvm_phase phase);
     super.check_phase(phase);
+    if (cfg.corrupt_kind != "" && !cfg.corrupt_applied)
+      `uvm_error("CMS_CORRUPT_INACTIVE", "requested checker corruption never reached its comparison")
+
     if (ref_model == null) return;
     compare_meta("at the end of the test");
     if (alert_tests_q.size() > 0) mismatch("an ALERT_TEST alert did not come");

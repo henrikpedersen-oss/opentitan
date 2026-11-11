@@ -39,6 +39,10 @@ class cheriot_mem_sys_base_vseq extends cip_base_vseq #(
 
   `uvm_object_new
 
+  protected function bit corrupt_check(string kind);
+    return cfg.corrupt_check(kind);
+  endfunction
+
   // ---- bring-up ----
 
   virtual task dut_init(string reset_kind = "HARD");

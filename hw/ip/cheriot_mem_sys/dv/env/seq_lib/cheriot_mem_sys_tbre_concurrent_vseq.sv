@@ -4,6 +4,7 @@
 //
 // Core traffic and bitmap writes during a sweep are served correctly and do not disturb it
 // (theory_of_operation.md, "Revocation Engine" and "Arbitration").
+// Requirements: REQ_TBRE_24–27, REQ_TBRE_39; REQ_TAG_09.
 class cheriot_mem_sys_tbre_concurrent_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_tbre_concurrent_vseq)
   `uvm_object_new

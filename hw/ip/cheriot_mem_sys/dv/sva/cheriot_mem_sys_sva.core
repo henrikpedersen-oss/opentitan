@@ -8,8 +8,11 @@ filesets:
   files_dv:
     depend:
       - lowrisc:tlul:headers
+      - lowrisc:dv:dv_fcov_macros
       - lowrisc:fpv:csr_assert_gen
     files:
+      - cheriot_mem_subsys_fcov.sv
+      - cheriot_trvk_fcov.sv
       - cheriot_mem_sys_bind.sv
     file_type: systemVerilogSource
 

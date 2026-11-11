@@ -6,6 +6,7 @@
 // while ALERT_TEST.regwen is set; writing 0 to regwen (rw0c, reset 1) disables alert testing
 // until reset, the write that clears it still raising its own alert (registers.md, ALERT_TEST).
 // The scoreboard checks each expected alert and flags any other.
+// Requirements: REQ_ALT_02, REQ_ALT_03.
 class cheriot_mem_sys_alert_test_reg_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_alert_test_reg_vseq)
   `uvm_object_new

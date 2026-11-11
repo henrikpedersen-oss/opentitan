@@ -6,6 +6,7 @@
 // integrity fault) fails the sweep with sweep_err, raises fatal_fault, and revokes the capability
 // whose lookup failed, live as it is (theory_of_operation.md, "Revocation Engine" and "Error
 // Handling").
+// Requirements: REQ_TBRE_32–36; REQ_ALT_04.
 class cheriot_mem_sys_err_tbre_revbm_vseq extends cheriot_mem_sys_base_vseq;
   `uvm_object_utils(cheriot_mem_sys_err_tbre_revbm_vseq)
   `uvm_object_new

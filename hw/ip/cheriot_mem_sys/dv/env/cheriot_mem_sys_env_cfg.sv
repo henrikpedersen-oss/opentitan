@@ -24,6 +24,24 @@ class cheriot_mem_sys_env_cfg extends cip_base_env_cfg #(.RAL_T(cheriot_mem_sys_
   // The C reference model checks the subsystem (cheriot_mem_sys_scoreboard). The feature tests
   // turn it on; +cheriot_mem_sys_cmodel=1 turns it on for any test.
   bit          en_cmodel;
+  // Deliberate checker faults, selected only by the testlist's negative twins.
+  string corrupt_kind;
+  int unsigned corrupt_at = 1, corrupt_seen;
+  bit corrupt_applied, race_complete;
+  // Declared fault stimulus, never read from the DUT. Only this swept granule may differ.
+  bit trvk_fault_arm;
+  bit [31:0] trvk_fault_addr;
+  int unsigned observed_fatal_alerts;
+
+  function bit corrupt_check(string kind);
+    if (kind != corrupt_kind || corrupt_applied) return 0;
+    corrupt_seen++;
+    if (corrupt_seen < corrupt_at) return 0;
+    corrupt_applied = 1;
+    `uvm_info("CMS_CORRUPT", $sformatf("%s comparison %0d deliberately corrupted", kind,
+                                      corrupt_seen), UVM_LOW)
+    return 1;
+  endfunction
   // +cheriot_mem_sys_cmodel_corrupt=<n> hands the n-th compared read to the model with one bit
   // flipped: the _inject_fail test, which must fail.
   int unsigned cmodel_corrupt;
@@ -65,6 +83,8 @@ class cheriot_mem_sys_env_cfg extends cip_base_env_cfg #(.RAL_T(cheriot_mem_sys_
     data_mem = mem_model#(.AddrWidth(32))::type_id::create("data_mem");
     meta_mem = mem_model#(.AddrWidth(32))::type_id::create("meta_mem");
 
+    void'($value$plusargs("cheriot_mem_sys_corrupt=%s", corrupt_kind));
+    void'($value$plusargs("cheriot_mem_sys_corrupt_at=%d", corrupt_at));
     void'($value$plusargs("cheriot_mem_sys_cmodel=%b", en_cmodel));
     void'($value$plusargs("cheriot_mem_sys_cmodel_corrupt=%d", cmodel_corrupt));
     void'($value$plusargs("cheriot_mem_sys_x_idle_rsp=%b", x_idle_rsp_cored_h));
