@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+#include "cms_cap.h"
+
 namespace cms {
 
 // TL-UL A-channel opcodes.
@@ -84,20 +86,10 @@ using TagSet = uint8_t;
 constexpr TagSet kTag0 = 1, kTag1 = 2, kTagAny = 3;
 inline TagSet tag_exact(bool t) { return t ? kTag1 : kTag0; }
 
-// [ISA] capability bounds: word 1 holds R 31, p 30:25, otype 24:22, E 21:18 (15 meaning 24),
-// T 17:9, B 8:0; base = ((a >> (E+9)) + c_b) << (E+9) | B << E, c_b = -1 when a[E+8:E] < B.
-inline uint32_t cap_base(uint32_t addr, uint32_t meta) {
-  unsigned ce = (meta >> 18) & 0xf, e = ce == 15 ? 24 : ce;
-  uint64_t b = meta & 0x1ff, mid = (uint64_t(addr) >> e) & 0x1ff, top = uint64_t(addr) >> (e + 9);
-  if (mid < b) top -= 1;
-  return uint32_t((top << (e + 9)) | (b << e));
-}
-// [ISA] a sealing capability: compressed permissions p[4:3] == 0 with any of p[2:0]. A capability
-// with no permissions is not sealing (reading Q17).
-inline bool cap_sealing(uint32_t meta) {
-  uint32_t p = (meta >> 25) & 0x3f;
-  return ((p >> 3) & 3) == 0 && (p & 7) != 0;
-}
+// The capability's base and whether it is sealing: cms_cap.h, in plain C, shared with the C-to-RTL
+// proof of the revocation decision (dv/c2rtl).
+inline uint32_t cap_base(uint32_t addr, uint32_t meta) { return cms_cap_base(addr, meta); }
+inline bool cap_sealing(uint32_t meta) { return cms_cap_sealing(meta) != 0; }
 
 // Register offsets [REGS].
 enum Csr : uint32_t {

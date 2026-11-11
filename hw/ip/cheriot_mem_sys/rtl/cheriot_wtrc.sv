@@ -230,7 +230,10 @@ module cheriot_wtrc #(
                     ({tl_h_i.d_data, tl_h_i.d_user.data_intg} != {exp_rsp.data, exp_rsp.data_intg});
 
   // W1 sets the tag only if W0 matched as well
-  assign tag_wr_req = head_w1 && !mismatch && w0_ok_q;
+  // Only with a valid response: mismatch compares d_data and d_user.data_intg, which TL-UL leaves
+  // undefined while d_valid is low, and tag_wr_req selects d_ready (proc_connect_tl_req). Every
+  // other use already requires d_valid.
+  assign tag_wr_req = tl_h_i.d_valid && head_w1 && !mismatch && w0_ok_q;
 
   // The response integrity is recomputed for a capability store, so it is checked first.
   tlul_rsp_intg_chk #(

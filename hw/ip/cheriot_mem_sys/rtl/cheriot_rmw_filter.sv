@@ -99,8 +99,12 @@ module cheriot_rmw_filter #(
   // We can skip the write back operation if the tag to be written matches the current state
   assign tag_up_to_date = tl_d_i.d_data[bit_sel_q] == tag_q;
 
-  // An errored metadata read must never be written back.
-  assign skip_write_back = tag_up_to_date || tl_d_i.d_error;
+  // An errored metadata read must never be written back, nor one whose response or data integrity
+  // is broken: the word would be rewritten with a fresh integrity, so a corrupt word (and the other
+  // 31 tags in it) would become valid again (Q43). The integrity error still raises the alert
+  // (rsp_intg_error_o, data_intg_error_o).
+  assign skip_write_back = tag_up_to_date || tl_d_i.d_error ||
+                           (|rsp_intg_error) || (|rsp_data_intg_error);
 
   // A host request is taken
   assign req_done = tl_h_i.a_valid && tl_h_o.a_ready;

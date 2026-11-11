@@ -9,6 +9,7 @@ filesets:
   files_dv:
     files:
       - cms_core.h: { file_type: cppSource, is_include_file: true }
+      - cms_cap.h: { file_type: cppSource, is_include_file: true }
       - cms_dpi.cc: { file_type: cppSource }
       - cms_cmodel_pkg.sv: { file_type: systemVerilogSource }
 
