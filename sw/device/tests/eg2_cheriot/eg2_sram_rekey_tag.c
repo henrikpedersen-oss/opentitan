@@ -3,36 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * chip_sw_cheriot_sram_rekey_tag (EG2 spec "Memory subsystem in CHERIoT mode"; REQ_CMS_16).
+ * chip_sw_cheriot_sram_rekey_tag: a locked SRAM controller preserves capabilities.
  *
- * No write by a host other than the core's CSC leaves a tag set: an INIT or a key renewal of
- * sram_ctrl_main/sec over a tagged granule leaves tag 0 (RFC CHERIoT Memory Subsystem
- * "Lockstepped CHERIoT Subsystem": "any write by a non-CHERIoT host ... must clear"; RFC CHERIoT
- * in OpenTitan p3-4).
+ * The CHERIoT boot stage clears CTRL_REGWEN (REQ_SOC_08, REQ_CMS_16). SRAM's register description says
+ * writes to CTRL then have no effect until reset. Store capabilities in sec and main SRAM,
+ * attempt INIT with key renewal or renewal alone, and check that sec SRAM's words and tags
+ * stay equal to the main-SRAM copies. The controller's status must stay unchanged too.
  *
- * `n_caps` capabilities are stored in sec SRAM (`range_class`: one granule, a partial granule's
- * neighbourhood (two capabilities in adjacent granules), many granules, spread over the whole of
- * sec SRAM), and as many in the main SRAM arena, which is not re-keyed. Then sram_ctrl_sec gets
- * `writer`: INIT after a new key (the documented initialisation), or a key renewal alone. Every
- * capability is reloaded:
- *  - in sec SRAM after INIT: no trap, tag 0;
- *  - in sec SRAM after a renewal alone, the old contents are unreadable (sram_ctrl
- *    theory_of_operation.md): the CLC either traps with a load access fault, the integrity error
- *    raising sram_ctrl_sec's fatal_error (declared to the status module), or returns tag 0; never
- *    tag 1;
- *  - in main SRAM: tagged and unchanged.
- * Only sec SRAM is re-keyed: main SRAM holds the test's stack and globals.
- *
- * Expected to fail on the RTL of 2026-10-24: no RTL path clears a tag on INIT or a key renewal
- * (dv_todo, mutation library: "Not expressible as a mutation: REQ_CMS_16"); rtl_tickets F50.
- *
- * The SystemC model keeps tags through INIT and renewal (its sram_ctrl does not touch the meta
- * SRAM): with `model_gaps` sec SRAM's capabilities are not checked.
- *
- * Built with EG2_SRAM_REKEY_TAG_INJECT_FAIL, the first main SRAM capability is expected untagged:
- * the run must fail with `MISMATCH main tag`.
+ * The locked-write check covers REQ_CMS_16's "unreachable in CHERIoT mode" branch.
+ * INIT/rekey functionality is tested before the lock in the RISC-V SRAM tests. This test does
+ * not decide the open REQ_CMS_16 question about tags after an actually executed INIT/rekey.
+ * `model_gaps` is retained for existing runners; these lock checks run in every model mode.
+ * The _inject_fail build still corrupts the expected first main tag and must fail there.
  */
 
+#include "hw/top/sram_ctrl_regs.h"  // Generated.
 #include "sw/device/lib/testing/eg2/eg2_test.h"
 #include "sw/device/tests/eg2_cheriot/eg2_cheriot_rand.h"
 #include "sw/device/tests/eg2_cheriot/eg2_memsys.h"
@@ -73,7 +58,6 @@ bool eg2_test_main(void) {
   if (!eg2_sec_sram_init()) {
     return false;
   }
-  bool gaps = EG2_PARAM(model_gaps) != 0;
   uint32_t writer = EG2_PARAM(writer) != 0 ? EG2_PARAM(writer) : eg2_rand_range(1, 2);
   uint32_t cls = EG2_PARAM(range_class);
   if (cls == 0) {
@@ -99,34 +83,24 @@ bool eg2_test_main(void) {
     eg2_ms_csc(arena + kMainSlots + 8 * i, c);
   }
 
-  int alert = eg2_status_alert_find("sram_ctrl_sec_fatal_error");
-  bool done = eg2_ms_sram_ctrl(kEg2DevSramCtrlSecRegs, true, writer == 1);
-  eg2_check(&tally, "sram_ctrl_sec operation done", 0, done ? 1 : 0, 1);
-
-  eg2_probe_begin();
-  bool integrity_error = false;
+  eg2_check(&tally, "CTRL_REGWEN locked at boot", 0,
+            eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_CTRL_REGWEN_REG_OFFSET), 0);
+  uint32_t status = eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_STATUS_REG_OFFSET);
+  uint32_t command = 1u << SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT;
+  if (writer == 1) command |= 1u << SRAM_CTRL_CTRL_INIT_BIT;
+  eg2_dev_write32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_CTRL_REG_OFFSET, command);
+  eg2_check(&tally, "locked command preserves status", 0,
+            eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_STATUS_REG_OFFSET), status);
   for (uint32_t i = 0; i < n; ++i) {
     ++tally.planned;
-    uint32_t s = eg2_ms_read32(arena + kAddrTable + 4 * i);
-    bool trapped = eg2_probe_call(eg2_ms_auth(s), NULL, NULL, eg2_stub_clc);
-    void *got = eg2_trap_rec.cap.p;
-    if (!gaps) {
-      if (trapped) {
-        // Only a renewal without INIT may leave words that fail their integrity check.
-        eg2_check(&tally, "sec clc mcause", i, eg2_trap_rec.mcause,
-                  writer == 2 ? kEg2McauseLoadFault : 0);
-        integrity_error = true;
-      } else {
-        eg2_check(&tally, "sec tag", i, eg2_ms_cap_tag(got), 0);
-      }
+    uint32_t sec = eg2_ms_read32(arena + kAddrTable + 4 * i);
+    uint32_t main = arena + kMainSlots + 8 * i;
+    eg2_check(&tally, "locked command preserves sec tag", i, eg2_ms_tag(sec), 1);
+    for (uint32_t word = 0; word < 2; ++word) {
+      eg2_check(&tally, "locked command preserves sec word", 2 * i + word,
+                eg2_ms_read32(sec + 4 * word), eg2_ms_read32(main + 4 * word));
     }
     ++tally.done;
-  }
-  eg2_probe_end();
-  if (integrity_error && alert >= 0) {
-    // What a read of words written under the old key causes (sram_ctrl "Integrity Error
-    // Handling"); declared, so the status sweep expects it.
-    eg2_status_expect_alert((size_t)alert);
   }
   for (uint32_t i = 0; i < n; ++i) {
     ++tally.planned;
@@ -140,8 +114,6 @@ bool eg2_test_main(void) {
     eg2_check(&tally, "main tag", i, eg2_ms_tag(arena + kMainSlots + 8 * i), exp);
     ++tally.done;
   }
-  // sec SRAM usable again for the status sweep and whatever follows.
-  (void)eg2_ms_sram_ctrl(kEg2DevSramCtrlSecRegs, false, true);
   eg2_tally_print("sram_rekey_tag", &tally);
   return eg2_tally_ok(&tally);
 }

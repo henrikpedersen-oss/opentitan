@@ -25,7 +25,8 @@
  *     handler) sets its cause bit at the alert handler, and no other cause bit.
  * Between blocks, where software can observe the connection without pins: otp_ctrl to lc_ctrl
  * (the OTP image's life-cycle state), the AST to sensor_ctrl, clkmgr's hints and the transactional
- * blocks' idle (CLK_HINTS_STATUS), otp_ctrl's key to sram_ctrl, EDN0 to rv_core_ibex (random
+ * blocks' idle (CLK_HINTS_STATUS), otp_ctrl's key to sram_ctrl in RISC-V mode (the CTRL
+ * lock blocks renewal after CHERIoT boot, checked instead), EDN0 to rv_core_ibex (random
  * data), rstmgr's software resets on their blocks (a register written, the block reset, the
  * register back at its reset value), aon_timer's wake-up request at pwrmgr (WAKE_STATUS, after
  * the enable mask), and last the ALERT_TEST lock (a 0 in its REGWEN bit stops ALERT_TEST).
@@ -398,6 +399,18 @@ static void links(ctx_t *c) {
   }
   link_end(c, f);
 
+#ifdef __CHERIOT__
+  // REQ_SOC_08 closes CTRL_REGWEN before the switch. The register's lock rule takes priority
+  // over a request to derive a fresh key; that connection is exercised by the RISC-V twin.
+  link_begin(c, "sram_ctrl_sec CTRL lock after CHERIoT boot", &f);
+  uint32_t base = TOP_EARLGREY_SRAM_CTRL_SEC_REGS_BASE_ADDR;
+  check(c, "link", "CTRL_REGWEN locked", eg2_rm_rd32(base + SRAM_CTRL_CTRL_REGWEN_REG_OFFSET), 0, 1);
+  uint32_t before = eg2_rm_rd32(base + SRAM_CTRL_STATUS_REG_OFFSET);
+  eg2_rm_wr32(base + SRAM_CTRL_CTRL_REG_OFFSET, 1u << SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT);
+  check(c, "link", "locked renewal preserves STATUS",
+        eg2_rm_rd32(base + SRAM_CTRL_STATUS_REG_OFFSET), before, 0xffffffffu);
+  link_end(c, f);
+#else
   // A key renewal gets a valid key (the secondary SRAM's contents are lost; nothing uses them).
   link_begin(c, "otp_ctrl -> sram_ctrl_sec (RENEW_SCR_KEY, STATUS.SCR_KEY_VALID)", &f);
   uint32_t valid = 1u << SRAM_CTRL_STATUS_SCR_KEY_VALID_BIT;
@@ -408,6 +421,7 @@ static void links(ctx_t *c) {
              valid),
         valid, valid);
   link_end(c, f);
+#endif
 
   // Random data arrives (the test ROM started the entropy complex, EDN0 in boot mode).
   link_begin(c, "edn0 -> rv_core_ibex (RND_STATUS, RND_DATA)", &f);

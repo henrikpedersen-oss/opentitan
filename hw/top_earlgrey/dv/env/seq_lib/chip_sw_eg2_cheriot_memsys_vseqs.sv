@@ -108,7 +108,7 @@ class chip_sw_eg2_cms16_vseq extends chip_sw_eg2_cheriot_vseq;
   endfunction
 endclass
 
-// chip_sw_cheriot_sram_rekey_tag (REQ_CMS_16): INIT or key renewal.
+// chip_sw_cheriot_sram_rekey_tag (REQ_SOC_08): locked INIT/renewal preserves words and tags.
 class chip_sw_eg2_sram_rekey_tag_vseq extends chip_sw_eg2_cms16_vseq;
   `uvm_object_utils(chip_sw_eg2_sram_rekey_tag_vseq)
   `uvm_object_new

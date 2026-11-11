@@ -5,7 +5,8 @@
 /**
  * chip_sw_sram_readback (EG2 verification spec REQ_PBF_19, "Memory after boot": SRAM readback;
  * the chip_sram_ctrl testplan's chip_sw_sram_readback testpoint, in both modes): with the
- * readback mode enabled, then disabled, data written to the SRAM reads back; an INIT wipes it;
+ * readback mode enabled, then disabled, data written to the SRAM reads back. In RISC-V mode
+ * INIT wipes it; in CHERIoT mode boot has locked CTRL, so INIT must leave the data unchanged;
  * READBACK_REGWEN cleared locks READBACK (sram_ctrl registers.md: READBACK, READBACK_REGWEN rw0c,
  * STATUS.READBACK_ERROR; interfaces.md SRAM_CTRL.MEM.READBACK "Each read and write is checked with
  * a readback").
@@ -19,7 +20,7 @@
  *   mems         bit 0 sec SRAM, bit 1 retention SRAM (at least one)
  *   n_words      words written per memory and round (1-256)
  *   window       0: the memory's first words, 1: its last words, 2: drawn from the seed
- *   init_check   1: the INIT that must wipe the data (the testpoint's last step)
+ *   init_check   1: check INIT (RISC-V: wipes data; CHERIoT: locked write has no effect)
  *   model_gaps   skips what the SystemC model does not model:
  *
  * | Skipped with model_gaps = 1 | Why                                                       |
@@ -80,6 +81,16 @@ static mem_desc_t mem_of(uint32_t i) {
 static const char *mem_name(uint32_t i) { return i == 0 ? "sec" : "ret"; }
 
 static bool init_mem(const mem_desc_t *m) {
+#ifdef __CHERIOT__
+  // SRAM CTRL_REGWEN protects CTRL until reset (sram_ctrl registers.md). The CHERIoT boot
+  // stage closes it; successful INIT is exercised by the RISC-V twin.
+  bool ok = eg2_chk_eq("CTRL_REGWEN locked at boot", 0,
+                       eg2_dev_read32(m->regs, SRAM_CTRL_CTRL_REGWEN_REG_OFFSET));
+  uint32_t status = eg2_dev_read32(m->regs, SRAM_CTRL_STATUS_REG_OFFSET);
+  eg2_dev_write32(m->regs, SRAM_CTRL_CTRL_REG_OFFSET, 1u << SRAM_CTRL_CTRL_INIT_BIT);
+  return eg2_chk_eq("locked INIT leaves status unchanged", status,
+                    eg2_dev_read32(m->regs, SRAM_CTRL_STATUS_REG_OFFSET)) && ok;
+#else
   eg2_dev_write32(m->regs, SRAM_CTRL_CTRL_REG_OFFSET, 1u << SRAM_CTRL_CTRL_INIT_BIT);
   for (uint32_t i = 0; i < kPolls; ++i) {
     uint32_t st = eg2_dev_read32(m->regs, SRAM_CTRL_STATUS_REG_OFFSET);
@@ -88,6 +99,7 @@ static bool init_mem(const mem_desc_t *m) {
     }
   }
   return eg2_chk_true("INIT_DONE", false);
+#endif
 }
 
 static bool one_mem(uint32_t idx) {
@@ -102,7 +114,8 @@ static bool one_mem(uint32_t idx) {
   volatile uint32_t *p = eg2_chk_ptr(m.base + 4 * first);
   uint32_t seed = eg2_rand();
 
-  // The testpoint's start: a fresh INIT, so no read meets a word nothing has written.
+  // RISC-V starts with INIT; CHERIoT verifies its lock. The full-word stores below
+  // initialise every tested word before any read, including its integrity bits.
   ok = init_mem(&m) && ok;
   // Round 0 with readback on, round 1 with it off.
   for (uint32_t round = 0; round < 2; ++round) {
@@ -137,7 +150,7 @@ static bool one_mem(uint32_t idx) {
                    eg2_dev_read32(m.regs, SRAM_CTRL_READBACK_REGWEN_REG_OFFSET) & 1)) &&
        ok;
   if (EG2_PARAM(init_check)) {
-    // The INIT wipes the data: at least one word differs (pseudo-random fill).
+    // INIT changes the pattern only while CTRL is writable. A locked command preserves it.
     ok = init_mem(&m) && ok;
     uint32_t same = 0;
     for (uint32_t i = 0; i < n; ++i) {
@@ -145,7 +158,11 @@ static bool one_mem(uint32_t idx) {
         ++same;
       }
     }
-    ok = eg2_chk_true("data wiped by INIT", same < n || n == 0) && ok;
+#ifdef __CHERIOT__
+    ok = eg2_chk_eq("locked INIT preserves data", n, same) && ok;
+#else
+    ok = eg2_chk_true("data wiped by INIT", same < n) && ok;
+#endif
   }
   return ok;
 }

@@ -196,7 +196,7 @@ _TESTS = [
     ("eg2_tbre_sweep_irq", ["eg2_tbre_sweep_irq.c"], ["_cheriot"], "EG2_TBRE_SWEEP_IRQ_INJECT_FAIL", "framework", []),
     # chip_sw_cheriot_nvm_cap_validate: verified capability stores to RRAM (REQ_CMS_17).
     ("eg2_nvm_cap_validate", ["eg2_nvm_cap_validate.c"], ["_cheriot"], "EG2_NVM_CAP_VALIDATE_INJECT_FAIL", "framework", []),
-    # chip_sw_cheriot_sram_rekey_tag: INIT and key renewal clear tags (REQ_CMS_16).
+    # chip_sw_cheriot_sram_rekey_tag: boot locks refuse INIT/renewal and preserve tags (REQ_SOC_08).
     ("eg2_sram_rekey_tag", ["eg2_sram_rekey_tag.c"], ["_cheriot"], "EG2_SRAM_REKEY_TAG_INJECT_FAIL", "framework", []),
     # chip_sw_cheriot_rram_program_tag: RRAM controller writes clear tags (REQ_CMS_16).
     ("eg2_rram_program_tag", ["eg2_rram_program_tag.c"], ["_cheriot"], "EG2_RRAM_PROGRAM_TAG_INJECT_FAIL", "framework", []),

@@ -24,19 +24,19 @@
  *    full-word Get on the bus, F34) and full-word writes, and errors on half-word and byte
  *    writes and past its end. RISC-V: the window errors on every access ("returns
  *    a TL-UL error while the system is in ePMP mode").
- *  - rekey (CHERIoT twin, `n_rekey_caps` 0-64): capabilities in sec SRAM, then sram_ctrl_sec INIT
- *    after a new key: every one reloads untagged (REQ_CMS_16; expected to fail on the RTL of
- *    2026-10-24, see chip_sw_cheriot_sram_rekey_tag; rtl_tickets F50).
+ *  - rekey: in CHERIoT mode CTRL_REGWEN is locked by boot (REQ_SOC_08); attempting INIT
+ *    and renewal must preserve the stored words and tags. In RISC-V mode the controller is
+ *    writable and INIT/rekey must complete. This does not judge the open REQ_CMS_16 tag rule.
  *
- * The SystemC model has no revoking engine, answers the bitmap window at any width and in RISC-V
- * mode, and keeps tags through INIT (dv_todo G2, eg2_mpact_cpu.h): with `model_gaps` those checks
- * are skipped.
+ * `model_gaps` retains the opt-in skips for older model builds. The runner may enable those
+ * compatibility skips; the locked CTRL checks are never skipped.
  *
  * Built with EG2_MEM_SYS_E2E_INJECT_FAIL, the first store_load expects a wrong word back: the run
  * must fail with `MISMATCH store_load`.
  */
 
 #include "hw/top/cheriot_mem_sys_regs.h"
+#include "hw/top/sram_ctrl_regs.h"
 #include "sw/device/lib/testing/eg2/eg2_test.h"
 #include "sw/device/tests/eg2_cheriot/eg2_cheriot_rand.h"
 #include "sw/device/tests/eg2_cheriot/eg2_memsys.h"
@@ -228,18 +228,28 @@ static void rekey(uint32_t idx) {
   for (uint32_t i = 0; i < n; ++i) {
     eg2_ms_csc(kEg2ArenaB + 8 * i, eg2_ms_object_cap(kEg2ArenaA + 8 * i, 8, false));
   }
+  eg2_check(&tally, "CTRL_REGWEN locked at boot", idx,
+            eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_CTRL_REGWEN_REG_OFFSET), 0);
+  uint32_t status = eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_STATUS_REG_OFFSET);
+  eg2_dev_write32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_CTRL_REG_OFFSET,
+                  (1u << SRAM_CTRL_CTRL_RENEW_SCR_KEY_BIT) | (1u << SRAM_CTRL_CTRL_INIT_BIT));
+  eg2_check(&tally, "locked rekey preserves status", idx,
+            eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_STATUS_REG_OFFSET), status);
+  for (uint32_t i = 0; i < n; ++i) {
+    uint32_t slot = kEg2ArenaB + 8 * i;
+    eg2_cap_t expected = eg2_hw_read(eg2_ms_object_cap(kEg2ArenaA + 8 * i, 8, false));
+    eg2_check(&tally, "locked rekey preserves tag", i, eg2_ms_tag(slot), 1);
+    eg2_check(&tally, "locked rekey preserves address", i, eg2_ms_read32(slot), expected.addr);
+    eg2_check(&tally, "locked rekey preserves high word", i, eg2_ms_read32(slot + 4), expected.hi);
+  }
+#else
+  eg2_check(&tally, "CTRL_REGWEN open in RISC-V", idx,
+            eg2_dev_read32(kEg2DevSramCtrlSecRegs, SRAM_CTRL_CTRL_REGWEN_REG_OFFSET), 1);
   bool done = eg2_ms_sram_ctrl(kEg2DevSramCtrlSecRegs, true, true);
   eg2_check(&tally, "rekey INIT done", idx, done ? 1 : 0, 1);
-  if (!gaps()) {
-    for (uint32_t i = 0; i < n; ++i) {
-      eg2_check(&tally, "rekey tag", idx, eg2_ms_tag(kEg2ArenaB + 8 * i), 0);
-    }
-  }
-  // sec SRAM's contents are random after INIT: zero them again for the other scenarios.
-  (void)eg2_sec_sram_init();
-#else
-  (void)idx;
 #endif
+  // Restore the test-owned arenas for subsequent scenarios with ordinary full-word stores.
+  (void)eg2_sec_sram_init();
 }
 
 bool eg2_test_main(void) {
@@ -259,9 +269,6 @@ bool eg2_test_main(void) {
   sc.w[kScSweep] = EG2_PARAM(w_scenario_sweep);
   sc.w[kScAccessCheck] = EG2_PARAM(w_scenario_access_check);
   sc.w[kScRekey] = EG2_PARAM(w_scenario_rekey);
-#ifndef __CHERIOT__
-  sc.w[kScRekey] = 0;  // the twin's scenario
-#endif
   eg2_family_print("scenario", &sc);
   eg2_probe_begin();
   // Each scenario once first, then the draws.

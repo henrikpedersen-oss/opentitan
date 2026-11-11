@@ -234,15 +234,14 @@ _TESTS = [
 ]
 
 # chip_sw_sram_ctrl_scrambled_access_cheriot (REQ_OTP_02): OpenTitan's sram_ctrl_scrambled_access
-# test's checks in purecap CHERIoT code, on main, sec and retention SRAM; CHERIoT mode only (the
-# RISC-V mode test is the legacy chip_sw_sram_ctrl_scrambled_access, its source unchanged).
+# CHERIoT twin checks that boot's CTRL_REGWEN locks preserve main, sec and retention SRAM.
+# Actual renewal/scrambling is exercised by the legacy RISC-V test of the same feature.
 [
     opentitan_test(
         verilator = EG2_VERILATOR,
         name = "eg2_sram_scrambled_access_cheriot" + variant,
         srcs = [
             "eg2_sram_scrambled_access_cheriot.c",
-            "eg2_sram_scrambled_access_main.S",
         ],
         copts = _COPTS,
         exec_env = _ENVS,
