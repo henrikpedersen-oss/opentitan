@@ -62,6 +62,10 @@
   // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM) for the tests ported from it.
   build_modes: [
     {
+      // The primary build mode (EG2 address map); this DVSim requires it to be listed.
+      name: default
+    }
+    {
       name: cms_mutation
       build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP", "+define+CHERIOT_MEM_SYS_MUTATION"]
     }
