@@ -48,6 +48,13 @@
   uvm_test: cheriot_mem_sys_base_test
   uvm_test_seq: cheriot_mem_sys_base_vseq
 
+  // The shared CSR config adds cover_reg_top tests to smoke. Together with the
+  // local tag test this selects cover_reg_top and cms_map, but not default.
+  // DVSim validates the primary against selected builds, not declared modes.
+  // cms_map is selected by both smoke and feature; single-build selections
+  // automatically use their only build as the primary.
+  primary_build_mode: cms_map
+
   overrides: [{
     name: default_xcelium_cov_cfg_file
     value: "{proj_root}/hw/ip/cheriot_mem_sys/dv/cov/cheriot_mem_sys.ccf"
@@ -61,10 +68,6 @@
   // List of test specifications.
   // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM) for the tests ported from it.
   build_modes: [
-    {
-      // The primary build mode (EG2 address map); this DVSim requires it to be listed.
-      name: default
-    }
     {
       name: cms_mutation
       build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP", "+define+CHERIOT_MEM_SYS_MUTATION"]
