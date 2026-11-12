@@ -12,10 +12,6 @@ package cheriot_mem_sys_test_pkg;
   `include "uvm_macros.svh"
   `include "dv_macros.svh"
 
-  // local types
-
-  // functions
-
   // package sources
   `include "cheriot_mem_sys_base_test.sv"
 

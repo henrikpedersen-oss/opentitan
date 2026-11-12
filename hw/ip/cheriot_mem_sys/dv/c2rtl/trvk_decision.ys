@@ -1,0 +1,29 @@
+# C-to-RTL equivalence of the revocation decision (README.md). Run from the EG2 root by the
+# Makefile, which fills in @HLS_VERILOG@ and @TRVK_CORE@.
+read_slang --top cheriot_trvk_core -G RevBitmapBaseAddr=285212672 -G RevBitmapSizeBytes=3072 \
+  hw/ip/prim/rtl/prim_util_pkg.sv hw/ip/prim/rtl/prim_secded_pkg.sv \
+  hw/vendor/lowrisc_ibex/rtl/ibex_pkg.sv hw/vendor/lowrisc_ibex/rtl/ibex_cheriot_pkg.sv \
+  hw/ip/prim/rtl/prim_secded_inv_39_32_dec.sv hw/ip/prim/rtl/prim_count_pkg.sv \
+  hw/ip/prim/rtl/prim_count.sv hw/ip/prim_generic/rtl/prim_flop.sv \
+  hw/ip/prim/rtl/prim_fifo_sync_cnt.sv hw/ip/prim/rtl/prim_fifo_sync.sv \
+  hw/vendor/pulp_common_cells/rtl/stream_fork.sv \
+  hw/vendor/pulp_common_cells/rtl/stream_join_dynamic.sv \
+  @TRVK_CORE@ \
+  -I hw/ip/prim/rtl
+hierarchy -top cheriot_trvk_core
+proc
+flatten
+opt_clean
+# The decision's state becomes free inputs; the bit it selects becomes an output.
+expose -cut cheriot_trvk_core/ptr_storage_q cheriot_trvk_core/ptr_storage_valid_q cheriot_trvk_core/revbm_outstanding_q cheriot_trvk_core/misalign_flag_out cheriot_trvk_core/misalign_flag_out_valid
+expose cheriot_trvk_core/revbm_bit_select cheriot_trvk_core/revbm_addr
+read_verilog -defer @HLS_VERILOG@ hw/ip/cheriot_mem_sys/dv/c2rtl/trvk_decision_equiv.v
+prep -top trvk_decision_equiv
+flatten
+memory_map
+async2sync
+opt_clean
+
+# The miter never flags a difference, and the HLS transaction finishes (not vacuous).
+sat -verify -seq 64 -set-init-zero -prove bad 0 -show-inputs -show-outputs
+sat -verify -seq 64 -set-init-zero -prove-skip 63 -prove done_seen 1 -show-inputs -show-outputs

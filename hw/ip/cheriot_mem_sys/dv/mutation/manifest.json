@@ -1,0 +1,375 @@
+{
+  "origin": "cde6b0a7e0",
+  "seed": 1110,
+  "runs": [
+    {
+      "mutation": "partial_write_keeps_tag",
+      "rtl": "cheriot_tag_filter.sv:215 require_lookup",
+      "bug": "a sub-word or PutPartialData store is not looked up, so it leaves the granule's tag set",
+      "old_test": "cms_tag_clear_subword",
+      "test": "cheriot_mem_sys_mut_partial_write_keeps_tag_tag_clear_subword",
+      "baseline": "cheriot_mem_sys_tag_clear_subword",
+      "sequence": "cheriot_mem_sys_tag_clear_subword_vseq"
+    },
+    {
+      "mutation": "partial_write_keeps_tag",
+      "rtl": "cheriot_tag_filter.sv:215 require_lookup",
+      "bug": "a sub-word or PutPartialData store is not looked up, so it leaves the granule's tag set",
+      "old_test": "cms_rmw_same_word",
+      "test": "cheriot_mem_sys_mut_partial_write_keeps_tag_rmw_same_word",
+      "baseline": "cheriot_mem_sys_rmw_same_word",
+      "sequence": "cheriot_mem_sys_rmw_same_word_vseq"
+    },
+    {
+      "mutation": "partial_write_keeps_tag",
+      "rtl": "cheriot_tag_filter.sv:215 require_lookup",
+      "bug": "a sub-word or PutPartialData store is not looked up, so it leaves the granule's tag set",
+      "old_test": "cms_random",
+      "test": "cheriot_mem_sys_mut_partial_write_keeps_tag_mixed_random",
+      "baseline": "cheriot_mem_sys_mixed_random",
+      "sequence": "cheriot_mem_sys_mixed_random_vseq"
+    },
+    {
+      "mutation": "datastore_sets_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "a full-word data store (tag sideband 0) writes tag 1",
+      "old_test": "cms_smoke",
+      "test": "cheriot_mem_sys_mut_datastore_sets_tag_tag_smoke",
+      "baseline": "cheriot_mem_sys_tag_smoke",
+      "sequence": "cheriot_mem_sys_tag_smoke_vseq"
+    },
+    {
+      "mutation": "datastore_sets_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "a full-word data store (tag sideband 0) writes tag 1",
+      "old_test": "cms_tag_clear_subword",
+      "test": "cheriot_mem_sys_mut_datastore_sets_tag_tag_clear_subword",
+      "baseline": "cheriot_mem_sys_tag_clear_subword",
+      "sequence": "cheriot_mem_sys_tag_clear_subword_vseq"
+    },
+    {
+      "mutation": "datastore_sets_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "a full-word data store (tag sideband 0) writes tag 1",
+      "old_test": "cms_tag_store_load",
+      "test": "cheriot_mem_sys_mut_datastore_sets_tag_tag_store_load",
+      "baseline": "cheriot_mem_sys_tag_store_load",
+      "sequence": "cheriot_mem_sys_tag_store_load_vseq"
+    },
+    {
+      "mutation": "datastore_sets_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "a full-word data store (tag sideband 0) writes tag 1",
+      "old_test": "cms_random",
+      "test": "cheriot_mem_sys_mut_datastore_sets_tag_mixed_random",
+      "baseline": "cheriot_mem_sys_mixed_random",
+      "sequence": "cheriot_mem_sys_mixed_random_vseq"
+    },
+    {
+      "mutation": "capstore_drops_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "the upper word of a capability store writes tag 0, so every stored capability is untagged",
+      "old_test": "cms_smoke",
+      "test": "cheriot_mem_sys_mut_capstore_drops_tag_tag_smoke",
+      "baseline": "cheriot_mem_sys_tag_smoke",
+      "sequence": "cheriot_mem_sys_tag_smoke_vseq"
+    },
+    {
+      "mutation": "capstore_drops_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "the upper word of a capability store writes tag 0, so every stored capability is untagged",
+      "old_test": "cms_tag_store_load",
+      "test": "cheriot_mem_sys_mut_capstore_drops_tag_tag_store_load",
+      "baseline": "cheriot_mem_sys_tag_store_load",
+      "sequence": "cheriot_mem_sys_tag_store_load_vseq"
+    },
+    {
+      "mutation": "capstore_drops_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "the upper word of a capability store writes tag 0, so every stored capability is untagged",
+      "old_test": "cms_cap_load_hint",
+      "test": "cheriot_mem_sys_mut_capstore_drops_tag_cap_load_hint",
+      "baseline": "cheriot_mem_sys_cap_load_hint",
+      "sequence": "cheriot_mem_sys_cap_load_hint_vseq"
+    },
+    {
+      "mutation": "capstore_drops_tag",
+      "rtl": "cheriot_tag_filter.sv:328 tag_m_o",
+      "bug": "the upper word of a capability store writes tag 0, so every stored capability is untagged",
+      "old_test": "cms_tbre_sweep",
+      "test": "cheriot_mem_sys_mut_capstore_drops_tag_tbre_sweep",
+      "baseline": "cheriot_mem_sys_tbre_sweep",
+      "sequence": "cheriot_mem_sys_tbre_sweep_vseq"
+    },
+    {
+      "mutation": "trvk_wrong_bit",
+      "rtl": "cheriot_trvk_core.sv:275 revbm_bit_select",
+      "bug": "the engine's bitmap lookup reads the next granule's revocation bit",
+      "old_test": "cms_tbre_base_decode",
+      "test": "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_base_decode",
+      "baseline": "cheriot_mem_sys_tbre_base_decode",
+      "sequence": "cheriot_mem_sys_tbre_base_decode_vseq"
+    },
+    {
+      "mutation": "trvk_wrong_bit",
+      "rtl": "cheriot_trvk_core.sv:275 revbm_bit_select",
+      "bug": "the engine's bitmap lookup reads the next granule's revocation bit",
+      "old_test": "cms_tbre_sweep",
+      "test": "cheriot_mem_sys_mut_trvk_wrong_bit_tbre_sweep",
+      "baseline": "cheriot_mem_sys_tbre_sweep",
+      "sequence": "cheriot_mem_sys_tbre_sweep_vseq"
+    },
+    {
+      "mutation": "tbre_skip_last",
+      "rtl": "cheriot_mem_sys.sv:548 tbre_num_words",
+      "bug": "a sweep of more than one capability stops one capability early",
+      "old_test": "cms_tbre_sweep",
+      "test": "cheriot_mem_sys_mut_tbre_skip_last_tbre_sweep",
+      "baseline": "cheriot_mem_sys_tbre_sweep",
+      "sequence": "cheriot_mem_sys_tbre_sweep_vseq"
+    },
+    {
+      "mutation": "tbre_skip_last",
+      "rtl": "cheriot_mem_sys.sv:548 tbre_num_words",
+      "bug": "a sweep of more than one capability stops one capability early",
+      "old_test": "cms_tbre_base_decode",
+      "test": "cheriot_mem_sys_mut_tbre_skip_last_tbre_base_decode",
+      "baseline": "cheriot_mem_sys_tbre_base_decode",
+      "sequence": "cheriot_mem_sys_tbre_base_decode_vseq"
+    },
+    {
+      "mutation": "tbre_skip_last",
+      "rtl": "cheriot_mem_sys.sv:548 tbre_num_words",
+      "bug": "a sweep of more than one capability stops one capability early",
+      "old_test": "cms_tbre_epoch",
+      "test": "cheriot_mem_sys_mut_tbre_skip_last_tbre_epoch",
+      "baseline": "cheriot_mem_sys_tbre_epoch",
+      "sequence": "cheriot_mem_sys_tbre_epoch_vseq"
+    },
+    {
+      "mutation": "tbre_no_inval",
+      "rtl": "cheriot_tbre_mover.sv:329 write_a_valid",
+      "bug": "the engine reads and looks up every capability but never clears a revoked one's tag",
+      "old_test": "cms_tbre_sweep",
+      "test": "cheriot_mem_sys_mut_tbre_no_inval_tbre_sweep",
+      "baseline": "cheriot_mem_sys_tbre_sweep",
+      "sequence": "cheriot_mem_sys_tbre_sweep_vseq"
+    },
+    {
+      "mutation": "tbre_no_inval",
+      "rtl": "cheriot_tbre_mover.sv:329 write_a_valid",
+      "bug": "the engine reads and looks up every capability but never clears a revoked one's tag",
+      "old_test": "cms_tbre_base_decode",
+      "test": "cheriot_mem_sys_mut_tbre_no_inval_tbre_base_decode",
+      "baseline": "cheriot_mem_sys_tbre_base_decode",
+      "sequence": "cheriot_mem_sys_tbre_base_decode_vseq"
+    },
+    {
+      "mutation": "tbre_no_inval",
+      "rtl": "cheriot_tbre_mover.sv:329 write_a_valid",
+      "bug": "the engine reads and looks up every capability but never clears a revoked one's tag",
+      "old_test": "cms_rmw_core_tbre_same_word",
+      "test": "cheriot_mem_sys_mut_tbre_no_inval_rmw_core_tbre_same_word",
+      "baseline": "cheriot_mem_sys_rmw_core_tbre_same_word",
+      "sequence": "cheriot_mem_sys_rmw_core_tbre_same_word_vseq"
+    },
+    {
+      "mutation": "tbre_no_inval",
+      "rtl": "cheriot_tbre_mover.sv:329 write_a_valid",
+      "bug": "the engine reads and looks up every capability but never clears a revoked one's tag",
+      "old_test": "cms_tbre_snoop_window",
+      "test": "cheriot_mem_sys_mut_tbre_no_inval_tbre_snoop_window",
+      "baseline": "cheriot_mem_sys_tbre_snoop_window",
+      "sequence": "cheriot_mem_sys_tbre_snoop_window_vseq"
+    },
+    {
+      "mutation": "tbre_epoch_stuck",
+      "rtl": "cheriot_mem_sys.sv:603 tbre_epoch_en",
+      "bug": "TBRE_EPOCH never counts a sweep",
+      "old_test": "cms_tbre_epoch",
+      "test": "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_epoch",
+      "baseline": "cheriot_mem_sys_tbre_epoch",
+      "sequence": "cheriot_mem_sys_tbre_epoch_vseq"
+    },
+    {
+      "mutation": "tbre_epoch_stuck",
+      "rtl": "cheriot_mem_sys.sv:603 tbre_epoch_en",
+      "bug": "TBRE_EPOCH never counts a sweep",
+      "old_test": "cms_tbre_csr",
+      "test": "cheriot_mem_sys_mut_tbre_epoch_stuck_tbre_csr",
+      "baseline": "cheriot_mem_sys_tbre_csr",
+      "sequence": "cheriot_mem_sys_tbre_csr_vseq"
+    },
+    {
+      "mutation": "tbre_epoch_stuck",
+      "rtl": "cheriot_mem_sys.sv:603 tbre_epoch_en",
+      "bug": "TBRE_EPOCH never counts a sweep",
+      "old_test": "cms_random",
+      "test": "cheriot_mem_sys_mut_tbre_epoch_stuck_mixed_random",
+      "baseline": "cheriot_mem_sys_mixed_random",
+      "sequence": "cheriot_mem_sys_mixed_random_vseq"
+    },
+    {
+      "mutation": "tbre_done_early",
+      "rtl": "cheriot_tbre_mover.sv:504 busy_o",
+      "bug": "busy, and with it tbre_done and the interrupt, drops when the last word is read, before the clears are answered",
+      "old_test": "cms_tbre_sweep",
+      "test": "cheriot_mem_sys_mut_tbre_done_early_tbre_sweep",
+      "baseline": "cheriot_mem_sys_tbre_sweep",
+      "sequence": "cheriot_mem_sys_tbre_sweep_vseq"
+    },
+    {
+      "mutation": "tbre_done_early",
+      "rtl": "cheriot_tbre_mover.sv:504 busy_o",
+      "bug": "busy, and with it tbre_done and the interrupt, drops when the last word is read, before the clears are answered",
+      "old_test": "cms_tbre_intr",
+      "test": "cheriot_mem_sys_mut_tbre_done_early_tbre_intr",
+      "baseline": "cheriot_mem_sys_tbre_intr",
+      "sequence": "cheriot_mem_sys_tbre_intr_vseq"
+    },
+    {
+      "mutation": "snoop_off",
+      "rtl": "cheriot_mem_sys.sv:430 tbre_snoop_valid",
+      "bug": "the engine does not watch core writes: a clear overwrites the tag of a capability the core stored after the engine read it",
+      "old_test": "cms_tbre_store_race",
+      "test": "cheriot_mem_sys_mut_snoop_off_tbre_store_race",
+      "baseline": "cheriot_mem_sys_tbre_store_race",
+      "sequence": "cheriot_mem_sys_tbre_store_race_vseq"
+    },
+    {
+      "mutation": "snoop_off",
+      "rtl": "cheriot_mem_sys.sv:430 tbre_snoop_valid",
+      "bug": "the engine does not watch core writes: a clear overwrites the tag of a capability the core stored after the engine read it",
+      "old_test": "cms_tbre_snoop_window",
+      "test": "cheriot_mem_sys_mut_snoop_off_tbre_snoop_window",
+      "baseline": "cheriot_mem_sys_tbre_snoop_window",
+      "sequence": "cheriot_mem_sys_tbre_snoop_window_vseq"
+    },
+    {
+      "mutation": "meta_intg_unreported",
+      "rtl": "cheriot_rmw_filter.sv:359,371 rsp_intg_error_o, data_intg_error_o",
+      "bug": "integrity errors on meta SRAM responses are not reported (no fatal_fault, no sweep_err)",
+      "old_test": "cms_err_meta_intg",
+      "test": "cheriot_mem_sys_mut_meta_intg_unreported_err_meta_intg",
+      "baseline": "cheriot_mem_sys_err_meta_intg",
+      "sequence": "cheriot_mem_sys_err_meta_intg_vseq"
+    },
+    {
+      "mutation": "data_err_dropped",
+      "rtl": "cheriot_tag_filter.sv:392 tl_d_o",
+      "bug": "the core's tag filter drops d_error from the data path (cored_tl_h) on its way to the core",
+      "old_test": "cms_err_data_path",
+      "test": "cheriot_mem_sys_mut_data_err_dropped_err_data_path",
+      "baseline": "cheriot_mem_sys_err_data_path",
+      "sequence": "cheriot_mem_sys_err_data_path_vseq"
+    },
+    {
+      "mutation": "data_err_dropped",
+      "rtl": "cheriot_tag_filter.sv:392 tl_d_o",
+      "bug": "the core's tag filter drops d_error from the data path (cored_tl_h) on its way to the core",
+      "old_test": "cms_nvm_cap_store",
+      "test": "cheriot_mem_sys_mut_data_err_dropped_nvm_cap_store",
+      "baseline": "cheriot_mem_sys_nvm_cap_store",
+      "sequence": "cheriot_mem_sys_nvm_cap_store_vseq"
+    },
+    {
+      "mutation": "data_err_dropped",
+      "rtl": "cheriot_tag_filter.sv:392 tl_d_o",
+      "bug": "the core's tag filter drops d_error from the data path (cored_tl_h) on its way to the core",
+      "old_test": "cms_tag_store_load",
+      "test": "cheriot_mem_sys_mut_data_err_dropped_tag_store_load",
+      "baseline": "cheriot_mem_sys_tag_store_load",
+      "sequence": "cheriot_mem_sys_tag_store_load_vseq"
+    },
+    {
+      "mutation": "alert_dropped",
+      "rtl": "cheriot_mem_sys.sv:708 alert_req_i",
+      "bug": "no fatal error raises fatal_fault (ALERT_TEST still does)",
+      "old_test": "cms_err_tag_path",
+      "test": "cheriot_mem_sys_mut_alert_dropped_err_tag_path",
+      "baseline": "cheriot_mem_sys_err_tag_path",
+      "sequence": "cheriot_mem_sys_err_tag_path_vseq"
+    },
+    {
+      "mutation": "alert_dropped",
+      "rtl": "cheriot_mem_sys.sv:708 alert_req_i",
+      "bug": "no fatal error raises fatal_fault (ALERT_TEST still does)",
+      "old_test": "cms_err_csr_intg",
+      "test": "cheriot_mem_sys_mut_alert_dropped_err_csr_intg",
+      "baseline": "cheriot_mem_sys_err_csr_intg",
+      "sequence": "cheriot_mem_sys_err_csr_intg_vseq"
+    },
+    {
+      "mutation": "alert_dropped",
+      "rtl": "cheriot_mem_sys.sv:708 alert_req_i",
+      "bug": "no fatal error raises fatal_fault (ALERT_TEST still does)",
+      "old_test": "cms_err_tbre_read",
+      "test": "cheriot_mem_sys_mut_alert_dropped_err_tbre_read",
+      "baseline": "cheriot_mem_sys_err_tbre_read",
+      "sequence": "cheriot_mem_sys_err_tbre_read_vseq"
+    },
+    {
+      "mutation": "alert_dropped",
+      "rtl": "cheriot_mem_sys.sv:708 alert_req_i",
+      "bug": "no fatal error raises fatal_fault (ALERT_TEST still does)",
+      "old_test": "cms_nvm_cap_store",
+      "test": "cheriot_mem_sys_mut_alert_dropped_nvm_cap_store",
+      "baseline": "cheriot_mem_sys_nvm_cap_store",
+      "sequence": "cheriot_mem_sys_nvm_cap_store_vseq"
+    },
+    {
+      "mutation": "tbre_read_err_fatal",
+      "rtl": "cheriot_tbre_mover.sv:549 err_o",
+      "bug": "an error response to a read of the swept memory counts as a mover fault, so a read-protected page raises fatal_fault",
+      "old_test": "cms_err_tbre_read",
+      "test": "cheriot_mem_sys_mut_tbre_read_err_fatal_err_tbre_read",
+      "baseline": "cheriot_mem_sys_err_tbre_read",
+      "sequence": "cheriot_mem_sys_err_tbre_read_vseq"
+    },
+    {
+      "mutation": "tbre_read_err_fatal",
+      "rtl": "cheriot_tbre_mover.sv:549 err_o",
+      "bug": "an error response to a read of the swept memory counts as a mover fault, so a read-protected page raises fatal_fault",
+      "old_test": "cms_tbre_epoch",
+      "test": "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_epoch",
+      "baseline": "cheriot_mem_sys_tbre_epoch",
+      "sequence": "cheriot_mem_sys_tbre_epoch_vseq"
+    },
+    {
+      "mutation": "tbre_read_err_fatal",
+      "rtl": "cheriot_tbre_mover.sv:549 err_o",
+      "bug": "an error response to a read of the swept memory counts as a mover fault, so a read-protected page raises fatal_fault",
+      "old_test": "cms_tbre_intr",
+      "test": "cheriot_mem_sys_mut_tbre_read_err_fatal_tbre_intr",
+      "baseline": "cheriot_mem_sys_tbre_intr",
+      "sequence": "cheriot_mem_sys_tbre_intr_vseq"
+    },
+    {
+      "mutation": "wtrc_presented_unflagged",
+      "rtl": "cheriot_wtrc.sv:366 req_before_tag_wr",
+      "bug": "a request presented between W1 and its tag write is not flagged; only a capability store taken out of sequence raises fatal_fault",
+      "old_test": "cms_nvm_cap_store",
+      "test": "cheriot_mem_sys_mut_wtrc_presented_unflagged_nvm_cap_store",
+      "baseline": "cheriot_mem_sys_nvm_cap_store",
+      "sequence": "cheriot_mem_sys_nvm_cap_store_vseq"
+    },
+    {
+      "mutation": "alert_test_unlocked",
+      "rtl": "cheriot_mem_sys_regs_reg_top.sv:239 alert_test_gated_we",
+      "bug": "ALERT_TEST.regwen is ignored, so alert testing cannot be disabled",
+      "old_test": "cms_alert_test",
+      "test": "cheriot_mem_sys_mut_alert_test_unlocked_alert_test_reg",
+      "baseline": "cheriot_mem_sys_alert_test_reg",
+      "sequence": "cheriot_mem_sys_alert_test_reg_vseq"
+    },
+    {
+      "mutation": "mode_loose_mubi",
+      "rtl": "cheriot_access_check.sv:61-72 allow_forward (corerevbm_tl)",
+      "bug": "the core's bitmap window treats every cheriot_ena_i but MuBi4False as CHERIoT mode",
+      "old_test": "cms_mode_gating",
+      "test": "cheriot_mem_sys_mut_mode_loose_mubi_mode_gating",
+      "baseline": "cheriot_mem_sys_mode_gating",
+      "sequence": "cheriot_mem_sys_mode_gating_vseq"
+    }
+  ]
+}

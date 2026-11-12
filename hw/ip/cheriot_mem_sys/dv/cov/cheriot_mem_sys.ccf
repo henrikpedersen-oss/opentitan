@@ -1,0 +1,17 @@
+// Copyright lowRISC contributors.
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+include_ccf ${dv_root}/tools/xcelium/cover.ccf
+// Xcelium 24.03 iccugn: code/assertion coverage of parameter type addr_t is
+// otherwise omitted (COVUTP). Specialize by type only so the small/default
+// address maps retain compatible type names when their databases are merged.
+set_parameterized_module_coverage -type_parameters_only
+
+// The shared configuration selects top-level port toggles only. Measure this
+// block's seven type-parameterized RTL modules, including their internal nets.
+// These overrides apply only to the block CCF selected by the CMS sim config.
+set_toggle_portsonly -off
+select_coverage -toggle -module cheriot_mem_sys cheriot_tag_filter cheriot_wtrc cheriot_rmw_filter cheriot_tbre cheriot_tbre_mover cheriot_access_check
+set_fsm_arc_scoring -on
+// This external interface is alongside the DUT, outside the common DUT selection.
+select_coverage -assert -module cheriot_mem_sys_core_if

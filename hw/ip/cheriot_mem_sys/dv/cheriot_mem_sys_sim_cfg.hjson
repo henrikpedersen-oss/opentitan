@@ -33,10 +33,13 @@
                 "{proj_root}/hw/dv/tools/dvsim/tests/csr_tests.hjson",
                 "{proj_root}/hw/dv/tools/dvsim/tests/alert_test.hjson",
                 "{proj_root}/hw/dv/tools/dvsim/tests/intr_test.hjson",
+                "{proj_root}/hw/dv/tools/dvsim/tests/sec_cm_tests.hjson",
+                "{proj_root}/hw/ip/cheriot_mem_sys/dv/mutation/tests.hjson",
+                // This fork defines tl_intg_err here (no tl_intg_err_tests.hjson).
                 "{proj_root}/hw/dv/tools/dvsim/tests/tl_access_tests.hjson"]
 
   // Add additional tops for simulation.
-  sim_tops: ["cheriot_mem_sys_bind"]
+  sim_tops: ["cheriot_mem_sys_bind", "sec_cm_prim_onehot_check_bind"]
 
   // Default iterations for all tests - each test entry can override this.
   reseed: 1
@@ -45,19 +48,463 @@
   uvm_test: cheriot_mem_sys_base_test
   uvm_test_seq: cheriot_mem_sys_base_vseq
 
+  overrides: [{
+    name: default_xcelium_cov_cfg_file
+    value: "{proj_root}/hw/ip/cheriot_mem_sys/dv/cov/cheriot_mem_sys.ccf"
+  }, {
+    // Common CSR tests otherwise use the shared register-only CCF, omitting
+    // type-parameterized coverage and making their type names incompatible.
+    name: cover_reg_top_xcelium_cov_cfg_file
+    value: "{proj_root}/hw/ip/cheriot_mem_sys/dv/cov/cheriot_mem_sys.ccf"
+  }]
+
   // List of test specifications.
+  // The cms testbench's small address map (16 KiB SRAM, 8 KiB NVM) for the tests ported from it.
+  build_modes: [
+    {
+      name: cms_mutation
+      build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP", "+define+CHERIOT_MEM_SYS_MUTATION"]
+    }
+    {
+      name: cms_map
+      build_opts: ["+define+CHERIOT_MEM_SYS_CMS_MAP"]
+    }
+  ]
+  // The coverage configuration of each build mode (common_sim_cfg.hjson): the default's.
+  cms_map_vcs_cov_cfg_file: "{default_vcs_cov_cfg_file}"
+  cms_map_xcelium_cov_cfg_file: "{default_xcelium_cov_cfg_file}"
+
   tests: [
     {
-      name: cheriot_mem_sys_smoke
-      uvm_test_seq: cheriot_mem_sys_smoke_vseq
+      name: cheriot_mem_sys_csr_byte_enable
+      uvm_test_seq: cheriot_mem_sys_csr_byte_enable_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_toggle_sweeps
+      uvm_test_seq: cheriot_mem_sys_toggle_sweeps_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_core_matrix
+      uvm_test_seq: cheriot_mem_sys_core_matrix_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_revocation_causes
+      uvm_test_seq: cheriot_mem_sys_revocation_causes_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_bitmap_boundaries
+      uvm_test_seq: cheriot_mem_sys_bitmap_boundaries_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_ambiguous_overlaps
+      uvm_test_seq: cheriot_mem_sys_ambiguous_overlaps_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_invalidation_error
+      uvm_test_seq: cheriot_mem_sys_invalidation_error_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_nvm_corners
+      uvm_test_seq: cheriot_mem_sys_nvm_corners_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_wtrc_handoffs
+      uvm_test_seq: cheriot_mem_sys_wtrc_handoffs_vseq
+      build_mode: cms_map
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    // Each feature is its virtual sequence and this entry; the base test is shared.
+    // checked by the C reference model. All but cmodel_random use the small address map (build
+    // mode cms_map).
+    {
+      name: cheriot_mem_sys_tag_smoke
+      uvm_test_seq: cheriot_mem_sys_tag_smoke_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_tag_store_load
+      uvm_test_seq: cheriot_mem_sys_tag_store_load_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_tag_clear_subword
+      uvm_test_seq: cheriot_mem_sys_tag_clear_subword_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_cap_load_hint
+      uvm_test_seq: cheriot_mem_sys_cap_load_hint_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_access_check
+      uvm_test_seq: cheriot_mem_sys_access_check_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_mode_gating
+      uvm_test_seq: cheriot_mem_sys_mode_gating_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_rmw_same_word
+      uvm_test_seq: cheriot_mem_sys_rmw_same_word_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_rmw_core_tbre_same_word
+      uvm_test_seq: cheriot_mem_sys_rmw_core_tbre_same_word_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_tbre_sweep
+      uvm_test_seq: cheriot_mem_sys_tbre_sweep_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_tbre_base_decode
+      uvm_test_seq: cheriot_mem_sys_tbre_base_decode_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_tbre_csr
+      uvm_test_seq: cheriot_mem_sys_tbre_csr_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_tbre_concurrent
+      uvm_test_seq: cheriot_mem_sys_tbre_concurrent_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_tbre_snoop_window
+      uvm_test_seq: cheriot_mem_sys_tbre_snoop_window_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_mixed_random
+      uvm_test_seq: cheriot_mem_sys_mixed_random_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 20
+    }
+    {
+      name: cheriot_mem_sys_alert_test_reg
+      uvm_test_seq: cheriot_mem_sys_alert_test_reg_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_err_csr_intg
+      uvm_test_seq: cheriot_mem_sys_err_csr_intg_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_err_data_path
+      uvm_test_seq: cheriot_mem_sys_err_data_path_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_err_meta_intg
+      uvm_test_seq: cheriot_mem_sys_err_meta_intg_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_err_tag_path
+      uvm_test_seq: cheriot_mem_sys_err_tag_path_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_err_tbre_read
+      uvm_test_seq: cheriot_mem_sys_err_tbre_read_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_err_tbre_revbm
+      uvm_test_seq: cheriot_mem_sys_err_tbre_revbm_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 2
+    }
+    {
+      name: cheriot_mem_sys_nvm_cap_store
+      uvm_test_seq: cheriot_mem_sys_nvm_cap_store_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 5
+    }
+    {
+      name: cheriot_mem_sys_tbre_epoch
+      uvm_test_seq: cheriot_mem_sys_tbre_epoch_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    {
+      name: cheriot_mem_sys_tbre_intr
+      uvm_test_seq: cheriot_mem_sys_tbre_intr_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      build_mode: cms_map
+      reseed: 3
+    }
+    // Constrained-random traffic on every port, on Earl Grey 2's address map (testpoint
+    // cmodel_random).
+    {
+      name: cheriot_mem_sys_cmodel_random
+      uvm_test_seq: cheriot_mem_sys_cmodel_random_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+      reseed: 10
+    }
+    // The model's check shown to fail: the 50th compared read reaches the model with one bit
+    // flipped, and the test must fail with its mismatch (testpoint cmodel_random_inject_fail).
+    {
+      name: cheriot_mem_sys_cmodel_random_inject_fail
+      uvm_test_seq: cheriot_mem_sys_cmodel_random_vseq
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_cmodel_corrupt=50"]
+      reseed: 1
+    }
+    {
+      name: cheriot_mem_sys_reset
+      uvm_test_seq: cheriot_mem_sys_reset_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_tbre_store_race
+      uvm_test_seq: cheriot_mem_sys_tbre_store_race_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_latency
+      uvm_test_seq: cheriot_mem_sys_latency_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_backpressure
+      uvm_test_seq: cheriot_mem_sys_trvk_backpressure_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1"]
+    }
+    {
+      name: cheriot_mem_sys_random_long
+      uvm_test_seq: cheriot_mem_sys_mixed_random_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+num_ops=40000"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_verdict
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=verdict"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_tag_out
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=tag_out"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_bit_select
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=bit_select"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_req_required
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=req_required"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_out_of_range
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=out_of_range"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_sealing
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=sealing"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_align
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cms_tf_site=align"]
+    }
+    {
+      name: cheriot_mem_sys_cap_load_hint_corrupt_load_tag
+      uvm_test_seq: cheriot_mem_sys_cap_load_hint_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=load_tag", "+cheriot_mem_sys_corrupt_at=7"]
+    }
+    {
+      name: cheriot_mem_sys_cap_load_hint_corrupt_sticky_tag
+      uvm_test_seq: cheriot_mem_sys_cap_load_hint_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=sticky_tag", "+cheriot_mem_sys_corrupt_at=7"]
+    }
+    {
+      name: cheriot_mem_sys_tbre_sweep_corrupt_sweep
+      uvm_test_seq: cheriot_mem_sys_tbre_sweep_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=sweep", "+cheriot_mem_sys_corrupt_at=11"]
+    }
+    {
+      name: cheriot_mem_sys_access_check_corrupt_revbm
+      uvm_test_seq: cheriot_mem_sys_access_check_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=revbm", "+cheriot_mem_sys_corrupt_at=3"]
+    }
+    {
+      name: cheriot_mem_sys_access_check_corrupt_err
+      uvm_test_seq: cheriot_mem_sys_access_check_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=err", "+cheriot_mem_sys_corrupt_at=5"]
+    }
+    {
+      name: cheriot_mem_sys_tag_store_load_corrupt_data
+      uvm_test_seq: cheriot_mem_sys_tag_store_load_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=data", "+cheriot_mem_sys_corrupt_at=9"]
+    }
+    {
+      name: cheriot_mem_sys_tbre_store_race_corrupt_race
+      uvm_test_seq: cheriot_mem_sys_tbre_store_race_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=race", "+cheriot_mem_sys_corrupt_at=5"]
+    }
+    {
+      name: cheriot_mem_sys_tbre_epoch_corrupt_epoch
+      uvm_test_seq: cheriot_mem_sys_tbre_epoch_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=epoch", "+cheriot_mem_sys_corrupt_at=2"]
+    }
+    {
+      name: cheriot_mem_sys_latency_corrupt_latency
+      uvm_test_seq: cheriot_mem_sys_latency_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=latency", "+cheriot_mem_sys_corrupt_at=1"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_fault_corrupt_trvk
+      uvm_test_seq: cheriot_mem_sys_trvk_fault_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=trvk", "+cheriot_mem_sys_corrupt_at=1"]
+    }
+    {
+      name: cheriot_mem_sys_trvk_backpressure_corrupt_backpressure
+      uvm_test_seq: cheriot_mem_sys_trvk_backpressure_vseq
+      build_mode: cms_map
+      reseed: 1
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+cheriot_mem_sys_corrupt=backpressure", "+cheriot_mem_sys_corrupt_at=1"]
+    }
+    {
+      name: cheriot_mem_sys_err_cmd_intg
+      uvm_test_seq: cheriot_mem_sys_err_cmd_intg_vseq
+      build_mode: cms_map
+      // Complete the fault matrix even if the documented contract fails; errors remain failures.
+      run_opts: ["+cheriot_mem_sys_cmodel=1", "+max_quit_count=100"]
+      reseed: 1
     }
   ]
 
   // List of regressions.
   regressions: [
     {
+      name: closure
+      tests: ["cheriot_mem_sys_wtrc_handoffs", "cheriot_mem_sys_nvm_corners", "cheriot_mem_sys_core_matrix", "cheriot_mem_sys_revocation_causes", "cheriot_mem_sys_bitmap_boundaries", "cheriot_mem_sys_ambiguous_overlaps", "cheriot_mem_sys_invalidation_error"]
+    }
+    {
       name: smoke
-      tests: ["cheriot_mem_sys_smoke"]
+      tests: ["cheriot_mem_sys_tag_smoke"]
+    }
+    {
+      name: feature
+      tests: ["cheriot_mem_sys_wtrc_handoffs", "cheriot_mem_sys_nvm_corners", "cheriot_mem_sys_core_matrix", "cheriot_mem_sys_revocation_causes", "cheriot_mem_sys_bitmap_boundaries", "cheriot_mem_sys_ambiguous_overlaps", "cheriot_mem_sys_invalidation_error", "cheriot_mem_sys_csr_byte_enable", "cheriot_mem_sys_toggle_sweeps", "cheriot_mem_sys_tag_smoke", "cheriot_mem_sys_tag_store_load", "cheriot_mem_sys_tag_clear_subword", "cheriot_mem_sys_cap_load_hint", "cheriot_mem_sys_access_check", "cheriot_mem_sys_mode_gating", "cheriot_mem_sys_rmw_same_word", "cheriot_mem_sys_rmw_core_tbre_same_word", "cheriot_mem_sys_tbre_sweep", "cheriot_mem_sys_tbre_base_decode", "cheriot_mem_sys_tbre_csr", "cheriot_mem_sys_tbre_concurrent", "cheriot_mem_sys_tbre_snoop_window", "cheriot_mem_sys_mixed_random", "cheriot_mem_sys_alert_test_reg", "cheriot_mem_sys_err_csr_intg", "cheriot_mem_sys_err_data_path", "cheriot_mem_sys_err_meta_intg", "cheriot_mem_sys_err_tag_path", "cheriot_mem_sys_err_tbre_read", "cheriot_mem_sys_err_tbre_revbm", "cheriot_mem_sys_nvm_cap_store", "cheriot_mem_sys_tbre_epoch", "cheriot_mem_sys_tbre_intr", "cheriot_mem_sys_cmodel_random", "cheriot_mem_sys_cmodel_random_inject_fail", "cheriot_mem_sys_reset", "cheriot_mem_sys_tbre_store_race", "cheriot_mem_sys_random_long", "cheriot_mem_sys_err_cmd_intg"]
+    }
+    {
+      name: known_gaps
+      tests: ["cheriot_mem_sys_latency", "cheriot_mem_sys_trvk_backpressure", "cheriot_mem_sys_trvk_fault_verdict", "cheriot_mem_sys_trvk_fault_tag_out", "cheriot_mem_sys_trvk_fault_bit_select", "cheriot_mem_sys_trvk_fault_req_required", "cheriot_mem_sys_trvk_fault_out_of_range", "cheriot_mem_sys_trvk_fault_sealing", "cheriot_mem_sys_trvk_fault_align"]
+    }
+    {
+      name: checker_negative
+      tests: ["cheriot_mem_sys_cap_load_hint_corrupt_load_tag", "cheriot_mem_sys_cap_load_hint_corrupt_sticky_tag", "cheriot_mem_sys_tbre_sweep_corrupt_sweep", "cheriot_mem_sys_access_check_corrupt_revbm", "cheriot_mem_sys_access_check_corrupt_err", "cheriot_mem_sys_tag_store_load_corrupt_data", "cheriot_mem_sys_tbre_store_race_corrupt_race", "cheriot_mem_sys_tbre_epoch_corrupt_epoch", "cheriot_mem_sys_latency_corrupt_latency", "cheriot_mem_sys_trvk_fault_corrupt_trvk", "cheriot_mem_sys_trvk_backpressure_corrupt_backpressure"]
     }
   ]
 }
